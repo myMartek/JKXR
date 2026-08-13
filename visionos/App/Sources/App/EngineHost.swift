@@ -29,6 +29,28 @@ final class EngineHost {
     func start() {
         TBXR_visionOS_StartWorldTracking()
 
+        // Herzschlag auf einem eigenen Thread.
+        //
+        // Wird der Prozess mit SIGKILL beendet, sagt die verstrichene Zeit,
+        // WER ihn beendet hat: der Compositor beendet Anwendungen, die keine
+        // Bilder mehr abliefern, nach wenigen Sekunden und immer nach derselben
+        // Spanne. Speicherdruck schlägt dagegen unregelmäßig zu.
+        //
+        // Eigener Thread, keine Task: der Engine-Thread blockiert während des
+        // Ladens, und eine Warteschlange von Swift Concurrency könnte davon
+        // ausgehungert werden — genau der Fehler aus S4.
+        let beat = Thread {
+            var seconds = 0
+            while true {
+                Thread.sleep(forTimeInterval: 1.0)
+                seconds += 1
+                NSLog("[Herzschlag] %d s", seconds)
+            }
+        }
+        beat.name = "de.martek.jkxr.heartbeat"
+        beat.qualityOfService = .utility
+        beat.start()
+
         // Eigener Thread, kein Task.
         //
         // JKXR_visionOS_Main ist eine blockierende Endlosschleife. Auf einer

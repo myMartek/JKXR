@@ -43,8 +43,17 @@ intptr_t	VM_Call( int callnum, ... )
 			args[i] = va_arg( ap, intptr_t );
 		va_end(ap);
 
+#if defined(JKXR_VISIONOS)
+		// Acht Argumente, nicht zehn — so viele nimmt vmMain entgegen.
+		// Die überzähligen wurden zwar ohnehin ignoriert, aber der Aufruf mit
+		// elf Werten an eine Funktion mit neun Parametern ist schon für sich
+		// falsch und auf Apple-arm64 nicht folgenlos.
+		return cgvm.entryPoint( callnum, args[0], args[1], args[2], args[3],
+								args[4], args[5], args[6], args[7] );
+#else
 		return cgvm.entryPoint( callnum,  args[0],  args[1],  args[2], args[3], args[4],  args[5],  args[6], args[7],
 								args[8],  args[9]);
+#endif
 	}
 	return -1;
 }

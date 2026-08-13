@@ -90,8 +90,30 @@ partial_link "$BUILD/librd-gles-ja_arm.a" "$WORK/rd-gles-merged.o" GetRefAPI
 # game functions" ab, obwohl die Bibliothek vollständig gelinkt ist.
 partial_link "$BUILD/libjagamearm.a" "$WORK/jagame-merged.o" GetGameAPI dllEntry vmMain
 
+# ---------------------------------------------------------------------------
+# App-Bündel verwerfen, damit Xcode neu linkt.
+#
+# Die Engine-Bibliotheken stehen in OTHER_LDFLAGS, und was dort steht, verfolgt
+# Xcode NICHT als Abhängigkeit: eine geänderte libopenjk_ja.a löst keinen
+# erneuten Link aus. Das Bündel behält dann sein altes Binary, der Build meldet
+# "BUILD SUCCEEDED", und man misst stundenlang gegen einen veralteten Stand.
+#
+# Genau das ist hier passiert — eine frisch eingebaute Protokollierung fehlte im
+# Binary, obwohl sie in der Bibliothek stand.
+DERIVED="$HERE/visionos/DerivedData/Build/Products/Debug-xros/JKXR.app"
+if [ -d "$DERIVED" ]; then
+    rm -rf "$DERIVED"
+    echo "App-Bündel verworfen — Xcode linkt beim nächsten Build neu"
+fi
+
 # --- Gesamtlink ------------------------------------------------------------
-echo "== linken"
+#
+# Dieser Link erzeugt ein eigenständiges Prüfprogramm und ist NICHT der Link der
+# App — die baut Xcode selbst aus denselben Objekten. Er schlägt derzeit an
+# einem doppelten _vmMain fehl, seit das Spielmodul es exportieren muss;
+# aussagekräftig bleibt er trotzdem für die gl4es-Aliase. Deshalb steht das
+# Verwerfen des App-Bündels davor: sonst nimmt "set -e" es mit.
+echo "== linken (Prüfprogramm)"
 xcrun --sdk xros clang++ -target arm64-apple-xros2.0 -o "$OUT" \
     "$WORK/shell.o" \
     "$WORK/rd-gles-merged.o" "$WORK/jagame-merged.o" \
@@ -116,3 +138,4 @@ echo "Einsprungpunkte im Export-Trie (dlsym muss sie finden):"
 xcrun dyld_info -exports "$OUT" 2>/dev/null | \
     grep -E "GetGameAPI|GetRefAPI|JKXR_visionOS_Main|JKXR_visionOS_RequestShutdown" || \
     echo "  KEINE — Q_EXPORT fehlt an den Definitionen"
+

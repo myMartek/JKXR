@@ -218,18 +218,30 @@ void SV_SpawnServer( const char *server, ForceReload_e eForceReload, qboolean bA
 		svs.snapshotEntities = NULL;
 	}
 
+#if defined(JKXR_VISIONOS)
+#define JKXR_MARK(x) do { Com_Printf("[SpawnServer] " x "\n"); } while (0)
+#else
+#define JKXR_MARK(x) do {} while (0)
+#endif
+
 	// don't let sound stutter and dump all stuff on the hunk
+	JKXR_MARK("CL_MapLoading");
 	CL_MapLoading();
 
+	JKXR_MARK("CM_SameMap/ClearMap");
 	if (!CM_SameMap(server))
 	{ //rww - only clear if not loading the same map
 		CM_ClearMap();
 	}
 
 	// Miniheap never changes sizes, so I just put it really early in mem.
+	JKXR_MARK("G2VertSpaceServer->ResetHeap");
 	G2VertSpaceServer->ResetHeap();
 
+	JKXR_MARK("Hunk_Clear");
 	Hunk_Clear();
+
+	JKXR_MARK("configstrings freigeben");
 
 	// wipe the entire per-level structure
 	// Also moved up, trying to do all freeing before new allocs
@@ -243,6 +255,7 @@ void SV_SpawnServer( const char *server, ForceReload_e eForceReload, qboolean bA
 	// Collect all the small allocations done by the cvar system
 	// This frees, then allocates. Make it the last thing before other
 	// allocations begin!
+	JKXR_MARK("Cvar_Defrag");
 	Cvar_Defrag();
 
 /*
@@ -253,6 +266,7 @@ void SV_SpawnServer( const char *server, ForceReload_e eForceReload, qboolean bA
 	// init client structures and svs.numSnapshotEntities
 	// This is moved down quite a bit, but should be safe. And keeps
 	// svs.clients right at the beginning of memory
+	JKXR_MARK("SV_Startup");
 	if ( !Cvar_VariableIntegerValue("sv_running") ) {
 		SV_Startup();
 	}
@@ -262,11 +276,19 @@ void SV_SpawnServer( const char *server, ForceReload_e eForceReload, qboolean bA
 	R_InitShaders();
 	R_ModelInit();*/
 
+	JKXR_MARK("re.SVModelInit");
+#if defined(JKXR_VISIONOS)
+	if (!re.SVModelInit) {
+		Com_Printf("[SpawnServer] re.SVModelInit ist NULL — Renderertabelle unvollständig\n");
+	}
+#endif
 	re.SVModelInit();
 
 	// allocate the snapshot entities
+	JKXR_MARK("snapshotEntities zuteilen");
 	svs.snapshotEntities = (entityState_t *) Z_Malloc (sizeof(entityState_t)*svs.numSnapshotEntities, TAG_CLIENTS, qtrue );
 
+	JKXR_MARK("Music_SetLevelName");
 	Music_SetLevelName(server);
 
 	// toggle the server bit so clients can detect that a
@@ -278,6 +300,7 @@ void SV_SpawnServer( const char *server, ForceReload_e eForceReload, qboolean bA
 	Cvar_Set( "nextmap", va("map %s", server) );
 
 
+	JKXR_MARK("sv zurücksetzen");
 	memset (&sv, 0, sizeof(sv));
 
 
@@ -286,8 +309,10 @@ void SV_SpawnServer( const char *server, ForceReload_e eForceReload, qboolean bA
 	}
 
 	sv.time = 1000;
+	JKXR_MARK("re.G2API_SetTime");
 	re.G2API_SetTime(sv.time,G2T_SV_TIME);
 
+	JKXR_MARK("CM_LoadMap");
 	CM_LoadMap( va("maps/%s.bsp", server), qfalse, &checksum, qfalse );
 
 	// set serverinfo visible name
@@ -300,6 +325,7 @@ void SV_SpawnServer( const char *server, ForceReload_e eForceReload, qboolean bA
 	Cvar_Set( "sv_serverid", va("%i", sv.serverId ) );
 
 	// clear physics interaction links
+	JKXR_MARK("SV_ClearWorld");
 	SV_ClearWorld ();
 
 	// media configstring setting should be done during
@@ -308,20 +334,24 @@ void SV_SpawnServer( const char *server, ForceReload_e eForceReload, qboolean bA
 	sv.state = SS_LOADING;
 
 	// load and spawn all other entities
+	JKXR_MARK("SV_InitGameProgs");
 	SV_InitGameProgs();
 
 	// run a few frames to allow everything to settle
 	cvar_t *frameDelay = Cvar_Get("s_spawnFrameDelay", "4", CVAR_TEMP);
 	for ( i = 0 ;i < frameDelay->integer ; i++ ) {
+	JKXR_MARK("ge->RunFrame");
 		ge->RunFrame( sv.time );
 		sv.time += 100;
 		re.G2API_SetTime(sv.time,G2T_SV_TIME);
 	}
 #ifndef JK2_MODE
+	JKXR_MARK("ge->ConnectNavs");
 	ge->ConnectNavs(sv_mapname->string, sv_mapChecksum->integer);
 #endif
 
 	// create a baseline for more efficient communications
+	JKXR_MARK("SV_CreateBaseline");
 	SV_CreateBaseline ();
 
 	for (i=0 ; i<1 ; i++) {
@@ -334,6 +364,7 @@ void SV_SpawnServer( const char *server, ForceReload_e eForceReload, qboolean bA
 			char	*denied;
 
 			// connect the client again
+	JKXR_MARK("ge->ClientConnect");
 			denied = ge->ClientConnect( i, qfalse, eNO/*qfalse*/ );	// firstTime = qfalse, qbFromSavedGame
 			if ( denied ) {
 				// this generally shouldn't happen, because the client
@@ -348,12 +379,14 @@ void SV_SpawnServer( const char *server, ForceReload_e eForceReload, qboolean bA
 	}
 
 	// run another frame to allow things to look at all connected clients
+	JKXR_MARK("ge->RunFrame nach ClientConnect");
 	ge->RunFrame( sv.time );
 	sv.time += 100;
 	re.G2API_SetTime(sv.time,G2T_SV_TIME);
 
 
 	// save systeminfo and serverinfo strings
+	JKXR_MARK("SV_SetConfigstring SYSTEMINFO");
 	SV_SetConfigstring( CS_SYSTEMINFO, Cvar_InfoString( CVAR_SYSTEMINFO ) );
 	cvar_modifiedFlags &= ~CVAR_SYSTEMINFO;
 
@@ -365,6 +398,7 @@ void SV_SpawnServer( const char *server, ForceReload_e eForceReload, qboolean bA
 	// to all clients
 	sv.state = SS_GAME;
 
+	JKXR_MARK("Hunk_SetMark");
 	Hunk_SetMark();
 	Z_Validate();
 	Z_Validate();

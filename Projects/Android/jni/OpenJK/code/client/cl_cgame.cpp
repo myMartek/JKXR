@@ -66,7 +66,13 @@ qboolean CL_InitCGameVM( void *gameLibrary )
 	typedef void DllEntryProc( SyscallProc * );
 
 	DllEntryProc *dllEntry = (DllEntryProc *)Sys_LoadFunction( gameLibrary, "dllEntry" );
+	#if defined(JKXR_VISIONOS)
+	cgvm.entryPoint = (intptr_t (*)(intptr_t, intptr_t, intptr_t, intptr_t,
+	                                intptr_t, intptr_t, intptr_t, intptr_t,
+	                                intptr_t))Sys_LoadFunction( gameLibrary, "vmMain" );
+#else
 	cgvm.entryPoint = (intptr_t (*)(int,...))Sys_LoadFunction( gameLibrary, "vmMain" );
+#endif
 
 	if ( !cgvm.entryPoint || !dllEntry ) {
 #ifdef JK2_MODE
@@ -1417,7 +1423,14 @@ void CL_InitCGame( void ) {
 	cls.state = CA_LOADING;
 
 	// init for this gamestate
+#if defined(JKXR_VISIONOS)
+	Com_Printf("[CGame] vor CG_INIT · entryPoint %p · &vr %p\n",
+	           (void *)cgvm.entryPoint, (void *)&vr);
+#endif
 	VM_Call( CG_INIT, clc.serverCommandSequence, (intptr_t)&vr );
+#if defined(JKXR_VISIONOS)
+	Com_Printf("[CGame] CG_INIT zurückgekehrt\n");
+#endif
 
 	// reset any CVAR_CHEAT cvars registered by cgame
 	if ( !cl_connectedToCheatServer )

@@ -71,7 +71,23 @@ VIRTUAL MACHINE
 ==============================================================
 */
 typedef struct vm_s {
+#if defined(JKXR_VISIONOS)
+	// Genau die Signatur von vmMain, NICHT variadisch.
+	//
+	// vmMain ist in cgame/cg_main.cpp mit NEUN FESTEN Parametern definiert:
+	//     intptr_t QDECL vmMain( intptr_t command, intptr_t arg0 ... arg7 )
+	//
+	// Der Zeiger war hier als (int callNum, ...) typisiert. Auf Android und
+	// x86-64 ist das folgenlos: variadische Argumente landen dort in denselben
+	// Registern wie feste. Auf Apple-arm64 NICHT — dort legt der Aufrufer sie
+	// auf den Stapel, während die Funktion x1 bis x7 liest. vmMain bekam also
+	// Müll statt des Zeigers auf vr und stürzte in CG_INIT ab.
+	intptr_t	(*entryPoint)( intptr_t command, intptr_t arg0, intptr_t arg1,
+	                           intptr_t arg2, intptr_t arg3, intptr_t arg4,
+	                           intptr_t arg5, intptr_t arg6, intptr_t arg7 );
+#else
 	intptr_t	(*entryPoint)( int callNum, ... );
+#endif
 } vm_t;
 
 extern vm_t cgvm;
