@@ -112,22 +112,58 @@ int handIndexForPath(const std::string &path)
 /// zu "nicht gefunden" statt zu einem falschen Element. TBXR_visionOS_DumpInputs
 /// gibt die tatsächlichen Namen aus, damit die Tabelle hier gegen Gemessenes
 /// ersetzt werden kann.
-NSString *gcNameForInputPath(const std::string &path)
+/// Wahr, wenn beide Hände auf demselben Gerät liegen (kombiniertes Gamepad).
+bool gCombinedDevice = false;
+
+NSString *gcNameForInputPath(const std::string &path, int hand)
 {
     auto ends = [&](const char *suffix) {
         const size_t len = strlen(suffix);
         return path.size() >= len && path.compare(path.size() - len, len, suffix) == 0;
     };
 
-    if (ends("/trigger/value") || ends("/trigger"))   return GCInputRightTrigger;
-    if (ends("/squeeze/value") || ends("/squeeze"))   return GCInputRightShoulder;
-    if (ends("/thumbstick"))                          return GCInputRightThumbstick;
-    if (ends("/thumbstick/click"))                    return GCInputRightThumbstickButton;
-    if (ends("/a/click"))                             return GCInputButtonA;
-    if (ends("/b/click"))                             return GCInputButtonB;
-    if (ends("/x/click"))                             return GCInputButtonX;
-    if (ends("/y/click"))                             return GCInputButtonY;
-    if (ends("/menu/click"))                          return GCInputButtonMenu;
+    const bool left = (hand == 0);
+
+    // ZWEI gemessene Gerätezustände, beide müssen bedient werden.
+    //
+    // A) Zwei Spatial Controller — "PlayStation VR2 Sense Controller (L)" und
+    //    "(R)", je mit eigenem, UNPRÄFIXIERTEM Elementsatz:
+    //       Trigger · Grip · Thumbstick · Thumbstick Button
+    //       Button A · Button B · Button Menu
+    //    Die Hand steckt im Gerät. Auf dem linken sind Quadrat und Dreieck als
+    //    "Button A"/"Button B" ausgewiesen — OpenXR nennt sie X und Y.
+    //
+    // B) Ein kombiniertes Gerät der Kategorie "MFi", das sich als
+    //    "... Controllers (L/R)" meldet und die üblichen präfixierten Namen
+    //    trägt: "Left Trigger", "Right Thumbstick", "Button X" und so fort.
+    //    Diesen Zustand liefert visionOS, solange die Zubehörverfolgung nicht
+    //    läuft.
+    if (gCombinedDevice) {
+        if (ends("/trigger/value") || ends("/trigger"))
+            return left ? GCInputLeftTrigger : GCInputRightTrigger;
+        if (ends("/squeeze/value") || ends("/squeeze"))
+            return left ? GCInputLeftShoulder : GCInputRightShoulder;
+        if (ends("/thumbstick/click"))
+            return left ? GCInputLeftThumbstickButton : GCInputRightThumbstickButton;
+        if (ends("/thumbstick"))
+            return left ? GCInputLeftThumbstick : GCInputRightThumbstick;
+        if (ends("/a/click"))     return GCInputButtonA;
+        if (ends("/b/click"))     return GCInputButtonB;
+        if (ends("/x/click"))     return GCInputButtonX;
+        if (ends("/y/click"))     return GCInputButtonY;
+        if (ends("/menu/click"))  return GCInputButtonMenu;
+        return nil;
+    }
+
+    if (ends("/trigger/value") || ends("/trigger"))  return @"Trigger";
+    if (ends("/squeeze/value") || ends("/squeeze"))  return @"Grip";
+    if (ends("/thumbstick/click"))                   return @"Thumbstick Button";
+    if (ends("/thumbstick"))                         return @"Thumbstick";
+    if (ends("/menu/click"))                         return @"Button Menu";
+    if (ends("/x/click"))  return left  ? @"Button A" : nil;
+    if (ends("/y/click"))  return left  ? @"Button B" : nil;
+    if (ends("/a/click"))  return !left ? @"Button A" : nil;
+    if (ends("/b/click"))  return !left ? @"Button B" : nil;
     return nil;
 }
 
@@ -161,7 +197,7 @@ GCControllerButtonInput *buttonFor(const Action *action, int hand)
 
     const std::string *binding = bindingForHand(action, hand);
     if (!binding) return nil;
-    NSString *name = gcNameForInputPath(*binding);
+    NSString *name = gcNameForInputPath(*binding, hand);
     if (!name) return nil;
 
     // physicalInputProfile statt einer konkreten Profilklasse: es legt jedes
@@ -185,16 +221,61 @@ extern "C" void TBXR_visionOS_SetAccessoryTracking(void *provider)
 
 extern "C" void TBXR_visionOS_RefreshControllers(void)
 {
-    gControllers[0] = gControllers[1] = nil;
-    for (GCController *controller in [GCController controllers]) {
-        if (![controller.productCategory isEqualToString:GCProductCategorySpatialController])
-            continue;
-        // Händigkeit über GameControllers Angabe; ARKit liefert sie ebenfalls
-        // über ar_accessory_anchor_get_held_chirality.
-        if (@available(visionOS 26.0, *)) {
-            NSInteger index = (controller.playerIndex == GCControllerPlayerIndex1) ? 0 : 1;
-            gControllers[index] = controller;
+    // Bei jeder Änderung ausgeben, was tatsächlich da ist.
+    //
+    // TBXR_visionOS_DumpInputs läuft nur einmal beim Start, und da hat
+    // GameController noch nichts gemeldet — die Erkennung ist asynchron. Ohne
+    // diese Ausgabe sieht man nie, ob ein Controller ankommt, welche Kategorie
+    // er meldet und wie seine Elemente heißen.
+    //
+    // Ausgegeben wird JEDER Controller, nicht nur SpatialController: falls die
+    // Sense-Controller eine andere Kategorie melden, würde der Filter unten sie
+    // stillschweigend verwerfen, und man stünde ohne Hinweis da.
+    {
+        static NSUInteger lastCount = NSUIntegerMax;
+        NSArray<GCController *> *all = [GCController controllers];
+        if (all.count != lastCount) {
+            lastCount = all.count;
+            fprintf(stderr, "[TBXR] %lu Controller verbunden\n",
+                    (unsigned long)all.count);
+            for (GCController *c in all) {
+                fprintf(stderr, "[TBXR]   %s · %s · Kategorie \"%s\" · playerIndex %ld\n",
+                        c.vendorName.UTF8String ?: "?",
+                        c.productCategory.UTF8String ?: "?",
+                        c.productCategory.UTF8String ?: "?",
+                        (long)c.playerIndex);
+                for (NSString *n in c.physicalInputProfile.buttons)
+                    fprintf(stderr, "[TBXR]     Taste: %s\n", n.UTF8String);
+                for (NSString *n in c.physicalInputProfile.dpads)
+                    fprintf(stderr, "[TBXR]     Stick: %s\n", n.UTF8String);
+                for (NSString *n in c.physicalInputProfile.axes)
+                    fprintf(stderr, "[TBXR]     Achse: %s\n", n.UTF8String);
+            }
         }
+    }
+
+    // Beide Gerätezustände erkennen (siehe gcNameForInputPath).
+    gControllers[0] = gControllers[1] = nil;
+    gCombinedDevice = false;
+
+    for (GCController *controller in [GCController controllers]) {
+        GCPhysicalInputProfile *profile = controller.physicalInputProfile;
+
+        // Kombiniertes Gerät: erkennbar an den präfixierten Elementnamen.
+        // Beide Hände zeigen dann auf dasselbe Objekt.
+        if (profile.buttons[GCInputLeftTrigger] && profile.buttons[GCInputRightTrigger]) {
+            gControllers[0] = gControllers[1] = controller;
+            gCombinedDevice = true;
+            break;
+        }
+
+        // Getrennte Spatial Controller: Händigkeit steckt im Gerätenamen.
+        // playerIndex taugt nicht, beide melden -1.
+        NSString *name = controller.vendorName ?: @"";
+        if ([name containsString:@"(L)"])      gControllers[0] = controller;
+        else if ([name containsString:@"(R)"]) gControllers[1] = controller;
+        else if (!gControllers[0])             gControllers[0] = controller;
+        else if (!gControllers[1])             gControllers[1] = controller;
     }
 }
 
@@ -300,9 +381,20 @@ extern "C" XrResult xrAttachSessionActionSets(XrSession, const XrSessionActionSe
 extern "C" XrResult xrCreateActionSpace(XrSession, const XrActionSpaceCreateInfo *info,
                                         XrSpace *space)
 {
-    // Der Raum einer Pose-Aktion ist durch die Aktion und die Hand bestimmt.
-    // Das Handle darf deshalb die Aktion selbst sein.
-    *space = reinterpret_cast<XrSpace>(info ? info->action : nullptr);
+    // Der Raum einer Pose-Aktion ist durch die Aktion UND die Hand bestimmt.
+    //
+    // Bisher war das Handle nur der Aktionszeiger, info->subactionPath wurde
+    // verworfen. Beide Hände bekamen damit denselben Raum, und xrLocateSpace
+    // konnte die Hand nicht mehr ermitteln — es nahm mangels Pfad immer 0.
+    // Gemessen: die Posenabfrage lief einwandfrei, meldete aber ausschließlich
+    // "Hand 0", also für beide Hände den linken Controller.
+    //
+    // Die Hand wandert deshalb ins unterste Bit des Handles. Aktionszeiger
+    // sind mindestens auf 2 Byte ausgerichtet, das Bit ist frei.
+    Action *action = toAction(info ? info->action : nullptr);
+    const int hand = handForSubaction(action, info ? info->subactionPath : XR_NULL_PATH);
+    *space = reinterpret_cast<XrSpace>(
+        reinterpret_cast<uintptr_t>(action) | (uintptr_t)(hand & 1));
     return XR_SUCCESS;
 }
 
@@ -367,7 +459,7 @@ extern "C" XrResult xrGetActionStateVector2f(XrSession, const XrActionStateGetIn
     if (!controller) return XR_SUCCESS;
 
     const std::string *binding = bindingForHand(action, hand);
-    NSString *name = binding ? gcNameForInputPath(*binding) : nil;
+    NSString *name = binding ? gcNameForInputPath(*binding, hand) : nil;
     GCControllerDirectionPad *stick =
         name ? controller.physicalInputProfile.dpads[name] : nil;
     if (!stick) return XR_SUCCESS;
@@ -400,10 +492,11 @@ extern "C" XrResult xrLocateSpace(XrSpace space, XrSpace, XrTime time,
     if (!location) return XR_SUCCESS;
     location->locationFlags = 0;
 
-    Action *action = reinterpret_cast<Action *>(space);
+    // Hand aus dem untersten Bit des Handles, siehe xrCreateActionSpace.
+    const uintptr_t raw = reinterpret_cast<uintptr_t>(space);
+    const int hand = (int)(raw & 1);
+    Action *action = reinterpret_cast<Action *>(raw & ~(uintptr_t)1);
     if (!action || !gTracking) return XR_SUCCESS;
-
-    const int hand = handForSubaction(action, XR_NULL_PATH);
     const std::string *binding = bindingForHand(action, hand);
 
     // Grip oder Aim: OpenXR unterscheidet Griffpose (Handhaltung) und
@@ -421,15 +514,48 @@ extern "C" XrResult xrLocateSpace(XrSpace space, XrSpace, XrTime time,
         ar_accessory_tracking_provider_get_latest_anchors(gTracking);
     if (!anchors) return XR_SUCCESS;
 
+    // Händigkeit zuerst am GERÄT, nicht an der Haltung.
+    //
+    // ar_accessory_anchor_get_held_chirality sagt, in welcher Hand das Gerät
+    // gerade gehalten wird — das kann unbestimmt sein. Gemessen: einer der
+    // beiden Anker meldete damit weder links noch rechts, wodurch beide auf
+    // Hand 1 passten und Hand 0 leer ausging ("passend 0").
+    //
+    // ar_accessory_get_inherent_chirality ist dagegen die feste Bauform des
+    // Controllers und genau das, was ARKit beim Laden schon geliefert hat
+    // (links 1, rechts 2). Die Haltung dient nur noch als Rückfall für
+    // Zubehör ohne eigene Händigkeit.
     __block ar_accessory_anchor_t source = nil;
     ar_accessory_anchors_enumerate_anchors(anchors,
         ^bool(ar_accessory_anchor_t candidate) {
-            const bool isLeft =
-                ar_accessory_anchor_get_held_chirality(candidate) ==
-                    ar_accessory_chirality_left;
+            ar_accessory_t accessory = ar_accessory_anchor_get_accessory(candidate);
+            ar_accessory_chirality_t chirality =
+                accessory ? ar_accessory_get_inherent_chirality(accessory)
+                          : ar_accessory_chirality_unspecified;
+            if (chirality == ar_accessory_chirality_unspecified) {
+                chirality = ar_accessory_anchor_get_held_chirality(candidate);
+            }
+            if (chirality == ar_accessory_chirality_unspecified) return true;
+
+            const bool isLeft = (chirality == ar_accessory_chirality_left);
             if ((hand == 0) == isLeft) { source = candidate; return false; }
             return true;
         });
+    // Wo bricht die Kette ab? Vier Ausstiegspunkte, alle still.
+    {
+        static int n = 0;
+        if ((++n % 90) == 0) {
+            __block size_t count = 0;
+            ar_accessory_anchors_enumerate_anchors(anchors,
+                ^bool(ar_accessory_anchor_t) { ++count; return true; });
+            fprintf(stderr,
+                    "[Pose] Hand %d · %zu Anker · passend %d · getrackt %d · %s\n",
+                    hand, count, source ? 1 : 0,
+                    source ? (int)ar_accessory_anchor_is_tracked(source) : -1,
+                    locationName ? locationName : "?");
+        }
+    }
+
     if (!source || !ar_accessory_anchor_is_tracked(source)) return XR_SUCCESS;
 
     ar_accessory_anchor_t anchor = ar_accessory_anchor_create();

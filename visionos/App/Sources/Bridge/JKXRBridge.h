@@ -38,6 +38,18 @@ void TBXR_visionOS_DumpInputs(void);
 
 void TBXR_visionOS_StartWorldTracking(void);
 
+/// Der Zubehör-Provider für die Controller-Posen.
+void *TBXR_visionOS_GetAccessoryTracking(void);
+
+/// Lädt die räumlichen Zubehörgeräte und startet die Verfolgung.
+void TBXR_visionOS_StartAccessoryTracking(void);
+
+/// Das GCDevice einer Hand (0 = links, 1 = rechts), Händigkeit von ARKit.
+void *TBXR_visionOS_GetSpatialDevice(int hand);
+
+/// Übergibt ihn an das Action-System (OpenXrActions.mm).
+void TBXR_visionOS_SetAccessoryTracking(void *provider);
+
 // --- Engine (code/visionos/visionos_main.mm) ------------------------------
 
 /// Die Hauptschleife der Engine. Blockiert bis zum Ende.

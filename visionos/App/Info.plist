@@ -16,6 +16,38 @@
 	    GENERATE_INFOPLIST_FILE gesetzt bleibt. Alles Übrige steht daher
 	    weiterhin in project.yml.
 	-->
+	<!--
+	    Räumliche Controller.
+	
+	    Ohne SpatialGamepad reicht das System das Sense-Paar als EIN
+	    zusammengefasstes MFi-Gamepad durch und weist es nie als räumliches
+	    Zubehör aus. Auf dem Gerät gemessen: GCSpatialAccessory antwortete mit
+	    null Geräten, während das Paar in der gewöhnlichen Controllerliste stand
+	    — "PlayStation VR2 Sense Controllers (L/R)", Kategorie MFi.
+	
+	    Das Gamepad-Profil bleibt daneben stehen: die Fortbewegung läuft
+	    weiterhin über diesen Griff, und eine Sitzung mit einem gewöhnlichen
+	    Controller soll unberührt bleiben.
+	-->
+	<key>GCSupportedGameControllers</key>
+	<array>
+		<dict><key>ProfileName</key><string>ExtendedGamepad</string></dict>
+		<dict><key>ProfileName</key><string>SpatialGamepad</string></dict>
+		<dict><key>ProfileName</key><string>MicroGamepad</string></dict>
+		<dict><key>ProfileName</key><string>DirectionalGamepad</string></dict>
+	</array>
+	<key>GCSupportsControllerUserInteraction</key>
+	<true/>
+
+	<!--
+	    Ohne diesen Schlüssel wird dem Zubehör-Provider die Freigabe verweigert
+	    und ar_session_run scheitert — ohne dass irgendwo ein fehlender
+	    Info.plist-Eintrag erwähnt würde. Es erscheint auch keine Rückfrage beim
+	    Nutzer, was die Suche zusätzlich in die Irre führt.
+	-->
+	<key>NSAccessoryTrackingUsageDescription</key>
+	<string>Jedi Knight XR verfolgt die Position deiner Controller, damit deine Hände im Spiel dort sind, wo du sie tatsächlich hältst.</string>
+
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>

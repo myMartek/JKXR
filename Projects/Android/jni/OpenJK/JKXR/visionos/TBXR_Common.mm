@@ -1012,6 +1012,22 @@ extern "C" void TBXR_visionOS_SetLayerRenderer(cp_layer_renderer_t renderer)
         ALOGE("Kein aktueller EGL-Display — ANGLE muss vor dieser Funktion "
               "initialisiert und auf diesem Thread aktiv sein");
     }
+
+    // Action-System aufsetzen.
+    //
+    // Auf Android und Windows steht dieser Aufruf in der Plattform-
+    // Initialisierung (JKXR_SurfaceView.cpp, direkt nach TBXR_InitRenderer).
+    // In unserer Fassung fehlte er vollständig — mit der Folge, dass gar keine
+    // Eingabe ankam:
+    //
+    //   TBXR_InitActions fehlt -> kein actionSet
+    //     -> TBXR_SyncActions überspringt xrSyncActions (if (actionSet))
+    //       -> TBXR_visionOS_RefreshControllers läuft nie
+    //         -> gControllers bleibt leer, keine Taste wird je gelesen
+    //
+    // Hier ist der richtige Ort: der LayerRenderer steht, ANGLE läuft, und die
+    // Engine ist noch nicht gestartet.
+    TBXR_InitActions();
 }
 
 // ---------------------------------------------------------------------------
@@ -1188,14 +1204,18 @@ void TBXR_FrameSetup()
             // Pose zeigt bei schnellen Bewegungen sichtbar ein verzögertes
             // Nachsteuern; der Geräteanker selbst bleibt unverändert beim
             // Compositor, damit dessen Display-Time-Korrektur weiter greift.
-            if (@available(visionOS 27.0, *)) {
-                gHeadTransform =
-                    ar_device_anchor_get_origin_from_anchor_transform_with_correction(
-                        anchor, ar_transform_correction_rendered);
-            } else {
-                gHeadTransform =
-                    ar_device_anchor_get_origin_from_anchor_transform(anchor);
-            }
+            // Die korrigierte Variante gibt es für den Geräteanker NICHT.
+            //
+            // ar_..._get_origin_from_anchor_transform_with_correction existiert
+            // im XROS-SDK nur für Bild-, Objekt- und Hand-Anker, nicht für
+            // ar_device_anchor. Der Aufruf ließ sich deshalb nicht linken:
+            //
+            //   Undefined symbols: _ar_device_anchor_get_origin_from_anchor_
+            //   transform_with_correction, referenced from TBXR_FrameSetup()
+            //
+            // @available prüft zur Laufzeit und hilft beim Linken nicht — dafür
+            // bräuchte es schwaches Linken, und selbst dann fehlte das Symbol.
+            gHeadTransform = ar_device_anchor_get_origin_from_anchor_transform(anchor);
             gHeadValid = true;
         } else if (gFrameCounter < 3) {
             // Ein frisch erzeugter, aber nicht befüllter Anchor darf nicht an
@@ -1217,6 +1237,33 @@ void TBXR_FrameSetup()
     VR_FrameSetup();
     TBXR_updateProjections();
     VR_HandleControllerInput();
+
+    // Kommen die Posen bis in die Winkel, aus denen der Menü-Cursor entsteht?
+    // interactWithTouchScreen rechnet aus vr.weaponangles (dominante Hand)
+    // beziehungsweise vr.offhandangles. Bleiben die null, ist die Kette
+    // zwischen xrLocateSpace und JKXRs Eingabelogik unterbrochen.
+    {
+        static int n = 0;
+        if ((++n % 90) == 0) {
+            fprintf(stderr,
+                    "[Winkel] Waffe %.1f %.1f %.1f · Nebenhand %.1f %.1f %.1f · "
+                    "aktiv %d/%d · Menuhand rechts %d\n",
+                    // weaponangles ist vec3_t[ANGLES_COUNT], also ZWEIDIMENSIONAL.
+                    // vr.weaponangles[PITCH] wäre die Zeile ANGLES_DEFAULT als
+                    // float* — mit %f ausgegeben undefiniert. Genau dieser
+                    // Fehler hat eine Messung geliefert, die immer "0.0 0.0 0.0"
+                    // zeigte, obwohl über den Inhalt nichts bekannt war.
+                    vr.weaponangles[ANGLES_DEFAULT][PITCH],
+                    vr.weaponangles[ANGLES_DEFAULT][YAW],
+                    vr.weaponangles[ANGLES_DEFAULT][ROLL],
+                    vr.offhandangles[ANGLES_DEFAULT][PITCH],
+                    vr.offhandangles[ANGLES_DEFAULT][YAW],
+                    vr.offhandangles[ANGLES_DEFAULT][ROLL],
+                    (int)gAppState.TrackedController[0].Active,
+                    (int)gAppState.TrackedController[1].Active,
+                    (int)vr.menu_right_handed);
+        }
+    }
     TBXR_ProcessHaptics();
     gAppState.FrameSetup = true;
 }

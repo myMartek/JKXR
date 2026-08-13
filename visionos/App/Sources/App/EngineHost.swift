@@ -86,6 +86,14 @@ final class EngineHost {
         print("[JKXR] Renderauflösung je Auge: \(size.width)x\(size.height)")
         TBXR_visionOS_SetScreenRes(Int32(size.width), Int32(size.height))
 
+        // Zubehör-Provider ans Action-System: er liefert die Posen der
+        // Controller und ist zugleich die Voraussetzung dafür, dass visionOS
+        // sie überhaupt als Spatial Controller ausweist statt als kombiniertes
+        // MFi-Gamepad.
+        // Die Zubehörverfolgung startet sich selbst, sobald ARKit die Freigabe
+        // erteilt hat (WorldTracking.m). Vorher aufzuzählen liefert eine leere
+        // Liste, gemessen.
+
         print("[JKXR] frage Controller ab")
         TBXR_visionOS_DumpInputs()
 

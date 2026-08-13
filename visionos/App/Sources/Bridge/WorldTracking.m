@@ -12,6 +12,7 @@
 
 #import <ARKit/ARKit.h>
 #import <Foundation/Foundation.h>
+#import <GameController/GameController.h>
 
 /*
  * Bauzeit-Kennung.
@@ -35,8 +36,17 @@
 }
 @end
 
-static ar_session_t                 sSession  = NULL;
-static ar_world_tracking_provider_t sProvider = NULL;
+static ar_session_t                     sSession  = NULL;
+static ar_world_tracking_provider_t     sProvider = NULL;
+static ar_accessory_tracking_provider_t sAccessory = NULL;
+static ar_data_providers_t              sProviders = NULL;
+
+void TBXR_visionOS_StartAccessoryTracking(void);
+
+void *TBXR_visionOS_GetAccessoryTracking(void)
+{
+    return (__bridge void *)sAccessory;
+}
 
 /*
  * Von TBXR_FrameSetup pro Bild aufgerufen.
@@ -71,10 +81,22 @@ void TBXR_visionOS_StartWorldTracking(void)
     ar_data_providers_t providers = ar_data_providers_create();
     ar_data_providers_add_data_provider(providers, sProvider);
 
-    // Ohne NSWorldSensingUsageDescription in der Info.plist verweigert visionOS
-    // die Freigabe wortlos — die Anfrage kommt gar nicht erst beim Nutzer an.
+    // Die Zubehörverfolgung kommt nach, sobald die Geräte geladen sind. Die
+    // Sitzung läuft zunächst nur mit World Tracking, damit das Bild sofort steht.
+    sProviders = providers;
+
+    // Freigabe für BEIDE Bereiche anfragen.
+    //
+    // Ohne diesen Aufruf erscheint keine Rückfrage beim Nutzer, die
+    // Zubehörverfolgung bleibt verweigert und GCSpatialAccessory liefert nichts
+    // — was von außen wie ein Hardware- oder Kopplungsproblem aussieht.
+    //
+    // Voraussetzung dafür sind die beiden Info.plist-Schlüssel
+    // NSWorldSensingUsageDescription und NSAccessoryTrackingUsageDescription;
+    // fehlt einer, wird die Anfrage wortlos abgelehnt.
     ar_session_request_authorization(
-        sSession, ar_authorization_type_world_sensing,
+        sSession,
+        ar_authorization_type_world_sensing | ar_authorization_type_accessory_tracking,
         ^(ar_authorization_results_t results, ar_error_t error) {
             if (error) {
                 NSLog(@"[JKXR] ARKit-Freigabe fehlgeschlagen");
@@ -87,8 +109,199 @@ void TBXR_visionOS_StartWorldTracking(void)
                           (int)ar_authorization_result_get_status(result));
                     return true;
                 });
+
+            // Erst JETZT aufzählen: vor der Freigabe antwortet
+            // GCSpatialAccessory zwar, kennt aber keine Geräte. Der Rückruf
+            // kommt auf einer beliebigen Warteschlange.
+            dispatch_async(dispatch_get_main_queue(), ^{
+                TBXR_visionOS_StartAccessoryTracking();
+            });
         });
 
     ar_session_run(sSession, providers);
     NSLog(@"[JKXR] World Tracking gestartet");
+}
+
+
+// ---------------------------------------------------------------------------
+// Zubehörverfolgung: räumliche Posen der Sense-Controller
+//
+// Die Sense-Controller sind KEINE gewöhnlichen GCController. Ein einzelner
+// kann kein vollständiges Gamepad-Profil anbieten, und GameController zählt nur
+// Geräte auf, die das können — deshalb erscheint über [GCController controllers]
+// immer nur das PAAR als ein kombiniertes MFi-Gamepad.
+//
+// Die einzelnen Geräte liegen stattdessen in GCSpatialAccessory.spatialAccessories.
+// Diese Klasse ist neuer als das SDK, gegen das wir bauen, also wird sie über
+// NSClassFromString und perform: geholt statt direkt referenziert.
+//
+// Ein früherer Versuch scheiterte daran, dass die Konfiguration erzeugt, aber
+// ar_accessory_tracking_configuration_set_accessories nie aufgerufen wurde: die
+// App beendete sich beim Öffnen des Immersive Space kommentarlos mit Exit 0.
+// ---------------------------------------------------------------------------
+
+static id<GCDevice> sSpatialDevices[2] = { nil, nil };
+
+void *TBXR_visionOS_GetSpatialDevice(int hand)
+{
+    if (hand < 0 || hand > 1) return NULL;
+    return (__bridge void *)sSpatialDevices[hand];
+}
+
+static NSArray *spatialAccessoryDevices(void)
+{
+    // Das Klassenobjekt beantwortet seine eigene Klasseneigenschaft. perform:
+    // statt valueForKey: — Key-Value-Coding gegen eine Metaklasse ist nirgends
+    // zugesichert.
+    Class cls = NSClassFromString(@"GCSpatialAccessory");
+    if (!cls) {
+        NSLog(@"[JKXR] GCSpatialAccessory gibt es auf diesem System nicht");
+        return @[];
+    }
+    SEL sel = NSSelectorFromString(@"spatialAccessories");
+    if (![cls respondsToSelector:sel]) {
+        NSLog(@"[JKXR] GCSpatialAccessory antwortet nicht auf spatialAccessories");
+        return @[];
+    }
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+    NSArray *devices = [cls performSelector:sel];
+    #pragma clang diagnostic pop
+    if (devices.count > 0) return devices;
+
+    // Rückfall über die gewöhnliche Controllerliste.
+    //
+    // GEMESSEN: auf diesem System liefert GCSpatialAccessory.spatialAccessories
+    // null Geräte, während [GCController controllers] die beiden Sense-Controller
+    // einzeln zeigt — mit productCategory "Spatial Controller". Sie sind also da,
+    // nur nicht über die neue Klasse erreichbar.
+    //
+    // GCController erfüllt GCDevice, und genau das verlangt
+    // ar_accessory_load_from_device. Der Weg ist damit derselbe, nur die Quelle
+    // eine andere.
+    NSMutableArray *fallback = [NSMutableArray array];
+    for (GCController *c in [GCController controllers]) {
+        if ([c.productCategory isEqualToString:GCProductCategorySpatialController]) {
+            [fallback addObject:c];
+        }
+    }
+    if (fallback.count > 0) {
+        NSLog(@"[JKXR] %lu über GCController gefunden (Kategorie Spatial Controller)",
+              (unsigned long)fallback.count);
+    }
+    return fallback;
+}
+
+/// Stößt einen Neuaufbau an, aber erst wenn kurz Ruhe war.
+///
+/// Die Verbindungsmeldungen feuern mehrfach hintereinander, und die Controller
+/// tauchen einzeln auf. Sofort loszulaufen lud entweder dasselbe Gerät zweimal
+/// (gemessen: "(Right)" doppelt) oder verschluckte den zweiten, wenn eine
+/// Sperre den zweiten Anlauf blockierte, während der erste noch lief.
+///
+/// Eine halbe Sekunde Ruhe abzuwarten löst beides: es wird genau einmal
+/// aufgebaut, mit allem, was dann da ist.
+static void rebuildAccessories(void);
+
+static void scheduleRebuild(void)
+{
+    static NSUInteger generation = 0;
+    const NSUInteger mine = ++generation;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (mine != generation) return;   // inzwischen kam eine neue Meldung
+        rebuildAccessories();
+    });
+}
+
+static void rebuildAccessories(void)
+{
+    // Einer nach dem anderen, und nur bei echter Änderung.
+    //
+    // Die Verbindungsmeldungen feuern mehrfach kurz hintereinander — gemessen
+    // dreimal in 15 ms. Jeder Durchlauf lud die Geräte erneut und rief
+    // ar_session_run auf, während die Rückrufe des vorigen noch liefen: der
+    // Zähler `pending` wurde von mehreren Threads ohne Absicherung
+    // heruntergezählt, dasselbe Gerät zweimal geladen ("(Right)" erschien
+    // doppelt), und die Sitzung mehrfach parallel neu gestartet.
+    static NSUInteger lastCount = NSUIntegerMax;
+
+    NSArray *devices = spatialAccessoryDevices();
+    if (devices.count == lastCount) return;
+    lastCount = devices.count;
+    NSLog(@"[JKXR] %lu räumliche Zubehörgeräte", (unsigned long)devices.count);
+    if (devices.count == 0) return;
+
+    __block NSUInteger pending = devices.count;
+    ar_accessories_t accessories = ar_accessories_create();
+
+    for (id<GCDevice> device in devices) {
+        ar_accessory_load_from_device(device, ^(id<GCDevice> loadedDevice,
+                                                bool successful,
+                                                ar_error_t error,
+                                                ar_accessory_t accessory) {
+            if (successful && accessory) {
+                ar_accessories_add_accessory(accessories, accessory);
+
+                // Händigkeit von ARKit, nicht aus dem Gerätenamen geraten.
+                const ar_accessory_chirality_t chirality =
+                    ar_accessory_get_inherent_chirality(accessory);
+                if (chirality == ar_accessory_chirality_left) {
+                    sSpatialDevices[0] = loadedDevice;
+                } else if (chirality == ar_accessory_chirality_right) {
+                    sSpatialDevices[1] = loadedDevice;
+                }
+                NSLog(@"[JKXR] Zubehör \"%s\" geladen, Händigkeit %ld",
+                      ar_accessory_get_name(accessory) ?: "?", (long)chirality);
+            } else {
+                NSLog(@"[JKXR] Zubehör ließ sich nicht laden");
+            }
+
+            if (--pending > 0) return;
+
+            // Alle geladen: Provider bauen und die Sitzung damit neu starten.
+            // Neu starten ist der grobe, aber überall funktionierende Weg, die
+            // verfolgte Menge zu ändern; World Tracking geht dabei wieder mit
+            // hinein, damit es nie ausfällt.
+            ar_accessory_tracking_configuration_t config =
+                ar_accessory_tracking_configuration_create();
+            ar_accessory_tracking_configuration_set_accessories(config, accessories);
+            sAccessory = ar_accessory_tracking_provider_create(config);
+
+            if (sProviders && sAccessory) {
+                ar_data_providers_add_data_provider(sProviders, sAccessory);
+                ar_session_run(sSession, sProviders);
+
+                // Den Provider ans Action-System durchreichen.
+                //
+                // Ohne diesen Aufruf bleibt gTracking in OpenXrActions.mm nil,
+                // xrLocateSpace liefert keine Pose, und die Controller werden
+                // nicht verfolgt — obwohl ARKit sie einwandfrei kennt. Der
+                // Aufruf stand einmal in EngineHost.swift und ging beim Umbau
+                // verloren, als der Provider hierher wanderte.
+                extern void TBXR_visionOS_SetAccessoryTracking(void *provider);
+                TBXR_visionOS_SetAccessoryTracking((__bridge void *)sAccessory);
+
+                NSLog(@"[JKXR] Zubehörverfolgung läuft");
+            }
+        });
+    }
+}
+
+void TBXR_visionOS_StartAccessoryTracking(void)
+{
+    if (!sSession) return;
+    scheduleRebuild();
+
+    // Controller können jederzeit dazukommen oder verschwinden. Die
+    // GCSpatialAccessory-Benachrichtigungen gibt es erst in neueren SDKs,
+    // deshalb über den Namen statt über die Konstante.
+    for (NSString *name in @[@"GCControllerDidConnectNotification",
+                             @"GCControllerDidDisconnectNotification",
+                             @"GCSpatialAccessoryDidConnectNotification",
+                             @"GCSpatialAccessoryDidDisconnectNotification"]) {
+        [[NSNotificationCenter defaultCenter]
+            addObserverForName:name object:nil queue:[NSOperationQueue mainQueue]
+            usingBlock:^(NSNotification *note) { scheduleRebuild(); }];
+    }
 }

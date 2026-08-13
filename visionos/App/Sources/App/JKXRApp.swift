@@ -15,19 +15,20 @@ struct JKXRLayerConfiguration: CompositorLayerConfiguration {
         // Werte, die dann als linear gelesen werden — das Bild kippt ins Weiße.
         configuration.colorFormat = .rgba16Float
 
-        // NUR ZUR FEHLERSUCHE ABGESCHALTET — muss wieder an.
+        // Foveation an.
         //
-        // Verdacht: unsere Rate-Map-Ergänzung in ANGLEs Metal-Backend
-        // (patch-angle-foveation.py) setzt den Scissor auf Screen-Koordinaten
-        // (5087x4081), während die Textur 2048x1984 groß ist. Liegt er dann
-        // außerhalb, löscht und zeichnet ANGLE ins Leere — schwarz, ohne
-        // Fehlermeldung. Ohne Foveation entfällt die Rate-Map ganz.
+        // Ohne sie deckelt CompositorServices die Drawable-Auflösung: die
+        // Textur bleibt bei 2048x1984 statt der 5087x4081 Screen-Koordinaten,
+        // auf die mit Rate-Map gerendert wird. Die Vision Pro käme dann nicht
+        // über das hinaus, was günstigere Headsets liefern.
         //
-        // Erscheint das Testbild damit, liegt der Fehler im Foveation-Patch,
-        // nicht im Renderpfad.
-        let debugDisableFoveation = true
-        configuration.isFoveationEnabled =
-            capabilities.supportsFoveation && !debugDisableFoveation
+        // Zwei Pfade nutzen sie unterschiedlich:
+        //   - das native Metal-Quad für 2D setzt pass.rasterizationRateMap
+        //     direkt aus der Drawable
+        //   - die 3D-Szene rendert über ANGLE und braucht dafür unseren Patch
+        //     im Metal-Backend (patch-angle-foveation.py), der die Rate-Map
+        //     über ANGLESetDrawFramebufferRateMapMTL entgegennimmt
+        configuration.isFoveationEnabled = capabilities.supportsFoveation
         if !configuration.isFoveationEnabled {
             print("[JKXR] WARNUNG: Foveation nicht verfügbar. Ohne sie deckelt "
                 + "CompositorServices die Drawable-Auflösung, und die Vision Pro "
