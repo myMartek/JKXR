@@ -372,6 +372,7 @@ void TBXR_updateProjections();
 void TBXR_UpdateControllers( );
 void TBXR_prepareEyeBuffer(int eye );
 void TBXR_finishEyeBuffer(int eye );
+void TBXR_visionOS_SetScreenCinematic(bool cinematic);
 void TBXR_copyEyeBuffer(int sourceEye, int destinationEye );
 void TBXR_submitFrame();
 

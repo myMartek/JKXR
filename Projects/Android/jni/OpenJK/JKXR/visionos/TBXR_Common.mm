@@ -73,6 +73,8 @@ namespace angle {
 void (*GenTextures)(GLsizei, GLuint *) = nullptr;
 void (*ActiveTexture)(GLenum) = nullptr;
 void (*BindTexture)(GLenum, GLuint) = nullptr;
+void (*TexImage2D)(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void *) = nullptr;
+void (*TexParameteri)(GLenum, GLenum, GLint) = nullptr;
 void (*DeleteTextures)(GLsizei, const GLuint *) = nullptr;
 void (*GenFramebuffers)(GLsizei, GLuint *) = nullptr;
 void (*BindFramebuffer)(GLenum, GLuint) = nullptr;
@@ -106,6 +108,11 @@ void (*DrawArrays)(GLenum, GLint, GLsizei) = nullptr;
 void (*ColorMask)(GLboolean, GLboolean, GLboolean, GLboolean) = nullptr;
 void (*GetIntegerv)(GLenum, GLint *) = nullptr;
 void (*GetBooleanv)(GLenum, GLboolean *) = nullptr;
+void (*GetFloatv)(GLenum, GLfloat *) = nullptr;
+GLint (*GetUniformLocation)(GLuint, const GLchar *) = nullptr;
+void (*UniformMatrix4fv)(GLint, GLsizei, GLboolean, const GLfloat *) = nullptr;
+void (*Uniform2f)(GLint, GLfloat, GLfloat) = nullptr;
+void (*Uniform1i)(GLint, GLint) = nullptr;
 
 bool resolve()
 {
@@ -133,6 +140,8 @@ bool resolve()
     RESOLVE(GenTextures)
     RESOLVE(ActiveTexture)
     RESOLVE(BindTexture)
+    RESOLVE(TexImage2D)
+    RESOLVE(TexParameteri)
     RESOLVE(DeleteTextures)
     RESOLVE(GenFramebuffers)
     RESOLVE(BindFramebuffer)
@@ -166,6 +175,11 @@ bool resolve()
     RESOLVE(ColorMask)
     RESOLVE(GetIntegerv)
     RESOLVE(GetBooleanv)
+    RESOLVE(GetFloatv)
+    RESOLVE(GetUniformLocation)
+    RESOLVE(UniformMatrix4fv)
+    RESOLVE(Uniform2f)
+    RESOLVE(Uniform1i)
     #undef RESOLVE
 
     ok = true;
@@ -202,6 +216,42 @@ struct EyeImport {
 EyeImport gEyes[ovrMaxNumEyes];
 GLuint    gFramebuffer = 0;
 GLuint    gBackgroundDepthProgram = 0;
+GLuint    gScreenWallDepthProgram = 0;
+GLuint    gScreenPanelProgram = 0;
+
+// Menü und Video werden zunächst wie auf einem normalen Monitor in diese
+// Textur gezeichnet. Erst danach setzt ein kleiner direkter ANGLE-Pass die
+// Textur als echte Wand in die Welt. Dadurch gelangen weder ARKits Pose noch
+// die visionOS-Projektionsmatrix durch gl4es' Fixed-Function-Matrixemulation.
+GLuint gFlatScreenFramebuffer = 0;
+GLuint gFlatScreenTexture = 0;
+EGLImageKHR gFlatScreenImage = EGL_NO_IMAGE_KHR;
+id<MTLTexture> gFlatScreenMetalTexture = nil;
+int gFlatScreenWidth = 0;
+int gFlatScreenHeight = 0;
+bool gRenderingFlatScreen[ovrMaxNumEyes] = { false, false };
+bool gFlatScreenIsCinematic = false;
+
+id<MTLRenderPipelineState> gMetalPanelPipeline = nil;
+id<MTLDepthStencilState> gMetalPanelDepthState = nil;
+MTLPixelFormat gMetalPanelColorFormat = MTLPixelFormatInvalid;
+MTLPixelFormat gMetalPanelDepthFormat = MTLPixelFormatInvalid;
+
+// Unveränderte Pose, die auch cp_drawable_set_device_anchor beschreibt. Der
+// Compositor und der finale Panel-Pass müssen exakt dieselbe Kamera meinen.
+simd_float4x4 gRawHeadTransform = matrix_identity_float4x4;
+bool gRawHeadValid = false;
+simd_float4x4 gPanelTransform = matrix_identity_float4x4;
+bool gPanelSnapped = false;
+
+EGLDisplay gDisplay = EGL_NO_DISPLAY;
+PFNEGLCREATEIMAGEKHRPROC  eglCreateImage_  = nullptr;
+PFNEGLDESTROYIMAGEKHRPROC eglDestroyImage_ = nullptr;
+PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glImageTargetTexture_ = nullptr;
+
+bool importTexture(id<MTLTexture> texture, int slice,
+                   GLuint *outTexture, EGLImageKHR *outImage,
+                   const char *what);
 
 /// Entspricht `superSampling` in der Android-Fassung.
 float gSuperSampling = 1.0f;
@@ -216,6 +266,25 @@ bool gHeadValid = false;
 /// Die eingerastete Wand. Weltfest, nicht kopfgekoppelt.
 simd_float4x4 gWallTransform = matrix_identity_float4x4;
 bool gWallSnapped = false;
+
+/// Auf dem ANGLE/GLES-Importpfad stimmen die Rotationsrichtungen nicht für
+/// alle Achsen überein: Yaw ist mit ARKits normaler Richtung weltstabil,
+/// Pitch und Roll mit der invertierten. Das ist exakt ein Basiswechsel durch
+/// Spiegeln der Y-Achse: S * R * S. Anders als eine Euler-Zerlegung bleibt
+/// diese Abbildung auch bei kombinierten Kopfbewegungen orthogonal und mischt
+/// keine scheinbare Neigung in eine Yaw-Drehung.
+simd_float4x4 screenWallOriginFromDevice()
+{
+    simd_float4x4 headRotation = gHeadTransform;
+    headRotation.columns[3] = (simd_float4){0.0f, 0.0f, 0.0f, 1.0f};
+
+    simd_float4x4 flipY = matrix_identity_float4x4;
+    flipY.columns[1].y = -1.0f;
+    simd_float4x4 adjusted =
+        simd_mul(flipY, simd_mul(headRotation, flipY));
+    adjusted.columns[3] = gHeadTransform.columns[3];
+    return adjusted;
+}
 
 /// Nur zur Fehlersuche: die ersten Bilder Schritt für Schritt protokollieren.
 /// Der Absturz kommt wortlos, also muss die letzte erreichte Stelle her.
@@ -331,11 +400,459 @@ void drawBackgroundDepth()
     angle::DepthMask(GL_TRUE);
 }
 
-EGLDisplay gDisplay = EGL_NO_DISPLAY;
+bool ensureScreenWallDepthProgram()
+{
+    if (gScreenWallDepthProgram) return true;
 
-PFNEGLCREATEIMAGEKHRPROC  eglCreateImage_  = nullptr;
-PFNEGLDESTROYIMAGEKHRPROC eglDestroyImage_ = nullptr;
-PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glImageTargetTexture_ = nullptr;
+    static const char *vertexSource =
+        "#version 300 es\n"
+        "uniform mat4 mvp;\n"
+        "uniform vec2 halfSize;\n"
+        "void main() {\n"
+        "  vec2 p[4];\n"
+        "  p[0]=vec2(-1.0,-1.0); p[1]=vec2(1.0,-1.0);\n"
+        "  p[2]=vec2(-1.0,1.0);  p[3]=vec2(1.0,1.0);\n"
+        "  gl_Position=mvp*vec4(p[gl_VertexID]*halfSize,0.0,1.0);\n"
+        "}\n";
+    static const char *fragmentSource =
+        "#version 300 es\n"
+        "precision mediump float;\n"
+        "out vec4 color;\n"
+        "void main() { color=vec4(0.0); }\n";
+
+    GLuint vertex = compileBackgroundShader(GL_VERTEX_SHADER, vertexSource);
+    GLuint fragment = compileBackgroundShader(GL_FRAGMENT_SHADER, fragmentSource);
+    if (!vertex || !fragment) return false;
+
+    gScreenWallDepthProgram = angle::CreateProgram();
+    angle::AttachShader(gScreenWallDepthProgram, vertex);
+    angle::AttachShader(gScreenWallDepthProgram, fragment);
+    angle::LinkProgram(gScreenWallDepthProgram);
+    angle::DeleteShader(vertex);
+    angle::DeleteShader(fragment);
+
+    GLint linked = GL_FALSE;
+    angle::GetProgramiv(gScreenWallDepthProgram, GL_LINK_STATUS, &linked);
+    if (!linked) {
+        GLchar log[1024] = {};
+        angle::GetProgramInfoLog(gScreenWallDepthProgram, sizeof(log), nullptr, log);
+        ALOGE("ANGLE-Wandtiefenprogramm fehlgeschlagen: %s", log);
+        return false;
+    }
+    return true;
+}
+
+void drawScreenWallDepth(int eye)
+{
+    if (!gWallSnapped || !gHeadValid || !ensureScreenWallDepthProgram()) return;
+
+    simd_float4x4 projection = cp_drawable_compute_projection(
+        gDrawable, cp_axis_direction_convention_right_up_back, eye);
+    simd_float4x4 deviceFromView =
+        cp_view_get_transform(cp_drawable_get_view(gDrawable, eye));
+    // Vollständige ARKit-Gerätepose. Die inverse View-Matrix verschiebt die
+    // Wand im Sichtfeld entgegen der Kopfbewegung und hält sie dadurch in der
+    // Welt. Farbe und Tiefe müssen exakt dieselbe Pose verwenden.
+    simd_float4x4 originFromDevice = screenWallOriginFromDevice();
+    simd_float4x4 originFromView = simd_mul(originFromDevice, deviceFromView);
+    simd_float4x4 mvp = simd_mul(
+        projection, simd_mul(simd_inverse(originFromView), gWallTransform));
+
+    GLint previousProgram = 0;
+    GLint previousDepthFunc = GL_LESS;
+    GLboolean previousColorMask[4] = { GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE };
+    GLboolean previousDepthMask = GL_TRUE;
+    const GLboolean depthWasEnabled = angle::IsEnabled(GL_DEPTH_TEST);
+    const GLboolean cullWasEnabled = angle::IsEnabled(GL_CULL_FACE);
+    angle::GetIntegerv(GL_CURRENT_PROGRAM, &previousProgram);
+    angle::GetIntegerv(GL_DEPTH_FUNC, &previousDepthFunc);
+    angle::GetBooleanv(GL_COLOR_WRITEMASK, previousColorMask);
+    angle::GetBooleanv(GL_DEPTH_WRITEMASK, &previousDepthMask);
+
+    angle::ColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+    angle::Enable(GL_DEPTH_TEST);
+    angle::Disable(GL_CULL_FACE);
+    angle::DepthFunc(GL_ALWAYS);
+    angle::DepthMask(GL_TRUE);
+    angle::UseProgram(gScreenWallDepthProgram);
+    angle::UniformMatrix4fv(
+        angle::GetUniformLocation(gScreenWallDepthProgram, "mvp"),
+        1, GL_FALSE, reinterpret_cast<const GLfloat *>(&mvp));
+    angle::Uniform2f(
+        angle::GetUniformLocation(gScreenWallDepthProgram, "halfSize"),
+        2.4f * 0.5f, 2.4f * (480.0f / 640.0f) * 0.5f);
+    angle::DrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    angle::UseProgram((GLuint)previousProgram);
+    angle::ColorMask(previousColorMask[0], previousColorMask[1],
+                     previousColorMask[2], previousColorMask[3]);
+    if (depthWasEnabled) angle::Enable(GL_DEPTH_TEST);
+    else angle::Disable(GL_DEPTH_TEST);
+    if (cullWasEnabled) angle::Enable(GL_CULL_FACE);
+    angle::DepthFunc((GLenum)previousDepthFunc);
+    angle::DepthMask(previousDepthMask);
+}
+
+bool ensureFlatScreenTarget()
+{
+    const int width = (int)(gAppState.Width * gSuperSampling);
+    const int height = (int)(gAppState.Height * gSuperSampling);
+    if (width <= 0 || height <= 0) return false;
+
+    if (gFlatScreenTexture && width == gFlatScreenWidth &&
+        height == gFlatScreenHeight) {
+        return true;
+    }
+
+    if (gFlatScreenTexture) {
+        angle::DeleteTextures(1, &gFlatScreenTexture);
+        gFlatScreenTexture = 0;
+    }
+    if (gFlatScreenImage != EGL_NO_IMAGE_KHR && eglDestroyImage_) {
+        eglDestroyImage_(gDisplay, gFlatScreenImage);
+        gFlatScreenImage = EGL_NO_IMAGE_KHR;
+    }
+    gFlatScreenMetalTexture = nil;
+    if (!gFlatScreenFramebuffer) {
+        angle::GenFramebuffers(1, &gFlatScreenFramebuffer);
+    }
+
+    id<MTLDevice> device = cp_layer_renderer_get_device(gLayerRenderer);
+    MTLTextureDescriptor *descriptor =
+        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+                                                           width:(NSUInteger)width
+                                                          height:(NSUInteger)height
+                                                       mipmapped:NO];
+    descriptor.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+    descriptor.storageMode = MTLStorageModePrivate;
+    gFlatScreenMetalTexture = [device newTextureWithDescriptor:descriptor];
+    if (!gFlatScreenMetalTexture ||
+        !importTexture(gFlatScreenMetalTexture, 0, &gFlatScreenTexture,
+                       &gFlatScreenImage, "2D-Zwischenpuffer")) {
+        ALOGE("2D-Zwischenpuffer konnte nicht zwischen Metal und ANGLE geteilt werden");
+        gFlatScreenMetalTexture = nil;
+        return false;
+    }
+
+    angle::ActiveTexture(GL_TEXTURE0);
+    angle::BindTexture(GL_TEXTURE_2D, gFlatScreenTexture);
+    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    angle::BindFramebuffer(GL_FRAMEBUFFER, gFlatScreenFramebuffer);
+    angle::FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                                GL_TEXTURE_2D, gFlatScreenTexture, 0);
+    const GLenum status = angle::CheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        ALOGE("2D-Zwischenpuffer unvollstaendig: 0x%04x", status);
+        return false;
+    }
+
+    gFlatScreenWidth = width;
+    gFlatScreenHeight = height;
+    ALOGV("2D-Zwischenpuffer: %dx%d", width, height);
+    return true;
+}
+
+bool ensureScreenPanelProgram()
+{
+    if (gScreenPanelProgram) return true;
+
+    static const char *vertexSource =
+        "#version 300 es\n"
+        "uniform mat4 mvp;\n"
+        "uniform vec2 halfSize;\n"
+        "out vec2 uv;\n"
+        "void main() {\n"
+        "  vec2 p[4];\n"
+        "  p[0]=vec2(-1.0,-1.0); p[1]=vec2(1.0,-1.0);\n"
+        "  p[2]=vec2(-1.0,1.0);  p[3]=vec2(1.0,1.0);\n"
+        "  vec2 q=p[gl_VertexID];\n"
+        "  uv=q*0.5+0.5;\n"
+        "  gl_Position=mvp*vec4(q*halfSize,0.0,1.0);\n"
+        "}\n";
+    static const char *fragmentSource =
+        "#version 300 es\n"
+        "precision mediump float;\n"
+        "uniform sampler2D screenTexture;\n"
+        "in vec2 uv;\n"
+        "out vec4 color;\n"
+        "void main() { color=texture(screenTexture,uv); }\n";
+
+    GLuint vertex = compileBackgroundShader(GL_VERTEX_SHADER, vertexSource);
+    GLuint fragment = compileBackgroundShader(GL_FRAGMENT_SHADER, fragmentSource);
+    if (!vertex || !fragment) return false;
+
+    gScreenPanelProgram = angle::CreateProgram();
+    angle::AttachShader(gScreenPanelProgram, vertex);
+    angle::AttachShader(gScreenPanelProgram, fragment);
+    angle::LinkProgram(gScreenPanelProgram);
+    angle::DeleteShader(vertex);
+    angle::DeleteShader(fragment);
+
+    GLint linked = GL_FALSE;
+    angle::GetProgramiv(gScreenPanelProgram, GL_LINK_STATUS, &linked);
+    if (!linked) {
+        GLchar log[1024] = {};
+        angle::GetProgramInfoLog(gScreenPanelProgram, sizeof(log), nullptr, log);
+        ALOGE("ANGLE-Panelprogramm fehlgeschlagen: %s", log);
+        return false;
+    }
+    return true;
+}
+
+void snapNativeScreenPanel()
+{
+    if (gPanelSnapped || !gRawHeadValid) return;
+
+    const simd_float3 headPos = gRawHeadTransform.columns[3].xyz;
+    simd_float3 forward = -gRawHeadTransform.columns[2].xyz;
+    forward.y = 0.0f;
+    if (simd_length(forward) < 1e-4f) {
+        forward = (simd_float3){0.0f, 0.0f, -1.0f};
+    }
+    forward = simd_normalize(forward);
+
+    const simd_float3 up = (simd_float3){0.0f, 1.0f, 0.0f};
+    const simd_float3 right = simd_normalize(simd_cross(up, -forward));
+    const simd_float3 centre = headPos + forward * 2.0f;
+
+    gPanelTransform = matrix_identity_float4x4;
+    gPanelTransform.columns[0] = (simd_float4){right.x, right.y, right.z, 0.0f};
+    gPanelTransform.columns[1] = (simd_float4){up.x, up.y, up.z, 0.0f};
+    gPanelTransform.columns[2] =
+        (simd_float4){-forward.x, -forward.y, -forward.z, 0.0f};
+    gPanelTransform.columns[3] =
+        (simd_float4){centre.x, centre.y, centre.z, 1.0f};
+    gPanelSnapped = true;
+}
+
+void drawNativeScreenPanel(int eye)
+{
+    snapNativeScreenPanel();
+    if (!gPanelSnapped || !gFlatScreenTexture ||
+        !ensureScreenPanelProgram()) return;
+
+    const simd_float4x4 projection = cp_drawable_compute_projection(
+        gDrawable, cp_axis_direction_convention_right_up_back, eye);
+    const simd_float4x4 deviceFromView =
+        cp_view_get_transform(cp_drawable_get_view(gDrawable, eye));
+    const simd_float4x4 originFromView =
+        simd_mul(gRawHeadTransform, deviceFromView);
+    const simd_float4x4 mvp = simd_mul(
+        projection, simd_mul(simd_inverse(originFromView), gPanelTransform));
+
+    GLint previousProgram = 0;
+    GLint previousActiveTexture = GL_TEXTURE0;
+    GLint previousTexture2DUnit0 = 0;
+    GLint previousDepthFunc = GL_LESS;
+    GLboolean previousColorMask[4] = { GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE };
+    GLboolean previousDepthMask = GL_TRUE;
+    const GLboolean depthWasEnabled = angle::IsEnabled(GL_DEPTH_TEST);
+    const GLboolean cullWasEnabled = angle::IsEnabled(GL_CULL_FACE);
+    const GLboolean blendWasEnabled = angle::IsEnabled(GL_BLEND);
+    const GLboolean scissorWasEnabled = angle::IsEnabled(GL_SCISSOR_TEST);
+    angle::GetIntegerv(GL_CURRENT_PROGRAM, &previousProgram);
+    angle::GetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
+    angle::ActiveTexture(GL_TEXTURE0);
+    angle::GetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture2DUnit0);
+    angle::GetIntegerv(GL_DEPTH_FUNC, &previousDepthFunc);
+    angle::GetBooleanv(GL_COLOR_WRITEMASK, previousColorMask);
+    angle::GetBooleanv(GL_DEPTH_WRITEMASK, &previousDepthMask);
+
+    angle::Enable(GL_DEPTH_TEST);
+    angle::Disable(GL_CULL_FACE);
+    angle::Disable(GL_BLEND);
+    angle::Disable(GL_SCISSOR_TEST);
+    angle::DepthFunc(GL_ALWAYS);
+    angle::DepthMask(GL_TRUE);
+    angle::ColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    angle::ActiveTexture(GL_TEXTURE0);
+    angle::BindTexture(GL_TEXTURE_2D, gFlatScreenTexture);
+    angle::UseProgram(gScreenPanelProgram);
+    angle::UniformMatrix4fv(
+        angle::GetUniformLocation(gScreenPanelProgram, "mvp"), 1, GL_FALSE,
+        reinterpret_cast<const GLfloat *>(&mvp));
+    angle::Uniform2f(
+        angle::GetUniformLocation(gScreenPanelProgram, "halfSize"),
+        1.2f, 0.9f);
+    angle::Uniform1i(
+        angle::GetUniformLocation(gScreenPanelProgram, "screenTexture"), 0);
+    angle::DrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    angle::UseProgram((GLuint)previousProgram);
+    angle::BindTexture(GL_TEXTURE_2D, (GLuint)previousTexture2DUnit0);
+    angle::ActiveTexture((GLenum)previousActiveTexture);
+    angle::ColorMask(previousColorMask[0], previousColorMask[1],
+                     previousColorMask[2], previousColorMask[3]);
+    angle::DepthFunc((GLenum)previousDepthFunc);
+    angle::DepthMask(previousDepthMask);
+    if (depthWasEnabled) angle::Enable(GL_DEPTH_TEST);
+    else angle::Disable(GL_DEPTH_TEST);
+    if (cullWasEnabled) angle::Enable(GL_CULL_FACE);
+    if (blendWasEnabled) angle::Enable(GL_BLEND);
+    if (scissorWasEnabled) angle::Enable(GL_SCISSOR_TEST);
+}
+
+struct alignas(16) MetalPanelUniforms {
+    simd_float4x4 modelViewProjection;
+    simd_float2 halfSize;
+    uint32_t flipVertical;
+    uint32_t padding;
+};
+
+bool ensureMetalPanelPipeline(MTLPixelFormat colorFormat,
+                              MTLPixelFormat depthFormat)
+{
+    if (gMetalPanelPipeline && gMetalPanelColorFormat == colorFormat &&
+        gMetalPanelDepthFormat == depthFormat) {
+        return true;
+    }
+
+    static const char *source = R"METAL(
+#include <metal_stdlib>
+using namespace metal;
+
+struct PanelUniforms {
+    float4x4 modelViewProjection;
+    float2 halfSize;
+    uint flipVertical;
+    uint padding;
+};
+struct VertexOut {
+    float4 position [[position]];
+    float2 uv;
+};
+
+vertex VertexOut jkxr_panel_vertex(uint vid [[vertex_id]],
+                                    constant PanelUniforms &u [[buffer(0)]]) {
+    const float2 corners[4] = {
+        float2(-1.0, -1.0), float2(1.0, -1.0),
+        float2(-1.0,  1.0), float2(1.0,  1.0)
+    };
+    const float2 uvs[4] = {
+        float2(0.0, 1.0), float2(1.0, 1.0),
+        float2(0.0, 0.0), float2(1.0, 0.0)
+    };
+    const float2 corner = corners[vid] * u.halfSize;
+    VertexOut out;
+    out.position = u.modelViewProjection * float4(corner, 0.0, 1.0);
+    out.uv = uvs[vid];
+    return out;
+}
+
+fragment float4 jkxr_panel_fragment(VertexOut in [[stage_in]],
+                                     constant PanelUniforms &u [[buffer(0)]],
+                                     texture2d<float> screen [[texture(0)]]) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    // Normale GL-UI landet im gemeinsam genutzten Metal-Ziel nur vertikal
+    // gedreht. X ist bereits richtig; beide Komponenten zu invertieren würde
+    // das Menü zwar aufrecht, aber spiegelverkehrt anzeigen.
+    const float2 sampleUV = u.flipVertical != 0
+        ? float2(in.uv.x, 1.0 - in.uv.y)
+        : in.uv;
+    return float4(screen.sample(s, sampleUV).rgb, 1.0);
+}
+)METAL";
+
+    id<MTLDevice> device = cp_layer_renderer_get_device(gLayerRenderer);
+    NSError *error = nil;
+    NSString *text = [NSString stringWithUTF8String:source];
+    id<MTLLibrary> library = [device newLibraryWithSource:text
+                                                  options:nil
+                                                    error:&error];
+    if (!library) {
+        ALOGE("Metal-Panelshader fehlgeschlagen: %s",
+              [[error localizedDescription] UTF8String]);
+        return false;
+    }
+
+    MTLRenderPipelineDescriptor *descriptor =
+        [[MTLRenderPipelineDescriptor alloc] init];
+    descriptor.vertexFunction =
+        [library newFunctionWithName:@"jkxr_panel_vertex"];
+    descriptor.fragmentFunction =
+        [library newFunctionWithName:@"jkxr_panel_fragment"];
+    descriptor.colorAttachments[0].pixelFormat = colorFormat;
+    descriptor.depthAttachmentPixelFormat = depthFormat;
+    gMetalPanelPipeline = [device newRenderPipelineStateWithDescriptor:descriptor
+                                                                  error:&error];
+    if (!gMetalPanelPipeline) {
+        ALOGE("Metal-Panelpipeline fehlgeschlagen: %s",
+              [[error localizedDescription] UTF8String]);
+        return false;
+    }
+
+    MTLDepthStencilDescriptor *depthDescriptor =
+        [[MTLDepthStencilDescriptor alloc] init];
+    depthDescriptor.depthCompareFunction = MTLCompareFunctionGreater;
+    depthDescriptor.depthWriteEnabled = YES;
+    gMetalPanelDepthState =
+        [device newDepthStencilStateWithDescriptor:depthDescriptor];
+    gMetalPanelColorFormat = colorFormat;
+    gMetalPanelDepthFormat = depthFormat;
+    return true;
+}
+
+void drawMetalScreenPanel(int eye)
+{
+    snapNativeScreenPanel();
+    if (!gPanelSnapped || !gFlatScreenMetalTexture || !gCommandBuffer) return;
+
+    id<MTLTexture> color = cp_drawable_get_color_texture(gDrawable, eye);
+    id<MTLTexture> depth = cp_drawable_get_depth_texture(gDrawable, eye);
+    if (!color || !depth ||
+        !ensureMetalPanelPipeline(color.pixelFormat, depth.pixelFormat)) return;
+
+    const simd_float4x4 projection = cp_drawable_compute_projection(
+        gDrawable, cp_axis_direction_convention_right_up_back, eye);
+    const simd_float4x4 deviceFromView =
+        cp_view_get_transform(cp_drawable_get_view(gDrawable, eye));
+    const simd_float4x4 originFromView =
+        simd_mul(gRawHeadTransform, deviceFromView);
+    MetalPanelUniforms uniforms = {
+        simd_mul(projection,
+                 simd_mul(simd_inverse(originFromView), gPanelTransform)),
+        (simd_float2){1.2f, 0.9f},
+        gFlatScreenIsCinematic ? 0u : 1u,
+        0u
+    };
+
+    MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
+    pass.colorAttachments[0].texture = color;
+    pass.colorAttachments[0].loadAction = MTLLoadActionClear;
+    pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+    pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0);
+    pass.depthAttachment.texture = depth;
+    pass.depthAttachment.loadAction = MTLLoadActionClear;
+    pass.depthAttachment.storeAction = MTLStoreActionStore;
+    pass.depthAttachment.clearDepth = 0.0;
+    pass.rasterizationRateMap =
+        cp_drawable_get_rasterization_rate_map(gDrawable, eye);
+
+    id<MTLRenderCommandEncoder> encoder =
+        [gCommandBuffer renderCommandEncoderWithDescriptor:pass];
+    if (!encoder) return;
+
+    cp_view_texture_map_t map = cp_view_get_view_texture_map(
+        cp_drawable_get_view(gDrawable, eye));
+    [encoder setViewport:cp_view_texture_map_get_viewport(map)];
+    [encoder setRenderPipelineState:gMetalPanelPipeline];
+    [encoder setDepthStencilState:gMetalPanelDepthState];
+    [encoder setVertexBytes:&uniforms
+                     length:sizeof(uniforms)
+                    atIndex:0];
+    [encoder setFragmentTexture:gFlatScreenMetalTexture atIndex:0];
+    [encoder setFragmentBytes:&uniforms
+                       length:sizeof(uniforms)
+                      atIndex:0];
+    [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
+                vertexStart:0
+                vertexCount:4];
+    [encoder endEncoding];
+}
 
 void resolveEglFunctions()
 {
@@ -433,6 +950,11 @@ extern "C" void TBXR_visionOS_SetScreenRes(int width, int height)
     gAppState.Height = height;
     ALOGV("TBXR: Renderauflösung %dx%d je Auge (Screen-Koordinaten)",
           width, height);
+}
+
+void TBXR_visionOS_SetScreenCinematic(bool cinematic)
+{
+    gFlatScreenIsCinematic = cinematic;
 }
 
 /*
@@ -603,8 +1125,11 @@ void TBXR_FrameSetup()
         return;
     }
 
-    // Kopfpose zum trackableAnchorTime, nicht zur Präsentationszeit: Ersteres
-    // ist der Zeitpunkt, für den der Compositor die Pose erwartet.
+    // Die Geräte-/Kopfpose muss zur Präsentationszeit vorhergesagt werden.
+    // trackableAnchorTime ist für Hand- und Zubehöranker gedacht. Wird es hier
+    // verwendet, rendert die Kamera mit einer anderen Zeitbasis als die
+    // Display-Time-Korrektur des Compositors; schnelle Kopfbewegungen werden
+    // dann überkorrigiert und erzeugen Schlieren.
     // Einmalige Bestandsaufnahme der Drawable.
     //
     // Bis hierher war durchgehend ANGENOMMEN, dass das Layout "dedicated" ist
@@ -645,20 +1170,33 @@ void TBXR_FrameSetup()
         ar_device_anchor_query_status_t anchorStatus =
             ar_world_tracking_provider_query_device_anchor_at_timestamp(
             tracking,
-            cp_time_to_cf_time_interval(cp_frame_timing_get_trackable_anchor_time(actual)),
+            cp_time_to_cf_time_interval(cp_frame_timing_get_presentation_time(actual)),
             anchor);
         if (anchorStatus == ar_device_anchor_query_status_success) {
-            // Anker IMMER setzen — nicht abschaltbar.
-        //
-        // Gemessen: ohne ihn präsentiert der Compositor überhaupt nichts, es
-        // bleibt beim Passthrough. Er ist Pflicht, nicht Diagnose. Als cvar hat
-        // er nur Schaden angerichtet: einmal auf 0 gesetzt, blieb er über die
-        // Konfigurationsdatei erhalten und machte drei Läufe unbrauchbar.
-        cp_drawable_set_device_anchor(gDrawable, anchor);
-            // ... und dieselbe Pose an die Engine, sonst hat sie keine Blickrichtung.
+            // Pflicht für die Präsentation: ohne Geräteanker zeigt die
+            // Compositor-Schicht auf diesem Pfad ausschließlich Passthrough.
+            cp_drawable_set_device_anchor(gDrawable, anchor);
+
+            gRawHeadTransform =
+                ar_device_anchor_get_origin_from_anchor_transform(anchor);
+            gRawHeadValid = true;
+
+            // Die Pose weiterhin an Engine und Wandprojektion geben.
             TBXR_GetHMDOrientation(anchor);
-        gHeadTransform = ar_device_anchor_get_origin_from_anchor_transform(anchor);
-        gHeadValid = true;
+            // visionOS 27 kann die Pose für die tatsächliche Darstellung auf
+            // dem Passthrough-Display korrigieren. Die unkorrigierte physische
+            // Pose zeigt bei schnellen Bewegungen sichtbar ein verzögertes
+            // Nachsteuern; der Geräteanker selbst bleibt unverändert beim
+            // Compositor, damit dessen Display-Time-Korrektur weiter greift.
+            if (@available(visionOS 27.0, *)) {
+                gHeadTransform =
+                    ar_device_anchor_get_origin_from_anchor_transform_with_correction(
+                        anchor, ar_transform_correction_rendered);
+            } else {
+                gHeadTransform =
+                    ar_device_anchor_get_origin_from_anchor_transform(anchor);
+            }
+            gHeadValid = true;
         } else if (gFrameCounter < 3) {
             // Ein frisch erzeugter, aber nicht befüllter Anchor darf nicht an
             // den Compositor gehen. Ohne Statusprüfung sah er bisher wie eine
@@ -686,6 +1224,7 @@ void TBXR_FrameSetup()
 void TBXR_prepareEyeBuffer(int eye)
 {
     gCurrentEye = eye;
+    gRenderingFlatScreen[eye] = false;
     TRACE("[Bild %d] prepareEyeBuffer Auge %d", gFrameCounter, eye);
     if (!gDrawable) return;
 
@@ -770,8 +1309,24 @@ void TBXR_prepareEyeBuffer(int eye)
     angle::ClearDepthf(1.0e-4f);
 
     const GLboolean scissorWasEnabled = angle::IsEnabled(GL_SCISSOR_TEST);
+    GLboolean previousColorMask[4] = { GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE };
+    GLfloat previousClearColor[4] = {};
+    angle::GetBooleanv(GL_COLOR_WRITEMASK, previousColorMask);
+    angle::GetFloatv(GL_COLOR_CLEAR_VALUE, previousClearColor);
     if (scissorWasEnabled) angle::Disable(GL_SCISSOR_TEST);
-    angle::Clear(GL_DEPTH_BUFFER_BIT);
+
+    // CompositorServices recycelt seine Drawable-Texturen. Ohne einen echten
+    // Farb-Clear enthält die neue Pose deshalb weiterhin alle zuvor gezeichneten
+    // Positionen der Welt-Wand (sichtbar als scharfer Stapel/Schlieren). Für
+    // einen vollständigen Clear müssen Scissor aus und alle Farbkanäle offen
+    // sein, unabhängig vom zuletzt von gl4es gecachten Rendererzustand.
+    angle::ColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    angle::ClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    angle::Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    angle::ClearColor(previousClearColor[0], previousClearColor[1],
+                      previousClearColor[2], previousClearColor[3]);
+    angle::ColorMask(previousColorMask[0], previousColorMask[1],
+                     previousColorMask[2], previousColorMask[3]);
 
     // CompositorServices wertet nur tatsächlich von Geometrie beschriebene
     // Tiefe als sichtbaren Inhalt. Ein Clear allein genügt im ANGLE-Pfad nicht.
@@ -789,6 +1344,33 @@ void TBXR_prepareEyeBuffer(int eye)
     restoreTextureBinding();
     restoreDepthState();
 
+    // Ein klassischer Screen-Layer (Menü, Ladebild, Video) wird nicht direkt
+    // mit einer Weltmatrix in die Compositor-Textur gezeichnet. Zuerst entsteht
+    // ein gewöhnliches flaches 2D-Bild; TBXR_finishEyeBuffer setzt es danach
+    // mit der unveränderten ARKit-Kamera als Quad in die Welt.
+    if (VR_UseScreenLayer() && ensureFlatScreenTarget()) {
+        restoreTextureBinding();
+        ANGLESetDrawFramebufferRateMapMTL(nullptr);
+        angle::BindFramebuffer(GL_FRAMEBUFFER, gFlatScreenFramebuffer);
+        angle::Viewport(0, 0, gFlatScreenWidth, gFlatScreenHeight);
+
+        const GLboolean flatScissorWasEnabled = angle::IsEnabled(GL_SCISSOR_TEST);
+        GLboolean flatColorMask[4] = { GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE };
+        GLfloat flatClearColor[4] = {};
+        angle::GetBooleanv(GL_COLOR_WRITEMASK, flatColorMask);
+        angle::GetFloatv(GL_COLOR_CLEAR_VALUE, flatClearColor);
+        if (flatScissorWasEnabled) angle::Disable(GL_SCISSOR_TEST);
+        angle::ColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        angle::ClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        angle::Clear(GL_COLOR_BUFFER_BIT);
+        angle::ClearColor(flatClearColor[0], flatClearColor[1],
+                          flatClearColor[2], flatClearColor[3]);
+        angle::ColorMask(flatColorMask[0], flatColorMask[1],
+                         flatColorMask[2], flatColorMask[3]);
+        if (flatScissorWasEnabled) angle::Enable(GL_SCISSOR_TEST);
+        gRenderingFlatScreen[eye] = true;
+    }
+
     // Asymmetrisches Sichtfeld ausgleichen — dieselben zwei Zeilen wie am Ende
     // von TBXR_prepareEyeBuffer in der Android- und der Windows-Fassung.
     //
@@ -805,7 +1387,10 @@ void TBXR_prepareEyeBuffer(int eye)
     //
     // OpenXR liefert dort Winkel, unsere Projektionsmatrix Tangenten — daher
     // atanf. Die Vorzeichen stimmen überein: tanLeft und tanDown sind negativ.
-    {
+    if (gRenderingFlatScreen[eye]) {
+        vr.off_center_fov_x = 0.0f;
+        vr.off_center_fov_y = 0.0f;
+    } else {
         float tanLeft, tanRight, tanUp, tanDown;
         if (VR_GetFovTangentsForEye(eye, &tanLeft, &tanRight, &tanUp, &tanDown)) {
             vr.off_center_fov_x = -(atanf(tanLeft) + atanf(tanRight)) / 2.0f;
@@ -819,6 +1404,18 @@ void TBXR_finishEyeBuffer(int eye)
     TRACE("[Bild %d] finishEyeBuffer Auge %d", gFrameCounter, eye);
     if (!gDrawable) return;
 
+    if (gRenderingFlatScreen[eye]) {
+        // ANGLEs Warteschlange vollständig abschließen, bevor Metal dieselbe
+        // geteilte Textur liest. Der finale Welt-Pass ist nun wirklich nativ:
+        // keine zweite GL->Metal-Clipraumumrechnung mehr.
+        angle::Finish();
+        drawMetalScreenPanel(eye);
+    } else {
+        // Der klassische 2D-Renderer schreibt keine Tiefe. Für HUD-Inhalte im
+        // normalen 3D-Pfad bleibt vorerst der bisherige Tiefenpass bestehen.
+        drawScreenWallDepth(eye);
+    }
+
     // gl4es reports its logical default framebuffer as 0.  Query ANGLE
     // directly here, after the engine rendered, to verify that the physical
     // binding still points at the imported compositor framebuffer.
@@ -827,8 +1424,9 @@ void TBXR_finishEyeBuffer(int eye)
         GLint actualFramebuffer = -1;
         angle::GetIntegerv(GL_FRAMEBUFFER_BINDING, &actualFramebuffer);
         const GLenum error = angle::GetError();
-        ALOGV("[ANGLE FBO] frame=%d actual=%d expected=%u error=0x%04x",
-              gFrameCounter, actualFramebuffer, gFramebuffer, error);
+        ALOGV("[ANGLE FBO] frame=%d actual=%d compositor=%u flat=%u error=0x%04x",
+              gFrameCounter, actualFramebuffer, gFramebuffer,
+              gFlatScreenFramebuffer, error);
         framebufferDiagnostics++;
     }
 
@@ -1361,26 +1959,21 @@ void QuatToYawPitchRoll(XrQuaternionf q, vec3_t rotation, vec3_t out) {
 // Projektion des jeweiligen Auges. Damit ergibt sich die Disparität aus der
 // Geometrie statt aus einem Stellwert wie cg_hudStereo.
 //
-// Kopfgekoppelt, nicht weltfest: die Wand folgt dem Blick. Android rastet sie
-// dagegen auf eine Position ein (hmdorientation_snap). Das wäre der nächste
-// Schritt, sobald die Geometrie stimmt.
+// Die Wand wird beim Öffnen einmal vor dem Benutzer im ARKit-Weltursprung
+// eingerastet. Danach bewegt sie sich nicht mehr mit der Kopfpose.
 // ---------------------------------------------------------------------------
 
 extern "C" bool VR_GetScreenWall(int eye, float *projection16, float *modelview16)
 {
     if (!gDrawable) return false;
+    // Screen-Layer werden jetzt orthografisch in gFlatScreenTexture erzeugt.
+    // Die Weltprojektion passiert anschließend einmal zentral im direkten
+    // Panel-Pass und darf hier nicht ein zweites Mal angewendet werden.
+    if (VR_UseScreenLayer()) return false;
     if (eye < 0 || eye > 1) eye = 0;
 
-    // Entfernung und Breite der Wand in Metern, zur Laufzeit einstellbar.
-    // TESTWEISE FEST: 6 m Entfernung, 6 m breit.
-    //
-    // Die Frage ist nicht, ob die Werte stimmen, sondern ob diese Matrizen
-    // überhaupt beim Zeichnen ankommen. Bleibt das Video bei diesen Werten
-    // unverändert groß und an derselben Stelle, wird die Matrix unterwegs
-    // überschrieben oder ignoriert — dann suche ich im Renderpfad weiter und
-    // nicht in der Rechnung.
-    float distance = 2.0f;
-    float width = 2.4f;
+    const float distance = 2.0f;
+    const float width = 2.4f;
     const float height = width * (480.0f / 640.0f);
 
     // Projektion des Auges, unverändert übernommen.
@@ -1409,11 +2002,17 @@ extern "C" bool VR_GetScreenWall(int eye, float *projection16, float *modelview1
         const simd_float3 up = (simd_float3){0.0f, 1.0f, 0.0f};
         const simd_float3 right = simd_normalize(simd_cross(up, -forward));
 
-        // TEST: Wand im Gerätekoordinatensystem, 2 m geradeaus.
+        // Welt-aus-Wand: X zeigt nach rechts, Y nach oben und -Z zur
+        // Vorderseite der Wand. Die Transformation wird nur hier berechnet;
+        // spätere Kopfbewegungen ändern sie nicht mehr.
         gWallTransform = matrix_identity_float4x4;
-        gWallTransform.columns[3] = (simd_float4){0.0f, 0.0f, -distance, 1.0f};
+        gWallTransform.columns[0] = (simd_float4){right.x, right.y, right.z, 0.0f};
+        gWallTransform.columns[1] = (simd_float4){up.x, up.y, up.z, 0.0f};
+        gWallTransform.columns[2] = (simd_float4){-forward.x, -forward.y, -forward.z, 0.0f};
+        simd_float3 wallCentre = headPos + forward * distance;
+        gWallTransform.columns[3] =
+            (simd_float4){wallCentre.x, wallCentre.y, wallCentre.z, 1.0f};
         gWallSnapped = true;
-        (void)headPos; (void)forward; (void)right; (void)up;
     }
 
     // Bildschirmkoordinaten (0..640, 0..480) in Wandkoordinaten (Meter):
@@ -1425,51 +2024,13 @@ extern "C" bool VR_GetScreenWall(int eye, float *projection16, float *modelview1
     scale.columns[3].x = -width * 0.5f;
     scale.columns[3].y =  height * 0.5f;
 
-    // modelview = Auge-aus-Welt * Welt-aus-Wand * Skalierung
-    //
-    // cp_view_get_transform liefert Gerät-aus-Auge, NICHT Welt-aus-Auge — die
-    // Transformation ist relativ zum Geräteanker. Ohne die Kopftransformation
-    // davor fehlt die Kopfposition vollständig: die Wand folgt dann dem Kopf
-    // statt im Raum zu stehen, und sie sitzt um die Kopfhöhe zu tief.
-    //
-    // In S4 stand dafür deviceAnchor.originFromAnchorTransform * view.transform.
-    // Umschaltbar, weil die Messung beides widerlegt hat: OHNE die
-    // Kopftransformation folgte die Wand dem Kopf und saß um die Kopfhöhe zu
-    // tief; MIT ihr stimmt die Höhe, aber das Bild dreht sich mit etwa
-    // doppelter Geschwindigkeit — ein klassisches Zeichen dafür, dass eine
-    // Transformation zweimal angewandt wird.
-    //
-    // Wahrscheinlich enthält cp_view_get_transform die Kopfpose bereits, seit
-    // cp_drawable_set_device_anchor gesetzt ist, und nur die Translation fehlte.
-    // Deshalb hier drei Varianten zum Messen statt einer Vermutung:
-    //   0 = nur die View-Transformation      (Rotation einfach)
-    //   1 = Kopf * View                      (Rotation doppelt, Höhe richtig)
-    //   2 = nur die Kopf-TRANSLATION * View  (Rotation einfach, Höhe richtig)
-    // Fest verdrahtet, keine cvar mehr.
-    //
-    // Die Messung hat gezeigt: cp_view_get_transform enthält nur den
-    // Augenversatz (32 mm seitlich), keine Kopfpose — die Blickrichtung dort
-    // ist glatt (0,0,-1), während der Kopf tatsächlich geneigt war. Also ist
-    // Kopf * View die richtige Formel, das Lehrbuchmuster von
-    // CompositorServices.
-    //
-    // Die Umschaltbarkeit über eine cvar hat nur Verwirrung gestiftet: der Wert
-    // stand aus der Konfigurationsdatei auf 2 und ließ sich nicht zuverlässig
-    // überschreiben.
+    // cp_view_get_transform ist Gerät-aus-Auge. Mit der vollständigen
+    // Welt-aus-Gerät-Pose entsteht Welt-aus-Auge; deren Inverse bewegt die
+    // Projektion im Sichtfeld entgegen der Kopfbewegung und hält die Wand im
+    // ARKit-Weltursprung fest.
     simd_float4x4 viewTf = cp_view_get_transform(cp_drawable_get_view(gDrawable, eye));
-
-    // TEST: kopfrelativ rendern statt weltfest.
-    //
-    // Unsere weltfeste Rechnung ist nachweislich richtig — die Wandmitte
-    // wandert im Augenraum um genau den Winkel, um den sich der Kopf dreht.
-    // Trotzdem bewegt sich das Bild doppelt so schnell. Also wendet der
-    // Compositor die Kopfpose über den Anker ein zweites Mal an.
-    //
-    // Prüfung: Wand fest im GERÄTE-Koordinatensystem (2 m geradeaus, dreht sich
-    // mit dem Kopf), Matrix ohne Kopftransformation. Macht der Compositor
-    // daraus ein weltfestes Bild, ist bewiesen, dass er den Anker anwendet —
-    // und dann ist kopfrelativ die richtige Art zu rendern.
-    simd_float4x4 originFromView = viewTf;
+    simd_float4x4 originFromDevice = screenWallOriginFromDevice();
+    simd_float4x4 originFromView = simd_mul(originFromDevice, viewTf);
 
     simd_float4x4 viewFromOrigin = simd_inverse(originFromView);
     simd_float4x4 mv = simd_mul(simd_mul(viewFromOrigin, gWallTransform), scale);
@@ -1497,6 +2058,7 @@ extern "C" bool VR_GetScreenWall(int eye, float *projection16, float *modelview1
 extern "C" void VR_ResnapScreenWall(void)
 {
     gWallSnapped = false;
+    gPanelSnapped = false;
 }
 
 extern "C" int VR_GetCurrentEye(void)

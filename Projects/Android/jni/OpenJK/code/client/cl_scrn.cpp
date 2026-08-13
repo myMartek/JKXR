@@ -553,44 +553,23 @@ void SCR_UpdateScreen( void ) {
 				(cls.state == CA_CINEMATIC) || CL_IsRunningInGameCinematic() ||
 				CL_InGameCinematicOnStandBy();
 
-			qboolean replayedScreen = qfalse;
-			if ( !cinematicActive &&
-				 re.VR_BeginStereoReplayCapture && re.VR_ReplayStereoFrame &&
-				 re.VR_BeginStereoReplayCapture() )
+			// Menü, Ladebild und Video benutzen denselben direkten 2D-Pfad.
+			//
+			// Der Stereo-Replay war nötig, solange JKXR den Screen-Inhalt direkt
+			// in beide Augen zeichnete: er erzeugte künstliche HUD-Versätze. Jetzt
+			// rendert JKXR zunächst eine gewöhnliche flache Textur und Metal setzt
+			// diese anschließend als echte Welt-Geometrie vor beide Augen. Das
+			// native Quad erzeugt die korrekte Disparität selbst; ein Replay würde
+			// die GL-Oberfläche nur ein zweites Mal transformieren. Insbesondere
+			// erschien das Menü dadurch auf X und Y gedreht, während der ohnehin
+			// direkt gerenderte Cinematic-Pfad richtig lag.
+			TBXR_visionOS_SetScreenCinematic(cinematicActive);
+			for (int eye = 0; eye < 2; ++eye)
 			{
-				SCR_DrawScreenField( STEREO_CENTER );
-
-				qboolean replayFailed = qfalse;
-				for ( int eye = 0; eye < 2; ++eye )
-				{
-					TBXR_prepareEyeBuffer( eye );
-					if ( !re.VR_ReplayStereoFrame( eye == 0 ? STEREO_LEFT : STEREO_RIGHT,
-												   eye == 1 ? qtrue : qfalse ) )
-					{
-						TBXR_finishEyeBuffer( eye );
-						if ( re.VR_CancelStereoReplayCapture )
-						{
-							re.VR_CancelStereoReplayCapture();
-						}
-						replayFailed = qtrue;
-						break;
-					}
-					TBXR_finishEyeBuffer( eye );
-				}
-				replayedScreen = replayFailed ? qfalse : qtrue;
-			}
-
-			// Rückfall: zweimal zeichnen, ohne Versätze. Nicht fusionierbar,
-			// aber besser als ein leeres Bild, falls die Aufzeichnung scheitert.
-			if ( !replayedScreen )
-			{
-				for (int eye = 0; eye < 2; ++eye)
-				{
-					TBXR_prepareEyeBuffer(eye);
-					SCR_DrawScreenField(eye == 0 ? STEREO_LEFT : STEREO_RIGHT);
-					re.EndFrame(NULL, NULL);
-					TBXR_finishEyeBuffer(eye);
-				}
+				TBXR_prepareEyeBuffer(eye);
+				SCR_DrawScreenField(eye == 0 ? STEREO_LEFT : STEREO_RIGHT);
+				re.EndFrame(NULL, NULL);
+				TBXR_finishEyeBuffer(eye);
 			}
 #else
 			TBXR_prepareEyeBuffer(0);
