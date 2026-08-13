@@ -564,9 +564,22 @@ extern "C" XrResult xrLocateSpace(XrSpace space, XrSpace, XrTime time,
         anchor = source;   // ohne Vorhersage lieber die aktuelle Pose als keine
     }
 
-    simd_float4x4 transform =
+    // Zwei Transformationen, nicht eine.
+    //
+    // anchor_from_location ist die Lage des benannten Punktes (Griff, Ziel)
+    // RELATIV ZUM ANKER — ein kleiner, praktisch konstanter Versatz. Sie allein
+    // zu nehmen war der Fehler: die Winkel blieben dadurch konstant bei null,
+    // egal wie der Controller gehalten wurde, obwohl die Verfolgung einwandfrei
+    // lief und beide Anker als getrackt gemeldet wurden.
+    //
+    // Die Pose im Raum ist origin_from_anchor. Der gesuchte Punkt liegt bei
+    //     origin_from_location = origin_from_anchor * anchor_from_location
+    const simd_float4x4 originFromAnchor =
+        ar_accessory_anchor_get_origin_from_anchor_transform(anchor);
+    const simd_float4x4 anchorFromLocation =
         ar_accessory_anchor_get_anchor_from_location_transform_with_correction(
             anchor, locationName, ar_transform_correction_none);
+    simd_float4x4 transform = simd_mul(originFromAnchor, anchorFromLocation);
 
     location->pose.position = { transform.columns[3].x,
                                 transform.columns[3].y,

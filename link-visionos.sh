@@ -53,24 +53,42 @@ done
 
 # --- Teil-Link der beiden Nebenmodule -------------------------------------
 partial_link() {
-    local lib="$1" symbol="$2" out="$3"
-    echo "_$symbol" > "$WORK/$symbol.syms"
+    local lib="$1" out="$2"
+    shift 2
+    local name="$(basename "$out" .o)"
+    : > "$WORK/$name.syms"
+    for symbol in "$@"; do
+        echo "_$symbol" >> "$WORK/$name.syms"
+    done
     xcrun --sdk xros ld -r -arch arm64 -platform_version xros 2.0 2.0 \
-        -exported_symbols_list "$WORK/$symbol.syms" \
+        -exported_symbols_list "$WORK/$name.syms" \
         -o "$out" -all_load "$lib"
 
-    local exported
+    local exported missing
     exported="$(xcrun nm -g "$out" | awk '$1!="U" && $2!="U" {print $3}' | tr '\n' ' ')"
     echo "  $(basename "$out"): exportiert $exported"
-    if [ "$exported" != "_$symbol " ]; then
-        echo "  FEHLER: erwartet wurde nur _$symbol"
+
+    missing=""
+    for symbol in "$@"; do
+        case " $exported " in *" _$symbol "*) ;; *) missing="$missing _$symbol";; esac
+    done
+    if [ -n "$missing" ]; then
+        echo "  FEHLER: nicht exportiert:$missing"
         exit 1
     fi
 }
 
 echo "== Module teil-linken"
-partial_link "$BUILD/librd-gles-ja_arm.a" GetRefAPI  "$WORK/rd-gles-merged.o"
-partial_link "$BUILD/libjagamearm.a"      GetGameAPI "$WORK/jagame-merged.o"
+partial_link "$BUILD/librd-gles-ja_arm.a" "$WORK/rd-gles-merged.o" GetRefAPI
+
+# Das Spielmodul hat DREI Einsprungpunkte, nicht einen.
+#
+# GetGameAPI holt sich sv_game.cpp, aber der Client sucht über
+# CL_InitCGameVM zusätzlich dllEntry und vmMain — das ist der Clientteil des
+# Spielcodes, der in derselben Bibliothek steckt. Fehlen sie im Export, findet
+# dlsym sie nicht und das Spiel bricht beim Start mit "Failed to load client
+# game functions" ab, obwohl die Bibliothek vollständig gelinkt ist.
+partial_link "$BUILD/libjagamearm.a" "$WORK/jagame-merged.o" GetGameAPI dllEntry vmMain
 
 # --- Gesamtlink ------------------------------------------------------------
 echo "== linken"

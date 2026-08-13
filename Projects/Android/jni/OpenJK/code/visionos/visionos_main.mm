@@ -32,6 +32,8 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 // mitübersetzt: sie enthalten keinen Android-spezifischen Code.
 
 #include <dlfcn.h>
+#include <execinfo.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -234,6 +236,15 @@ void Sys_Print(const char *msg)
     // einen Zeitstempel, was die zeilenweise aufgebaute Ausgabe der Engine
     // zerreißt. Der Umbruch steht bereits in der Meldung.
     fputs(buf, stderr);
+
+    // Sofort leeren.
+    //
+    // stderr ist zwar üblicherweise ungepuffert, über die Weiterleitung von
+    // devicectl aber vollgepuffert. Bei einem Absturz geht der Puffer verloren,
+    // und das Protokoll endet nicht dort, wo es knallte, sondern beim letzten
+    // tatsächlich geschriebenen Block. Genau das hat hier zwei Läufe gekostet:
+    // derselbe Build zeigte einmal "Server Initialization" und einmal nicht.
+    fflush(stderr);
 }
 
 // ---------------------------------------------------------------------------
@@ -316,8 +327,45 @@ Concurrency aufrufen — dort würde die Schleife den Pool aushungern. Derselbe
 Fehler war in S4 die Ursache, dass ARKit keine Posen mehr lieferte.
 =================
 */
+/*
+=================
+Rückverfolgung bei Speicherzugriffsfehlern
+
+visionOS legt für abgestürzte Prozesse keinen Bericht ab, den wir hier abholen
+könnten, und das Konsolenprotokoll endet bei einem SIGSEGV einfach mitten im
+Satz. Ohne Aufrufkette bleibt nur Raten, an welcher Stelle im Spielstart es
+knallt.
+
+backtrace_symbols_fd ist ausdrücklich signalsicher — es allokiert nicht und
+formatiert direkt in den Dateideskriptor. Deshalb hier und nicht das bequemere
+backtrace_symbols, das malloc benutzt und in einem Signalhandler hängen kann.
+=================
+*/
+static void JKXR_CrashHandler(int sig)
+{
+    void *frames[64];
+    const int count = backtrace(frames, 64);
+
+    const char *name = (sig == SIGSEGV) ? "SIGSEGV"
+                     : (sig == SIGBUS)  ? "SIGBUS"
+                     : (sig == SIGILL)  ? "SIGILL"  : "Signal";
+    char header[64];
+    const int n = snprintf(header, sizeof(header), "\n*** %s — Aufrufkette:\n", name);
+    write(STDERR_FILENO, header, (size_t)n);
+    backtrace_symbols_fd(frames, count, STDERR_FILENO);
+
+    // Voreinstellung wiederherstellen und erneut auslösen, damit das System
+    // den Absturz normal behandelt statt hier hängenzubleiben.
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
 extern "C" Q_EXPORT int JKXR_visionOS_Main(int argc, char *argv[])
 {
+    signal(SIGSEGV, JKXR_CrashHandler);
+    signal(SIGBUS,  JKXR_CrashHandler);
+    signal(SIGILL,  JKXR_CrashHandler);
+
     char commandLine[MAX_STRING_CHARS] = {0};
 
     Sys_Milliseconds();

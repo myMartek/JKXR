@@ -700,6 +700,19 @@ A complete command line has been parsed, so try to execute it
 ============
 */
 void	Cmd_ExecuteString( const char *text ) {
+#if defined(JKXR_VISIONOS)
+	// Jeden Konsolenbefehl mitschreiben.
+	//
+	// visionOS legt für abgestürzte Prozesse keinen Bericht ab, und ein
+	// Signalhandler kommt nicht zum Zug: die Mach-Ausnahmebehandlung des
+	// Systems greift vor dem BSD-Signal. Das Protokoll endet beim Absturz
+	// mitten im Satz, ohne Aufrufkette.
+	//
+	// Der zuletzt ausgeführte Befehl sagt dafür genau, welcher Weg gerade
+	// beschritten wurde — beim Spielstart etwa "map yavin1" oder "devmap".
+	fprintf( stderr, "[Cmd] %s\n", text ? text : "(leer)" );
+	fflush( stderr );
+#endif
 	cmd_function_t	*cmd, **prev;
 
 	// execute the command line
