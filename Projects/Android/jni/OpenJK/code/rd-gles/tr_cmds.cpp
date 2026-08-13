@@ -356,6 +356,23 @@ void R_IssuePendingRenderCommands( void ) {
 	if ( !tr.registered ) {
 		return;
 	}
+	// Während der Stereo-Aufzeichnung nicht leeren.
+	//
+	// R_IssueRenderCommands setzt cmdList->used auf 0. Jeder Aufruf mitten in
+	// einer laufenden Aufzeichnung wischt damit genau die 2D-Befehle weg, die
+	// gesammelt werden sollen. RE_StretchRaw ruft das gleich als Erstes auf,
+	// bevor es das Videobild hochlädt — die Aufzeichnung endete deshalb mit
+	// 12 Bytes und stretchPics=0, und der Renderer fiel auf den Pfad ohne
+	// augenweise Versätze zurück.
+	//
+	// Der Aufruf steht dort, damit vorherige Befehle vor dem direkten
+	// glTexSubImage2D ausgeführt sind. Während der Aufzeichnung wird aber
+	// ohnehin nichts ausgeführt, sondern gesammelt; die Textur wird erst beim
+	// Abspielen gelesen. Das Auslassen ist hier also nicht nur unschädlich,
+	// sondern notwendig.
+	if ( tr.vrStereoReplayCapture ) {
+		return;
+	}
 	R_IssueRenderCommands( qfalse );
 }
 
@@ -809,7 +826,15 @@ qboolean RE_VR_ReplayStereoFrame( stereoFrame_t stereoFrame, qboolean finalRepla
 			RE_VR_CancelStereoReplayCapture();
 			return qfalse;
 		}
-		if ( stats.drawSurfs == 0 ) {
+		// Reiner 2D-Inhalt ist kein Fehler.
+		//
+		// Menü, Ladebildschirm und Videosequenzen bestehen ausschließlich aus
+		// stretchPics; drawSurfs ist dort naturgemäß 0. Der Abbruch war für den
+		// 3D-Fall gedacht, in dem ein Replay ohne Zeichenflächen sinnlos wäre.
+		// Auf visionOS ist der Screen-Layer aber genau der Fall, für den wir das
+		// Replay brauchen: nur so greifen die augenweisen Versätze aus
+		// R_VR_GetHudReplayOffset, und das Bild lässt sich fusionieren.
+		if ( stats.drawSurfs == 0 && stats.stretchPics == 0 ) {
 			if ( !vrStereoReplayLoggedInvalid ) {
 				ri.Printf( PRINT_WARNING,
 					"VR stereo replay: captured command stream has no 3D draw surfaces (%d bytes, stretchPics=%d, swaps=%d, flushes=%d); falling back to per-eye render.\n",

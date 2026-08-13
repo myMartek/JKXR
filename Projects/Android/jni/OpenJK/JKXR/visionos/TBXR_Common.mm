@@ -17,8 +17,12 @@
 #import <CompositorServices/CompositorServices.h>
 #import <Metal/Metal.h>
 #import <ARKit/ARKit.h>
+#import <QuartzCore/QuartzCore.h>
 
 #include <dlfcn.h>
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -33,6 +37,11 @@ extern "C" void ANGLESetDrawFramebufferRateMapMTL(const void *rateMap);
 // seine Include-Kette; hier wird es ausdrücklich geholt.
 #include "qcommon/q_shared.h"
 #include "qcommon/qcommon.h"   // Cvar_VariableValue, Cbuf_AddText
+
+// vr — die gemeinsame VR-Zustandsstruktur. Mit -DJKXR_CLIENT ist sie eine
+// Struktur, ohne das Makro ein Zeiger (VrClientInfo.h:120).
+#include "VrClientInfo.h"
+extern vr_client_info_t vr;
 
 // Aus JKXR_visionOS.mm, übernommen aus android/JKXR_SurfaceView.cpp.
 void VR_SetHMDPosition(float x, float y, float z);
@@ -62,6 +71,7 @@ void QuatToYawPitchRoll(XrQuaternionf q, vec3_t rotation, vec3_t out);
 namespace angle {
 
 void (*GenTextures)(GLsizei, GLuint *) = nullptr;
+void (*ActiveTexture)(GLenum) = nullptr;
 void (*BindTexture)(GLenum, GLuint) = nullptr;
 void (*DeleteTextures)(GLsizei, const GLuint *) = nullptr;
 void (*GenFramebuffers)(GLsizei, GLuint *) = nullptr;
@@ -70,6 +80,8 @@ void (*FramebufferTexture2D)(GLenum, GLenum, GLenum, GLuint, GLint) = nullptr;
 GLenum (*CheckFramebufferStatus)(GLenum) = nullptr;
 void (*Viewport)(GLint, GLint, GLsizei, GLsizei) = nullptr;
 void (*Enable)(GLenum) = nullptr;
+void (*Disable)(GLenum) = nullptr;
+GLboolean (*IsEnabled)(GLenum) = nullptr;
 void (*DepthFunc)(GLenum) = nullptr;
 void (*DepthMask)(GLboolean) = nullptr;
 void (*ClearDepthf)(GLfloat) = nullptr;
@@ -78,6 +90,22 @@ void (*Flush)(void) = nullptr;
 void (*ClearColor)(GLfloat, GLfloat, GLfloat, GLfloat) = nullptr;
 void (*Clear)(GLbitfield) = nullptr;
 void (*Finish)(void) = nullptr;
+GLuint (*CreateShader)(GLenum) = nullptr;
+void (*ShaderSource)(GLuint, GLsizei, const GLchar *const *, const GLint *) = nullptr;
+void (*CompileShader)(GLuint) = nullptr;
+void (*GetShaderiv)(GLuint, GLenum, GLint *) = nullptr;
+void (*GetShaderInfoLog)(GLuint, GLsizei, GLsizei *, GLchar *) = nullptr;
+void (*DeleteShader)(GLuint) = nullptr;
+GLuint (*CreateProgram)(void) = nullptr;
+void (*AttachShader)(GLuint, GLuint) = nullptr;
+void (*LinkProgram)(GLuint) = nullptr;
+void (*GetProgramiv)(GLuint, GLenum, GLint *) = nullptr;
+void (*GetProgramInfoLog)(GLuint, GLsizei, GLsizei *, GLchar *) = nullptr;
+void (*UseProgram)(GLuint) = nullptr;
+void (*DrawArrays)(GLenum, GLint, GLsizei) = nullptr;
+void (*ColorMask)(GLboolean, GLboolean, GLboolean, GLboolean) = nullptr;
+void (*GetIntegerv)(GLenum, GLint *) = nullptr;
+void (*GetBooleanv)(GLenum, GLboolean *) = nullptr;
 
 bool resolve()
 {
@@ -103,6 +131,7 @@ bool resolve()
         if (!name) { ALOGE("gl" #name " nicht in libGLESv2"); return false; }
 
     RESOLVE(GenTextures)
+    RESOLVE(ActiveTexture)
     RESOLVE(BindTexture)
     RESOLVE(DeleteTextures)
     RESOLVE(GenFramebuffers)
@@ -111,6 +140,8 @@ bool resolve()
     RESOLVE(CheckFramebufferStatus)
     RESOLVE(Viewport)
     RESOLVE(Enable)
+    RESOLVE(Disable)
+    RESOLVE(IsEnabled)
     RESOLVE(DepthFunc)
     RESOLVE(DepthMask)
     RESOLVE(ClearDepthf)
@@ -119,6 +150,22 @@ bool resolve()
     RESOLVE(ClearColor)
     RESOLVE(Clear)
     RESOLVE(Finish)
+    RESOLVE(CreateShader)
+    RESOLVE(ShaderSource)
+    RESOLVE(CompileShader)
+    RESOLVE(GetShaderiv)
+    RESOLVE(GetShaderInfoLog)
+    RESOLVE(DeleteShader)
+    RESOLVE(CreateProgram)
+    RESOLVE(AttachShader)
+    RESOLVE(LinkProgram)
+    RESOLVE(GetProgramiv)
+    RESOLVE(GetProgramInfoLog)
+    RESOLVE(UseProgram)
+    RESOLVE(DrawArrays)
+    RESOLVE(ColorMask)
+    RESOLVE(GetIntegerv)
+    RESOLVE(GetBooleanv)
     #undef RESOLVE
 
     ok = true;
@@ -154,14 +201,135 @@ struct EyeImport {
 };
 EyeImport gEyes[ovrMaxNumEyes];
 GLuint    gFramebuffer = 0;
+GLuint    gBackgroundDepthProgram = 0;
 
 /// Entspricht `superSampling` in der Android-Fassung.
 float gSuperSampling = 1.0f;
+
+/// Welches Auge gerade vorbereitet ist — RB_SetGL2D braucht das.
+int gCurrentEye = 0;
+
+/// Letzte bekannte Kopfposition und -ausrichtung im Weltursprung.
+simd_float4x4 gHeadTransform = matrix_identity_float4x4;
+bool gHeadValid = false;
+
+/// Die eingerastete Wand. Weltfest, nicht kopfgekoppelt.
+simd_float4x4 gWallTransform = matrix_identity_float4x4;
+bool gWallSnapped = false;
 
 /// Nur zur Fehlersuche: die ersten Bilder Schritt für Schritt protokollieren.
 /// Der Absturz kommt wortlos, also muss die letzte erreichte Stelle her.
 int gFrameCounter = 0;
 #define TRACE(...) do { if (gFrameCounter < 3) ALOGV(__VA_ARGS__); } while (0)
+
+bool forceMetalClear()
+{
+    static int enabled = -1;
+    if (enabled < 0) {
+        const char *value = getenv("JKXR_FORCE_METAL_CLEAR");
+        enabled = value && value[0] != '\0' && strcmp(value, "0") != 0;
+        if (enabled) {
+            ALOGV("Diagnose: reiner Metal-Clear erzwungen");
+        }
+    }
+    return enabled != 0;
+}
+
+bool forceAngleClear()
+{
+    static int enabled = -1;
+    if (enabled < 0) {
+        const char *value = getenv("JKXR_FORCE_ANGLE_CLEAR");
+        enabled = value && value[0] != '\0' && strcmp(value, "0") != 0;
+        if (enabled) ALOGV("Diagnose: reiner ANGLE-Clear erzwungen");
+    }
+    return enabled != 0;
+}
+
+GLuint compileBackgroundShader(GLenum type, const char *source)
+{
+    GLuint shader = angle::CreateShader(type);
+    const GLchar *text = source;
+    angle::ShaderSource(shader, 1, &text, nullptr);
+    angle::CompileShader(shader);
+    GLint compiled = GL_FALSE;
+    angle::GetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
+    if (!compiled) {
+        GLchar log[1024] = {};
+        angle::GetShaderInfoLog(shader, sizeof(log), nullptr, log);
+        ALOGE("ANGLE-Hintergrundshader fehlgeschlagen: %s", log);
+        angle::DeleteShader(shader);
+        return 0;
+    }
+    return shader;
+}
+
+bool ensureBackgroundDepthProgram()
+{
+    if (gBackgroundDepthProgram) return true;
+
+    static const char *vertexSource =
+        "#version 300 es\n"
+        "void main() {\n"
+        "  vec2 p[4];\n"
+        "  p[0]=vec2(-1.0,-1.0); p[1]=vec2(1.0,-1.0);\n"
+        "  p[2]=vec2(-1.0,1.0);  p[3]=vec2(1.0,1.0);\n"
+        "  gl_Position=vec4(p[gl_VertexID],-0.9998,1.0);\n"
+        "}\n";
+    static const char *fragmentSource =
+        "#version 300 es\n"
+        "precision mediump float;\n"
+        "out vec4 color;\n"
+        "void main() { color=vec4(0.0); }\n";
+
+    GLuint vertex = compileBackgroundShader(GL_VERTEX_SHADER, vertexSource);
+    GLuint fragment = compileBackgroundShader(GL_FRAGMENT_SHADER, fragmentSource);
+    if (!vertex || !fragment) return false;
+
+    GLuint program = angle::CreateProgram();
+    angle::AttachShader(program, vertex);
+    angle::AttachShader(program, fragment);
+    angle::LinkProgram(program);
+    angle::DeleteShader(vertex);
+    angle::DeleteShader(fragment);
+
+    GLint linked = GL_FALSE;
+    angle::GetProgramiv(program, GL_LINK_STATUS, &linked);
+    if (!linked) {
+        GLchar log[1024] = {};
+        angle::GetProgramInfoLog(program, sizeof(log), nullptr, log);
+        ALOGE("ANGLE-Hintergrundprogramm fehlgeschlagen: %s", log);
+        return false;
+    }
+    gBackgroundDepthProgram = program;
+    return true;
+}
+
+void drawBackgroundDepth()
+{
+    if (!ensureBackgroundDepthProgram()) return;
+
+    GLint previousProgram = 0;
+    GLboolean previousColorMask[4] = { GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE };
+    angle::GetIntegerv(GL_CURRENT_PROGRAM, &previousProgram);
+    angle::GetBooleanv(GL_COLOR_WRITEMASK, previousColorMask);
+
+    // Das Quad schreibt ausschließlich einen sehr fernen Tiefenwert. Farbe
+    // kommt danach von JKXR; dessen 2D-Pässe brauchen selbst keine Tiefe zu
+    // schreiben und bleiben für den visionOS-Compositor trotzdem sichtbar.
+    angle::ColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+    angle::Enable(GL_DEPTH_TEST);
+    angle::DepthFunc(GL_ALWAYS);
+    angle::DepthMask(GL_TRUE);
+    angle::UseProgram(gBackgroundDepthProgram);
+    angle::DrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    angle::UseProgram((GLuint)previousProgram);
+    angle::ColorMask(previousColorMask[0], previousColorMask[1],
+                     previousColorMask[2], previousColorMask[3]);
+    angle::DepthFunc(GL_GREATER);
+    angle::DepthMask(GL_TRUE);
+}
 
 EGLDisplay gDisplay = EGL_NO_DISPLAY;
 
@@ -474,13 +642,29 @@ void TBXR_FrameSetup()
     ar_world_tracking_provider_t tracking =
         (__bridge ar_world_tracking_provider_t)TBXR_visionOS_GetWorldTracking();
     if (tracking) {
-        ar_world_tracking_provider_query_device_anchor_at_timestamp(
+        ar_device_anchor_query_status_t anchorStatus =
+            ar_world_tracking_provider_query_device_anchor_at_timestamp(
             tracking,
             cp_time_to_cf_time_interval(cp_frame_timing_get_trackable_anchor_time(actual)),
             anchor);
+        if (anchorStatus == ar_device_anchor_query_status_success) {
+            // Anker IMMER setzen — nicht abschaltbar.
+        //
+        // Gemessen: ohne ihn präsentiert der Compositor überhaupt nichts, es
+        // bleibt beim Passthrough. Er ist Pflicht, nicht Diagnose. Als cvar hat
+        // er nur Schaden angerichtet: einmal auf 0 gesetzt, blieb er über die
+        // Konfigurationsdatei erhalten und machte drei Läufe unbrauchbar.
         cp_drawable_set_device_anchor(gDrawable, anchor);
-        // ... und dieselbe Pose an die Engine, sonst hat sie keine Blickrichtung.
-        TBXR_GetHMDOrientation(anchor);
+            // ... und dieselbe Pose an die Engine, sonst hat sie keine Blickrichtung.
+            TBXR_GetHMDOrientation(anchor);
+        gHeadTransform = ar_device_anchor_get_origin_from_anchor_transform(anchor);
+        gHeadValid = true;
+        } else if (gFrameCounter < 3) {
+            // Ein frisch erzeugter, aber nicht befüllter Anchor darf nicht an
+            // den Compositor gehen. Ohne Statusprüfung sah er bisher wie eine
+            // echte (Identitäts-)Pose aus und machte die Diagnose unbrauchbar.
+            ALOGE("[Bild %d] keine gültige Kopfpose", gFrameCounter);
+        }
     }
 
     gCommandBuffer = [gQueue commandBuffer];
@@ -501,14 +685,44 @@ void TBXR_FrameSetup()
 
 void TBXR_prepareEyeBuffer(int eye)
 {
+    gCurrentEye = eye;
     TRACE("[Bild %d] prepareEyeBuffer Auge %d", gFrameCounter, eye);
     if (!gDrawable) return;
 
     id<MTLTexture> color = cp_drawable_get_color_texture(gDrawable, eye);
     id<MTLTexture> depth = cp_drawable_get_depth_texture(gDrawable, eye);
 
+    // The compositor imports below bypass gl4es and therefore also bypass its
+    // state cache.  Preserve the physical ANGLE texture binding; otherwise
+    // gl4es may later skip a logically redundant bind while ANGLE still has
+    // the imported depth texture bound.  Cinematic glTexSubImage2D calls then
+    // target that immutable external texture and fail with GL_INVALID_OPERATION.
+    GLint previousActiveTexture = GL_TEXTURE0;
+    GLint previousTexture2D = 0;
+    GLint previousDepthFunc = GL_LESS;
+    GLboolean previousDepthMask = GL_TRUE;
+    const GLboolean depthWasEnabled = angle::IsEnabled(GL_DEPTH_TEST);
+    angle::GetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
+    angle::GetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture2D);
+    angle::GetIntegerv(GL_DEPTH_FUNC, &previousDepthFunc);
+    angle::GetBooleanv(GL_DEPTH_WRITEMASK, &previousDepthMask);
+    const auto restoreTextureBinding = [&]() {
+        angle::ActiveTexture((GLenum)previousActiveTexture);
+        angle::BindTexture(GL_TEXTURE_2D, (GLuint)previousTexture2D);
+    };
+    const auto restoreDepthState = [&]() {
+        if (depthWasEnabled) angle::Enable(GL_DEPTH_TEST);
+        else angle::Disable(GL_DEPTH_TEST);
+        angle::DepthFunc((GLenum)previousDepthFunc);
+        angle::DepthMask(previousDepthMask);
+    };
+
     EyeImport &import = gEyes[eye];
-    if (!importTexture(color, 0, &import.colorTexture, &import.colorImage, "Farbe")) return;
+    if (!importTexture(color, 0, &import.colorTexture, &import.colorImage, "Farbe")) {
+        restoreTextureBinding();
+        restoreDepthState();
+        return;
+    }
 
     // Die Tiefe MUSS mit: visionOS nutzt sie für die Reprojektion und verwirft
     // sonst den kompletten Frame — lautlos, ohne Fehlermeldung. Das war der
@@ -527,6 +741,8 @@ void TBXR_prepareEyeBuffer(int eye)
     GLenum status = angle::CheckFramebufferStatus(GL_FRAMEBUFFER);
     if (status != GL_FRAMEBUFFER_COMPLETE) {
         ALOGE("Framebuffer unvollständig für Auge %d: 0x%04x", eye, status);
+        restoreTextureBinding();
+        restoreDepthState();
         return;
     }
 
@@ -543,17 +759,78 @@ void TBXR_prepareEyeBuffer(int eye)
         (__bridge const void *)cp_drawable_get_rasterization_rate_map(gDrawable, eye));
 
 
-    // Reversed-Z wie vom Compositor erwartet.
+    // Reversed-Z wie vom Compositor erwartet. visionOS behandelt Pixel, deren
+    // Tiefe exakt dem Clear-Wert 0 entspricht, als nicht belegt. Das betrifft
+    // insbesondere Menüs, HUD und Himmel, die selbst keine Tiefe schreiben.
+    // Deshalb bekommt die komplette Fläche zunächst eine minimale, aber
+    // gültige Hintergrundtiefe. Näher liegende 3D-Geometrie überschreibt sie.
     angle::Enable(GL_DEPTH_TEST);
     angle::DepthFunc(GL_GREATER);
     angle::DepthMask(GL_TRUE);
-    angle::ClearDepthf(0.0f);
+    angle::ClearDepthf(1.0e-4f);
+
+    const GLboolean scissorWasEnabled = angle::IsEnabled(GL_SCISSOR_TEST);
+    if (scissorWasEnabled) angle::Disable(GL_SCISSOR_TEST);
+    angle::Clear(GL_DEPTH_BUFFER_BIT);
+
+    // CompositorServices wertet nur tatsächlich von Geometrie beschriebene
+    // Tiefe als sichtbaren Inhalt. Ein Clear allein genügt im ANGLE-Pfad nicht.
+    drawBackgroundDepth();
+
+    // Expliziter Import-/FBO-Test: Farbe und Tiefe werden ausschließlich über
+    // ANGLE geschrieben. Der Client überspringt dabei den gesamten Renderer.
+    if (forceAngleClear()) {
+        angle::ClearColor(eye == 0 ? 0.0f : 0.0f,
+                          eye == 0 ? 0.45f : 0.1f,
+                          eye == 0 ? 0.1f : 0.55f, 1.0f);
+        angle::Clear(GL_COLOR_BUFFER_BIT);
+    }
+    if (scissorWasEnabled) angle::Enable(GL_SCISSOR_TEST);
+    restoreTextureBinding();
+    restoreDepthState();
+
+    // Asymmetrisches Sichtfeld ausgleichen — dieselben zwei Zeilen wie am Ende
+    // von TBXR_prepareEyeBuffer in der Android- und der Windows-Fassung.
+    //
+    // Sie fehlten hier bisher vollständig. Der Renderer verschiebt damit 2D-
+    // Inhalte (HUD, Menü, Video) pro Auge; siehe tr_cmds.cpp:117 und
+    // cg_drawtools.cpp:44. Ohne sie zeichnet er in beide Augen exakt dasselbe
+    // Bild, obwohl jede View der Vision Pro ein eigenes, nicht zentriertes
+    // Frustum hat — die Bilder laufen dann auseinander (links zu weit links,
+    // rechts zu weit rechts), und die Augen müssen nach außen schielen.
+    //
+    // Der Kommentar im Android-Original beschreibt genau diesen Fall: bei einem
+    // symmetrischen Sichtfeld (Pico) steht hier 0, bei einem asymmetrischen
+    // (Quest, und ebenso Vision Pro) wäre das HUD sonst stark verschoben.
+    //
+    // OpenXR liefert dort Winkel, unsere Projektionsmatrix Tangenten — daher
+    // atanf. Die Vorzeichen stimmen überein: tanLeft und tanDown sind negativ.
+    {
+        float tanLeft, tanRight, tanUp, tanDown;
+        if (VR_GetFovTangentsForEye(eye, &tanLeft, &tanRight, &tanUp, &tanDown)) {
+            vr.off_center_fov_x = -(atanf(tanLeft) + atanf(tanRight)) / 2.0f;
+            vr.off_center_fov_y = -(atanf(tanUp) + atanf(tanDown)) / 2.0f;
+        }
+    }
 }
 
 void TBXR_finishEyeBuffer(int eye)
 {
     TRACE("[Bild %d] finishEyeBuffer Auge %d", gFrameCounter, eye);
     if (!gDrawable) return;
+
+    // gl4es reports its logical default framebuffer as 0.  Query ANGLE
+    // directly here, after the engine rendered, to verify that the physical
+    // binding still points at the imported compositor framebuffer.
+    static int framebufferDiagnostics = 0;
+    if (eye == 0 && framebufferDiagnostics < 8) {
+        GLint actualFramebuffer = -1;
+        angle::GetIntegerv(GL_FRAMEBUFFER_BINDING, &actualFramebuffer);
+        const GLenum error = angle::GetError();
+        ALOGV("[ANGLE FBO] frame=%d actual=%d expected=%u error=0x%04x",
+              gFrameCounter, actualFramebuffer, gFramebuffer, error);
+        framebufferDiagnostics++;
+    }
 
     // glFinish, nicht glFlush.
     //
@@ -589,6 +866,80 @@ void TBXR_finishEyeBuffer(int eye)
     }
 }
 
+void TBXR_copyEyeBuffer(int sourceEye, int destinationEye)
+{
+    if (!gDrawable || !gCommandBuffer || sourceEye == destinationEye) return;
+
+    id<MTLTexture> sourceColor = cp_drawable_get_color_texture(gDrawable, sourceEye);
+    id<MTLTexture> destinationColor =
+        cp_drawable_get_color_texture(gDrawable, destinationEye);
+    id<MTLTexture> sourceDepth = cp_drawable_get_depth_texture(gDrawable, sourceEye);
+    id<MTLTexture> destinationDepth =
+        cp_drawable_get_depth_texture(gDrawable, destinationEye);
+    if (!sourceColor || !destinationColor || !sourceDepth || !destinationDepth) {
+        ALOGE("Screen-Layer konnte nicht von Auge %d nach %d kopiert werden",
+              sourceEye, destinationEye);
+        return;
+    }
+
+    static bool compareFirstCopy = true;
+    id<MTLDevice> device = cp_layer_renderer_get_device(gLayerRenderer);
+    id<MTLBuffer> sourceReadback = nil;
+    id<MTLBuffer> destinationReadback = nil;
+    NSUInteger readbackBytesPerRow = 0;
+    if (compareFirstCopy && sourceColor.pixelFormat == MTLPixelFormatRGBA16Float) {
+        compareFirstCopy = false;
+        NSUInteger alignment =
+            [device minimumLinearTextureAlignmentForPixelFormat:sourceColor.pixelFormat];
+        NSUInteger rawBytesPerRow = sourceColor.width * 8;
+        readbackBytesPerRow =
+            ((rawBytesPerRow + alignment - 1) / alignment) * alignment;
+        NSUInteger length = readbackBytesPerRow * sourceColor.height;
+        sourceReadback = [device newBufferWithLength:length
+                                             options:MTLResourceStorageModeShared];
+        destinationReadback = [device newBufferWithLength:length
+                                                  options:MTLResourceStorageModeShared];
+    }
+
+    id<MTLBlitCommandEncoder> blit = [gCommandBuffer blitCommandEncoder];
+    MTLSize colorSize = MTLSizeMake(sourceColor.width, sourceColor.height, 1);
+    [blit copyFromTexture:sourceColor sourceSlice:0 sourceLevel:0
+             sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:colorSize
+                toTexture:destinationColor destinationSlice:0 destinationLevel:0
+        destinationOrigin:MTLOriginMake(0, 0, 0)];
+
+    MTLSize depthSize = MTLSizeMake(sourceDepth.width, sourceDepth.height, 1);
+    [blit copyFromTexture:sourceDepth sourceSlice:0 sourceLevel:0
+             sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:depthSize
+                toTexture:destinationDepth destinationSlice:0 destinationLevel:0
+        destinationOrigin:MTLOriginMake(0, 0, 0)];
+
+    if (sourceReadback && destinationReadback) {
+        MTLSize readbackSize = MTLSizeMake(sourceColor.width, sourceColor.height, 1);
+        [blit copyFromTexture:sourceColor sourceSlice:0 sourceLevel:0
+                sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:readbackSize
+                   toBuffer:sourceReadback destinationOffset:0
+          destinationBytesPerRow:readbackBytesPerRow
+        destinationBytesPerImage:readbackBytesPerRow * sourceColor.height];
+        [blit copyFromTexture:destinationColor sourceSlice:0 sourceLevel:0
+                sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:readbackSize
+                   toBuffer:destinationReadback destinationOffset:0
+          destinationBytesPerRow:readbackBytesPerRow
+        destinationBytesPerImage:readbackBytesPerRow * destinationColor.height];
+    }
+    [blit endEncoding];
+
+    if (sourceReadback && destinationReadback) {
+        const NSUInteger length = readbackBytesPerRow * sourceColor.height;
+        [gCommandBuffer addCompletedHandler:^(id<MTLCommandBuffer>) {
+            const bool identical =
+                memcmp(sourceReadback.contents, destinationReadback.contents, length) == 0;
+            ALOGV("[Stereo-2D] Augentexturen nach Blit: %s (%lu Bytes)",
+                  identical ? "bytegleich" : "VERSCHIEDEN", (unsigned long)length);
+        }];
+    }
+}
+
 void TBXR_submitFrame()
 {
     TRACE("[Bild %d] submitFrame", gFrameCounter);
@@ -603,8 +954,9 @@ void TBXR_submitFrame()
     // ankommt.
     //
     // loadAction .clear schreibt die Farbe ohne jeden Zeichenaufruf; der
-    // Encoder wird sofort wieder beendet.
-    if (Cvar_VariableValue("vr_debug_metal_clear") != 0.0f) {
+    // Encoder wird sofort wieder beendet. Die Tiefe darf dabei nicht auf dem
+    // transparenten Compositor-Clear-Wert 0 bleiben.
+    if (forceMetalClear()) {
         const size_t views = cp_drawable_get_view_count(gDrawable);
         for (size_t v = 0; v < views; ++v) {
             MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
@@ -622,7 +974,7 @@ void TBXR_submitFrame()
                 pass.depthAttachment.texture = depth;
                 pass.depthAttachment.loadAction = MTLLoadActionClear;
                 pass.depthAttachment.storeAction = MTLStoreActionStore;
-                pass.depthAttachment.clearDepth = 0.0;   // Reversed-Z
+                pass.depthAttachment.clearDepth = 1.0e-4; // sichtbarer Fernwert bei Reversed-Z
             }
 
             id<MTLRenderCommandEncoder> enc =
@@ -632,6 +984,15 @@ void TBXR_submitFrame()
     }
 
     cp_drawable_encode_present(gDrawable, gCommandBuffer);
+
+    if (gFrameCounter < 3) {
+        cp_time_t deadline = cp_frame_timing_get_rendering_deadline(
+            cp_drawable_get_frame_timing(gDrawable));
+        const double slackMs = (cp_time_to_cf_time_interval(deadline)
+                              - CACurrentMediaTime()) * 1000.0;
+        ALOGV("[Bild %d] %.2f ms bis zur Rendering-Deadline",
+              gFrameCounter, slackMs);
+    }
     [gCommandBuffer commit];
 
     // Metal selbst fragen, statt weiter zu vermuten.
@@ -644,12 +1005,19 @@ void TBXR_submitFrame()
     // Nur für die ersten Bilder: waitUntilCompleted wirft die Parallelität weg.
     if (gFrameCounter < 3) {
         [gCommandBuffer waitUntilCompleted];
+        cp_time_t completedDeadline = cp_frame_timing_get_rendering_deadline(
+            cp_drawable_get_frame_timing(gDrawable));
+        const double completedSlackMs =
+            (cp_time_to_cf_time_interval(completedDeadline)
+             - CACurrentMediaTime()) * 1000.0;
         ALOGV("[Bild %d] CommandBuffer Status %ld%s%s",
               gFrameCounter,
               (long)gCommandBuffer.status,
               gCommandBuffer.error ? " FEHLER: " : "",
               gCommandBuffer.error
                   ? [[gCommandBuffer.error localizedDescription] UTF8String] : "");
+        ALOGV("[Bild %d] GPU %.2f ms vor Deadline fertig",
+              gFrameCounter, completedSlackMs);
     }
     cp_frame_end_submission(gFrame);
 
@@ -728,14 +1096,6 @@ float VR_GetEyeStereoSeparation(int eye)
     simd_float4x4 rt = cp_view_get_transform(right);
     float separation = simd_distance(lt.columns[3].xyz, rt.columns[3].xyz);
     return (eye == 0) ? -separation * 0.5f : separation * 0.5f;
-}
-
-bool VR_UseScreenLayer()
-{
-    // Menüs und Videosequenzen zeichnet JKXR auf eine flache Ebene. Das läuft
-    // hier über denselben Renderpfad, eine gesonderte Compositor-Ebene gibt es
-    // nicht.
-    return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -987,3 +1347,159 @@ void QuatToYawPitchRoll(XrQuaternionf q, vec3_t rotation, vec3_t out) {
 	GetAnglesFromVectors(forwardNormal, rightNormal, upNormal, out);
 }
 
+
+// ---------------------------------------------------------------------------
+// 2D auf einer virtuellen Wand
+//
+// Android übergibt 2D-Inhalt als Quad-Layer, das der Compositor in 5,5 m
+// Entfernung im Raum platziert und für beide Augen selbst ableitet. Auf
+// visionOS gibt es kein Quad-Layer.
+//
+// Statt den Inhalt orthographisch flach in beide Augenpuffer zu zeichnen —
+// was ihn ins Unendliche legt und die Bilder auseinanderlaufen lässt — spannen
+// wir eine Wand in echter Entfernung auf und zeichnen sie mit der ECHTEN
+// Projektion des jeweiligen Auges. Damit ergibt sich die Disparität aus der
+// Geometrie statt aus einem Stellwert wie cg_hudStereo.
+//
+// Kopfgekoppelt, nicht weltfest: die Wand folgt dem Blick. Android rastet sie
+// dagegen auf eine Position ein (hmdorientation_snap). Das wäre der nächste
+// Schritt, sobald die Geometrie stimmt.
+// ---------------------------------------------------------------------------
+
+extern "C" bool VR_GetScreenWall(int eye, float *projection16, float *modelview16)
+{
+    if (!gDrawable) return false;
+    if (eye < 0 || eye > 1) eye = 0;
+
+    // Entfernung und Breite der Wand in Metern, zur Laufzeit einstellbar.
+    // TESTWEISE FEST: 6 m Entfernung, 6 m breit.
+    //
+    // Die Frage ist nicht, ob die Werte stimmen, sondern ob diese Matrizen
+    // überhaupt beim Zeichnen ankommen. Bleibt das Video bei diesen Werten
+    // unverändert groß und an derselben Stelle, wird die Matrix unterwegs
+    // überschrieben oder ignoriert — dann suche ich im Renderpfad weiter und
+    // nicht in der Rechnung.
+    float distance = 2.0f;
+    float width = 2.4f;
+    const float height = width * (480.0f / 640.0f);
+
+    // Projektion des Auges, unverändert übernommen.
+    simd_float4x4 proj = cp_drawable_compute_projection(
+        gDrawable, cp_axis_direction_convention_right_up_back, eye);
+    memcpy(projection16, &proj, sizeof(float) * 16);
+
+    // Wand einmal einrasten, dann im Raum stehen lassen.
+    //
+    // Ohne das dreht sich das Bild mit dem Kopf mit — es klebt am Blick statt
+    // in der Welt zu hängen. Android macht dasselbe über hmdposition_snap und
+    // hmdorientation_snap.
+    //
+    // Eingerastet wird die aktuelle Kopfposition plus die auf die Horizontale
+    // projizierte Blickrichtung: die Wand steht damit senkrecht, auch wenn man
+    // beim Einrasten nach oben oder unten geschaut hat.
+    if (!gWallSnapped && gHeadValid) {
+        simd_float3 headPos = gHeadTransform.columns[3].xyz;
+        simd_float3 forward = -gHeadTransform.columns[2].xyz;
+        forward.y = 0.0f;
+        if (simd_length(forward) < 1e-4f) {
+            forward = (simd_float3){0.0f, 0.0f, -1.0f};   // senkrecht geschaut
+        }
+        forward = simd_normalize(forward);
+
+        const simd_float3 up = (simd_float3){0.0f, 1.0f, 0.0f};
+        const simd_float3 right = simd_normalize(simd_cross(up, -forward));
+
+        // TEST: Wand im Gerätekoordinatensystem, 2 m geradeaus.
+        gWallTransform = matrix_identity_float4x4;
+        gWallTransform.columns[3] = (simd_float4){0.0f, 0.0f, -distance, 1.0f};
+        gWallSnapped = true;
+        (void)headPos; (void)forward; (void)right; (void)up;
+    }
+
+    // Bildschirmkoordinaten (0..640, 0..480) in Wandkoordinaten (Meter):
+    //   x = (sx/640 - 0.5) * width
+    //   y = (0.5 - sy/480) * height      (y läuft in 2D nach unten)
+    simd_float4x4 scale = matrix_identity_float4x4;
+    scale.columns[0].x =  width / 640.0f;
+    scale.columns[1].y = -height / 480.0f;
+    scale.columns[3].x = -width * 0.5f;
+    scale.columns[3].y =  height * 0.5f;
+
+    // modelview = Auge-aus-Welt * Welt-aus-Wand * Skalierung
+    //
+    // cp_view_get_transform liefert Gerät-aus-Auge, NICHT Welt-aus-Auge — die
+    // Transformation ist relativ zum Geräteanker. Ohne die Kopftransformation
+    // davor fehlt die Kopfposition vollständig: die Wand folgt dann dem Kopf
+    // statt im Raum zu stehen, und sie sitzt um die Kopfhöhe zu tief.
+    //
+    // In S4 stand dafür deviceAnchor.originFromAnchorTransform * view.transform.
+    // Umschaltbar, weil die Messung beides widerlegt hat: OHNE die
+    // Kopftransformation folgte die Wand dem Kopf und saß um die Kopfhöhe zu
+    // tief; MIT ihr stimmt die Höhe, aber das Bild dreht sich mit etwa
+    // doppelter Geschwindigkeit — ein klassisches Zeichen dafür, dass eine
+    // Transformation zweimal angewandt wird.
+    //
+    // Wahrscheinlich enthält cp_view_get_transform die Kopfpose bereits, seit
+    // cp_drawable_set_device_anchor gesetzt ist, und nur die Translation fehlte.
+    // Deshalb hier drei Varianten zum Messen statt einer Vermutung:
+    //   0 = nur die View-Transformation      (Rotation einfach)
+    //   1 = Kopf * View                      (Rotation doppelt, Höhe richtig)
+    //   2 = nur die Kopf-TRANSLATION * View  (Rotation einfach, Höhe richtig)
+    // Fest verdrahtet, keine cvar mehr.
+    //
+    // Die Messung hat gezeigt: cp_view_get_transform enthält nur den
+    // Augenversatz (32 mm seitlich), keine Kopfpose — die Blickrichtung dort
+    // ist glatt (0,0,-1), während der Kopf tatsächlich geneigt war. Also ist
+    // Kopf * View die richtige Formel, das Lehrbuchmuster von
+    // CompositorServices.
+    //
+    // Die Umschaltbarkeit über eine cvar hat nur Verwirrung gestiftet: der Wert
+    // stand aus der Konfigurationsdatei auf 2 und ließ sich nicht zuverlässig
+    // überschreiben.
+    simd_float4x4 viewTf = cp_view_get_transform(cp_drawable_get_view(gDrawable, eye));
+
+    // TEST: kopfrelativ rendern statt weltfest.
+    //
+    // Unsere weltfeste Rechnung ist nachweislich richtig — die Wandmitte
+    // wandert im Augenraum um genau den Winkel, um den sich der Kopf dreht.
+    // Trotzdem bewegt sich das Bild doppelt so schnell. Also wendet der
+    // Compositor die Kopfpose über den Anker ein zweites Mal an.
+    //
+    // Prüfung: Wand fest im GERÄTE-Koordinatensystem (2 m geradeaus, dreht sich
+    // mit dem Kopf), Matrix ohne Kopftransformation. Macht der Compositor
+    // daraus ein weltfestes Bild, ist bewiesen, dass er den Anker anwendet —
+    // und dann ist kopfrelativ die richtige Art zu rendern.
+    simd_float4x4 originFromView = viewTf;
+
+    simd_float4x4 viewFromOrigin = simd_inverse(originFromView);
+    simd_float4x4 mv = simd_mul(simd_mul(viewFromOrigin, gWallTransform), scale);
+    memcpy(modelview16, &mv, sizeof(float) * 16);
+
+    // Kernfrage, direkt gemessen: enthält die fertige Modelview-Matrix die
+    // Kopfdrehung? Wenn ja, muss sich der Wandmittelpunkt im Augenraum beim
+    // Kopfdrehen bewegen. Bleibt er stehen, fehlt die Rotation — dann liegt es
+    // nicht am Compositor, sondern an unserer Rechnung.
+    //
+    // Ausgegeben wird die Wandmitte (Bildschirmmitte 320/240) im Augenraum.
+    static int frame = 0;
+    if (eye == 0 && (++frame % 30) == 0) {
+        simd_float4 centre = simd_mul(mv, (simd_float4){320.0f, 240.0f, 0.0f, 1.0f});
+        ALOGV("[Wand] Kopf vorwaerts %.3f %.3f %.3f  ->  Wandmitte im Auge %.3f %.3f %.3f",
+              -gHeadTransform.columns[2].x, -gHeadTransform.columns[2].y,
+              -gHeadTransform.columns[2].z, centre.x, centre.y, centre.z);
+    }
+
+    return true;
+}
+
+/// Lässt die Wand beim nächsten Bild neu einrasten — etwa wenn Menü oder
+/// Video neu geöffnet werden, damit sie wieder vor dem Spieler steht.
+extern "C" void VR_ResnapScreenWall(void)
+{
+    gWallSnapped = false;
+}
+
+extern "C" int VR_GetCurrentEye(void)
+{
+    return gCurrentEye;
+}

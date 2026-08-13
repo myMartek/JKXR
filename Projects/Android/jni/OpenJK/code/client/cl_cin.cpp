@@ -1750,6 +1750,7 @@ CIN_DrawCinematic
 void CIN_DrawCinematic (int handle) {
 	float	x, y, w, h;
 	byte	*buf;
+	static int visionOSDiagnosticFrames = 0;
 
 	if (handle < 0 || handle>= MAX_VIDEO_HANDLES || cinTable[handle].status == FMV_EOF) return;
 
@@ -1762,6 +1763,26 @@ void CIN_DrawCinematic (int handle) {
 	w = cinTable[handle].width;
 	h = cinTable[handle].height;
 	buf = cinTable[handle].buf;
+
+#if defined(JKXR_VISIONOS)
+	if (visionOSDiagnosticFrames < 90 && visionOSDiagnosticFrames % 30 == 0) {
+		const int pixels = cinTable[handle].drawX * cinTable[handle].drawY;
+		unsigned int maxRGB = 0;
+		int visiblyNonBlack = 0;
+		for (int pixel = 0; pixel < pixels; ++pixel) {
+			const byte *rgba = buf + pixel * 4;
+			const unsigned int rgb = rgba[0] + rgba[1] + rgba[2];
+			if (rgb > maxRGB) maxRGB = rgb;
+			if (rgb > 12) visiblyNonBlack++;
+		}
+		Com_Printf("[Cinematic] frame=%d handle=%d decoded=%dx%d draw=%dx%d dirty=%d maxRGBSum=%u nonBlack=%d/%d\n",
+			visionOSDiagnosticFrames, handle,
+			cinTable[handle].CIN_WIDTH, cinTable[handle].CIN_HEIGHT,
+			cinTable[handle].drawX, cinTable[handle].drawY,
+			cinTable[handle].dirty, maxRGB, visiblyNonBlack, pixels);
+	}
+	visionOSDiagnosticFrames++;
+#endif
 
 	if (cinTable[handle].dirty && (cinTable[handle].CIN_WIDTH != cinTable[handle].drawX || cinTable[handle].CIN_HEIGHT != cinTable[handle].drawY)) {
 		int *buf2;
@@ -1777,7 +1798,15 @@ void CIN_DrawCinematic (int handle) {
 		return;
 	}
 
+	// The visionOS compositor renders the fullscreen cinematic on its own
+	// screen-layer cadence.  Do not let the legacy dirty flag suppress the
+	// upload: the RoQ decoder reuses the same CPU buffer, so a stale scratch
+	// texture otherwise remains on the GPU even though the buffer has advanced.
+#if defined(JKXR_VISIONOS)
+	re.DrawStretchRaw( x, y, w, h, cinTable[handle].drawX, cinTable[handle].drawY, buf, handle, qtrue);
+#else
 	re.DrawStretchRaw( x, y, w, h, cinTable[handle].drawX, cinTable[handle].drawY, buf, handle, cinTable[handle].dirty);
+#endif
 	cinTable[handle].dirty = qfalse;
 }
 
@@ -2172,5 +2201,3 @@ qboolean CL_InGameCinematicOnStandBy(void)
 {
 	return qbInGameCinematicOnStandBy;
 }
-
-

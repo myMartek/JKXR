@@ -472,6 +472,28 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 	}
 }
 
+#if defined(JKXR_VISIONOS)
+bool VR_UseScreenLayer()
+{
+	const bool inGameCinematic =
+		CL_IsRunningInGameCinematic() || CL_InGameCinematicOnStandBy();
+
+	vr.using_screen_layer = _UI_IsFullscreen() ||
+		(bool)((vr.cin_camera && !vr.immersive_cinematics) ||
+			vr.misc_camera ||
+			(inGameCinematic && !vr.immersive_cinematics) ||
+			cls.state == CA_DISCONNECTED ||
+			cls.state == CA_CHALLENGING ||
+			cls.state == CA_CONNECTING ||
+			cls.state == CA_CINEMATIC ||
+			cls.state == CA_LOADING ||
+			cls.state == CA_PRIMED ||
+			(Key_GetCatcher() & KEYCATCH_UI) ||
+			(Key_GetCatcher() & KEYCATCH_CONSOLE));
+	return vr.using_screen_layer;
+}
+#endif
+
 /*
 ==================
 SCR_UpdateScreen
@@ -507,20 +529,78 @@ void SCR_UpdateScreen( void ) {
 
 		if ( useScreenLayer )
 		{
+#if defined(JKXR_VISIONOS)
+			// Screen-Layer über den Stereo-Replay.
+			//
+			// Android übergibt 2D-Inhalt als Quad-Layer, das der Compositor in
+			// 5,5 m Entfernung platziert und selbst für beide Augen ableitet.
+			// Auf visionOS gibt es kein Quad-Layer.
+			//
+			// JKXR hat für genau diesen Fall bereits eine Lösung, die der
+			// PCVR-Zweig nutzt: den Inhalt einmal zeichnen, die Befehle
+			// aufzeichnen und pro Auge mit Versatz erneut abspielen
+			// (R_VR_GetHudReplayOffset, cg_hudStereo). Nur so entsteht
+			// Disparität — zweimal dasselbe zu zeichnen legt den Inhalt ins
+			// Unendliche, und die Bilder laufen auseinander.
+			// Videos NICHT über den Replay.
+			//
+			// RE_StretchRaw zeichnet sofort und landet nie in der
+			// aufgezeichneten Befehlsliste; ein Replay würde das Videobild also
+			// gar nicht enthalten. Für Videosequenzen deshalb pro Auge zeichnen,
+			// damit tr.currentStereoFrame gesetzt ist und der Versatz dort
+			// greift (siehe tr_draw.cpp, RE_StretchRaw).
+			const bool cinematicActive =
+				(cls.state == CA_CINEMATIC) || CL_IsRunningInGameCinematic() ||
+				CL_InGameCinematicOnStandBy();
+
+			qboolean replayedScreen = qfalse;
+			if ( !cinematicActive &&
+				 re.VR_BeginStereoReplayCapture && re.VR_ReplayStereoFrame &&
+				 re.VR_BeginStereoReplayCapture() )
+			{
+				SCR_DrawScreenField( STEREO_CENTER );
+
+				qboolean replayFailed = qfalse;
+				for ( int eye = 0; eye < 2; ++eye )
+				{
+					TBXR_prepareEyeBuffer( eye );
+					if ( !re.VR_ReplayStereoFrame( eye == 0 ? STEREO_LEFT : STEREO_RIGHT,
+												   eye == 1 ? qtrue : qfalse ) )
+					{
+						TBXR_finishEyeBuffer( eye );
+						if ( re.VR_CancelStereoReplayCapture )
+						{
+							re.VR_CancelStereoReplayCapture();
+						}
+						replayFailed = qtrue;
+						break;
+					}
+					TBXR_finishEyeBuffer( eye );
+				}
+				replayedScreen = replayFailed ? qfalse : qtrue;
+			}
+
+			// Rückfall: zweimal zeichnen, ohne Versätze. Nicht fusionierbar,
+			// aber besser als ein leeres Bild, falls die Aufzeichnung scheitert.
+			if ( !replayedScreen )
+			{
+				for (int eye = 0; eye < 2; ++eye)
+				{
+					TBXR_prepareEyeBuffer(eye);
+					SCR_DrawScreenField(eye == 0 ? STEREO_LEFT : STEREO_RIGHT);
+					re.EndFrame(NULL, NULL);
+					TBXR_finishEyeBuffer(eye);
+				}
+			}
+#else
 			TBXR_prepareEyeBuffer(0);
-
-			SCR_DrawScreenField( STEREO_CENTER );
-
+			SCR_DrawScreenField(STEREO_CENTER);
 			if (com_speeds->integer)
-			{
 				re.EndFrame(&time_frontend, &time_backend);
-			}
 			else
-			{
 				re.EndFrame(NULL, NULL);
-			}
-
 			TBXR_finishEyeBuffer(0);
+#endif
 		}
 		else if ( skippingCin )
 		{
@@ -679,5 +759,3 @@ void  SCR_TempRawImage_CleanUp()
 	re.TempRawImage_CleanUp();
 }
 #endif
-
-

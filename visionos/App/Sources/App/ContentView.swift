@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var assets = AssetStore.status()
     @State private var importing = false
     @State private var progress: String?
+    @State private var didAutoStart = false
 
     var body: some View {
         VStack(spacing: 20) {
@@ -70,6 +71,17 @@ struct ContentView: View {
             // sichtbar und man kann hineinkopieren.
             AssetStore.prepare()
             assets = AssetStore.status()
+
+            // Hardware-Diagnose ohne UI-Automation. devicectl kann die App mit
+            // JKXR_AUTO_START=1 starten; im normalen App-Start ist die Variable
+            // nicht gesetzt und das Fenster verhält sich unverändert.
+            if !didAutoStart,
+               ProcessInfo.processInfo.environment["JKXR_AUTO_START"] == "1",
+               case .ready = assets {
+                didAutoStart = true
+                print("[JKXR] Diagnose-Autostart des Immersive Space")
+                _ = await openImmersiveSpace(id: "game")
+            }
         }
         // Der verlässliche Weg. Das Navigieren in der Dateien-App hängt davon
         // ab, dass der Ordner dort auftaucht; dieser Dialog nicht.

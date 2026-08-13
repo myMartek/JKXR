@@ -991,17 +991,55 @@ RB_SetGL2D
 
 ================
 */
+#if defined(JKXR_VISIONOS)
+extern "C" bool VR_GetScreenWall( int eye, float *projection16, float *modelview16 );
+extern "C" int  VR_GetCurrentEye( void );
+#endif
+
 void	RB_SetGL2D (void) {
 	backEnd.projection2D = qtrue;
 
 	// set 2D virtual screen size
 	qglViewport( 0, 0, glConfig.vidWidth, glConfig.vidHeight );
 	qglScissor( 0, 0, glConfig.vidWidth, glConfig.vidHeight );
+
+#if defined(JKXR_VISIONOS)
+	// 2D auf einer virtuellen Wand statt flach im Bildpuffer.
+	//
+	// Hier laufen ALLE 2D-Inhalte durch: Menü, HUD und Video. Ein
+	// orthographisches qglOrtho zeichnet sie in beide Augen identisch, womit
+	// sie im Unendlichen liegen und die Bilder auseinanderlaufen.
+	//
+	// Stattdessen die echte Projektion des jeweiligen Auges und eine Wand in
+	// einstellbarer Entfernung (vr_screen_wall_dist, vr_screen_wall_width).
+	// Die Disparität ergibt sich dann aus der Geometrie, nicht aus einem
+	// Stellwert. Android erreicht dasselbe über ein Quad-Layer, das es auf
+	// visionOS nicht gibt.
+	{
+		float proj[16], mv[16];
+		if ( VR_GetScreenWall( VR_GetCurrentEye(), proj, mv ) )
+		{
+			qglMatrixMode( GL_PROJECTION );
+			qglLoadMatrixf( proj );
+			qglMatrixMode( GL_MODELVIEW );
+			qglLoadMatrixf( mv );
+		}
+		else
+		{
+			qglMatrixMode( GL_PROJECTION );
+			qglLoadIdentity();
+			qglOrtho( 0, 640, 480, 0, 0, 1 );
+			qglMatrixMode( GL_MODELVIEW );
+			qglLoadIdentity();
+		}
+	}
+#else
 	qglMatrixMode(GL_PROJECTION);
     qglLoadIdentity ();
 	qglOrtho (0, 640, 480, 0, 0, 1);
 	qglMatrixMode(GL_MODELVIEW);
     qglLoadIdentity ();
+#endif
 
 	GL_State( GLS_DEPTHTEST_DISABLE |
 			  GLS_SRCBLEND_SRC_ALPHA |

@@ -93,7 +93,9 @@ if(BUILD_ENGINE)
     # Bibliotheken sind PUBLIC, werden also mitvererbt — sonst findet etwa der
     # Renderer jpeglib.h nicht.
     target_link_libraries(rd-gles-ja_arm PUBLIC libpng libjpeg)
+    target_compile_definitions(rd-gles-ja_arm PRIVATE JKXR_VISIONOS=1)
     target_link_libraries(openjk_ja PUBLIC sigc libzip libpng libminizip)
+    target_compile_definitions(openjk_ja PRIVATE JKXR_VISIONOS=1)
 
     # Die visionOS-XR-Schicht: Gegenstück zu android/TBXR_Common.cpp.
     # Objective-C++, weil CompositorServices, Metal und ARKit angesprochen

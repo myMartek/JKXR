@@ -22,6 +22,7 @@
 #include "game/g_vehicles.h"
 
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 void VR_Init()
@@ -101,10 +102,21 @@ void VR_Init()
 
     vr.menu_right_handed = vr_control_scheme->integer == 0;
 
-    // Fehlersuche: färbt die Augenpuffer ein, bevor die Engine zeichnet.
-    // Standardmäßig an, solange das Bild noch nicht steht.
-    Cvar_Get ("vr_debug_clear", "1", CVAR_ARCHIVE);
-    Cvar_Get ("vr_debug_metal_clear", "1", CVAR_ARCHIVE);
+    // Nur für explizite Diagnoseläufe; darf nie in der Spielkonfiguration
+    // archiviert werden oder einen normalen Start übermalen.
+    Cvar_Get ("vr_debug_metal_clear_only", "0", 0);
+    Cvar_Get ("vr_debug_angle_clear_only", "0", 0);
+    const char *forceMetal = getenv("JKXR_FORCE_METAL_CLEAR");
+    if (forceMetal && forceMetal[0] != '\0' && strcmp(forceMetal, "0") != 0) {
+        // Der normale Debug-Clear läuft erst NACH zwei vollständigen Engine-
+        // Renderpässen. Für die Compositor-Diagnose muss dieser Aufwand weg,
+        // sonst kann ein korrektes Metal-Bild trotzdem die Deadline verpassen.
+        Cvar_Set("vr_debug_metal_clear_only", "1");
+    }
+    const char *forceAngle = getenv("JKXR_FORCE_ANGLE_CLEAR");
+    if (forceAngle && forceAngle[0] != '\0' && strcmp(forceAngle, "0") != 0) {
+        Cvar_Set("vr_debug_angle_clear_only", "1");
+    }
 
     Cvar_Get ("openXRHMD", gAppState.OpenXRHMD, CVAR_ARCHIVE);
 }

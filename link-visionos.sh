@@ -84,7 +84,7 @@ xcrun --sdk xros clang++ -target arm64-apple-xros2.0 -o "$OUT" \
     "$BUILD/liblibzip.a" "$BUILD/liblibminizip.a" "$BUILD/libsigc.a" \
     -F"$ANGLE" -framework libEGL -framework libGLESv2 \
     -lz \
-    -framework Foundation -framework Metal -framework ARKit \
+    -framework Foundation -framework Metal -framework QuartzCore -framework ARKit \
     -framework CompositorServices -framework AudioToolbox \
     -framework AVFoundation -framework GameController -framework UIKit
 

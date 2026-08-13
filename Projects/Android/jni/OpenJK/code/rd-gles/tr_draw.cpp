@@ -39,6 +39,12 @@ Used for cinematics.
 // param 'bDirty' should be true 99% of the time
 void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, const byte *data, int iClient, qboolean bDirty )
 {
+	#if defined(JKXR_VISIONOS)
+	static int cinematicDrawDiagnostics = 0;
+	const qboolean diagnose = cinematicDrawDiagnostics < 12 ? qtrue : qfalse;
+	while (diagnose && qglGetError() != GL_NO_ERROR) {}
+	#endif
+
 	if ( !tr.registered ) {
 		return;
 	}
@@ -51,6 +57,9 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, const byte *
 
 	// we definately want to sync every frame for the cinematics
 	qglFinish();
+	#if defined(JKXR_VISIONOS)
+	GLenum finishError = diagnose ? qglGetError() : GL_NO_ERROR;
+	#endif
 
 #ifdef TIMEBIND
 	int start, end;
@@ -63,6 +72,9 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, const byte *
 	}
 
 	GL_Bind( tr.scratchImage[iClient] );
+	#if defined(JKXR_VISIONOS)
+	GLenum bindError = diagnose ? qglGetError() : GL_NO_ERROR;
+	#endif
 
 	// if the scratchImage isn't in the format we want, specify it as a new texture...
 	//
@@ -123,23 +135,61 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, const byte *
 	#endif
 		}
 	}
+	#if defined(JKXR_VISIONOS)
+	GLenum uploadError = diagnose ? qglGetError() : GL_NO_ERROR;
+	#endif
 
 
 	extern void	RB_SetGL2D (void);
+#if defined(JKXR_VISIONOS)
+	// Immer neu setzen, nicht nur beim ersten Mal.
+	//
+	// backEnd.projection2D bleibt über das ganze Bild gesetzt. Auf flachen
+	// Bildschirmen ist das eine sinnvolle Ersparnis — die 2D-Projektion ändert
+	// sich dort nie. Hier schon: RB_SetGL2D holt für visionOS die Projektion
+	// des AKTUELLEN Auges und die aktuelle Kopfpose. Wird sie nur einmal
+	// gesetzt, bekommt das zweite Auge die Matrix des ersten, und beim nächsten
+	// Bild steht noch die vom vorigen — die Wand klebt dann am Blick.
+	RB_SetGL2D();
+#else
 	if (!backEnd.projection2D)
 	{
 		RB_SetGL2D();
 	}
+#endif
 	qglColor3f( tr.identityLight, tr.identityLight, tr.identityLight );
 
 #ifdef HAVE_GLES
 	qglColor4f( tr.identityLight, tr.identityLight, tr.identityLight, 1.0f );
+#if defined(JKXR_VISIONOS)
+	// V-Koordinaten getauscht: das Video stand sonst auf dem Kopf.
+	//
+	// RoQ liefert die Bilddaten zeilenweise von oben nach unten, OpenGL legt
+	// den Texturursprung aber unten links. Auf den anderen Plattformen gleicht
+	// sich das an anderer Stelle aus; in unserem Pfad — Immediate Mode über
+	// gl4es, dann ANGLE, dann Metal — nicht.
+	//
+	// Nur der Videopfad, nicht die gesamte Oberfläche: die steht richtig herum.
+	// Ein globaler Y-Flip (etwa über glClipControlEXT, das ANGLE exportiert)
+	// würde sie mitdrehen und wäre deshalb falsch.
+	GLfloat tex[] = {
+	 0.5 / cols, ( rows - 0.5 ) / rows,
+	 ( cols - 0.5 ) / cols, ( rows - 0.5 ) / rows,
+	 ( cols - 0.5 ) / cols, 0.5 / rows,
+	 0.5 / cols, 0.5 / rows
+	};
+#else
 	GLfloat tex[] = {
 	 0.5 / cols,  0.5 / rows,
 	 ( cols - 0.5 ) / cols ,  0.5 / rows,
 	 ( cols - 0.5 ) / cols, ( rows - 0.5 ) / rows,
 	 0.5 / cols, ( rows - 0.5 ) / rows
 	};
+#endif
+// Kein Versatz von Hand mehr: RB_SetGL2D setzt für visionOS die echte
+	// Projektion des Auges und eine Wand in fester Entfernung, damit stimmt die
+	// Disparität geometrisch. Der frühere ±cg_hudStereo-Versatz hier wäre
+	// doppelt gemoppelt.
 	GLfloat vtx[] = {
 	 x, y,
 	 x + w, y,
@@ -155,6 +205,17 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, const byte *
 	qglTexCoordPointer( 2, GL_FLOAT, 0, tex );
 	qglVertexPointer  ( 2, GL_FLOAT, 0, vtx );
 	qglDrawArrays( GL_TRIANGLE_FAN, 0, 4 );
+#if defined(JKXR_VISIONOS)
+	if (diagnose) {
+		GLint framebuffer = -1;
+		qglGetIntegerv(0x8CA6 /* GL_FRAMEBUFFER_BINDING */, &framebuffer);
+		GLenum drawError = qglGetError();
+		ri.Printf(PRINT_ALL,
+			"[Cinematic GL] dirty=%d fbo=%d finish=0x%04x bind=0x%04x upload=0x%04x draw=0x%04x\n",
+			bDirty, framebuffer, finishError, bindError, uploadError, drawError);
+		cinematicDrawDiagnostics++;
+	}
+#endif
 	if (glcol)
 		qglEnableClientState(GL_COLOR_ARRAY);
 	if (!text)
@@ -1068,4 +1129,3 @@ qboolean RE_InitDissolve(qboolean bForceCircularExtroWipe)
 
 	return bReturn;
 }
-
