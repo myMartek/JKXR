@@ -1,0 +1,389 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		18122BF354D28ADB51F94A63 /* libGLESv2.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FA12E523E340FEA71E6FA7C0 /* libGLESv2.framework */; };
+		368A53BEA92B4E1DAE469734 /* WorldTracking.m in Sources */ = {isa = PBXBuildFile; fileRef = 40E4386F40A16FF2D112B627 /* WorldTracking.m */; };
+		40BC6F5041D521B791E3FE53 /* AngleBridge.c in Sources */ = {isa = PBXBuildFile; fileRef = F7BEE25D9141AD2B40FB361E /* AngleBridge.c */; };
+		48E72E6BE2FF69EF8918EAB3 /* libGLESv2.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = FA12E523E340FEA71E6FA7C0 /* libGLESv2.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		7197778DD14A550DC4626FC1 /* libEGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 63D4B8E4A26A48D82F8DCE60 /* libEGL.framework */; };
+		78CA5C5899D378FF4C88CE1D /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47635BCC2BCC1CC1C5751D4 /* ContentView.swift */; };
+		78D555D5C95FDB660899D176 /* libEGL.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 63D4B8E4A26A48D82F8DCE60 /* libEGL.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		BCEEB8B7CE0E2A32AC9FF1E8 /* EngineHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06BB71B3A0F665691FF899FB /* EngineHost.swift */; };
+		FE04998D8653339058EDA0AB /* JKXRApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12FC913F54114EA867076FDC /* JKXRApp.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		FDB8E49709BAEABB8007FC1C /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				78D555D5C95FDB660899D176 /* libEGL.framework in Embed Frameworks */,
+				48E72E6BE2FF69EF8918EAB3 /* libGLESv2.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		06BB71B3A0F665691FF899FB /* EngineHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineHost.swift; sourceTree = "<group>"; };
+		12FC913F54114EA867076FDC /* JKXRApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JKXRApp.swift; sourceTree = "<group>"; };
+		33D840871EDE1EC635691BD3 /* AngleBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AngleBridge.h; sourceTree = "<group>"; };
+		40E4386F40A16FF2D112B627 /* WorldTracking.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WorldTracking.m; sourceTree = "<group>"; };
+		63D4B8E4A26A48D82F8DCE60 /* libEGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = libEGL.framework; path = Frameworks/libEGL.framework; sourceTree = "<group>"; };
+		6F7B01FB19B5941154702D36 /* JKXR-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "JKXR-Bridging-Header.h"; sourceTree = "<group>"; };
+		959BE1DE7DBFE94ACDC8E10F /* JKXR.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = JKXR.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E47635BCC2BCC1CC1C5751D4 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		EF7A3D96492B916A30A6FE3E /* JKXRBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = JKXRBridge.h; sourceTree = "<group>"; };
+		F7BEE25D9141AD2B40FB361E /* AngleBridge.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = AngleBridge.c; sourceTree = "<group>"; };
+		FA12E523E340FEA71E6FA7C0 /* libGLESv2.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = libGLESv2.framework; path = Frameworks/libGLESv2.framework; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B69A72AA6F9B7C29E318E617 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7197778DD14A550DC4626FC1 /* libEGL.framework in Frameworks */,
+				18122BF354D28ADB51F94A63 /* libGLESv2.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		6AC6EFBA3F73C33BE1F58718 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				63D4B8E4A26A48D82F8DCE60 /* libEGL.framework */,
+				FA12E523E340FEA71E6FA7C0 /* libGLESv2.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		8D57E08DA9B72859CF418ED7 /* Bridge */ = {
+			isa = PBXGroup;
+			children = (
+				F7BEE25D9141AD2B40FB361E /* AngleBridge.c */,
+				33D840871EDE1EC635691BD3 /* AngleBridge.h */,
+				6F7B01FB19B5941154702D36 /* JKXR-Bridging-Header.h */,
+				EF7A3D96492B916A30A6FE3E /* JKXRBridge.h */,
+				40E4386F40A16FF2D112B627 /* WorldTracking.m */,
+			);
+			path = Bridge;
+			sourceTree = "<group>";
+		};
+		BA6D6FC6C97557A917052369 = {
+			isa = PBXGroup;
+			children = (
+				CDDC856CDF2721123B506D2E /* Sources */,
+				6AC6EFBA3F73C33BE1F58718 /* Frameworks */,
+				DF7DA449E2ED724A8DB4B653 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		CDDC856CDF2721123B506D2E /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				DA5C2726D5C4EC7B030C9990 /* App */,
+				8D57E08DA9B72859CF418ED7 /* Bridge */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		DA5C2726D5C4EC7B030C9990 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				E47635BCC2BCC1CC1C5751D4 /* ContentView.swift */,
+				06BB71B3A0F665691FF899FB /* EngineHost.swift */,
+				12FC913F54114EA867076FDC /* JKXRApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		DF7DA449E2ED724A8DB4B653 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				959BE1DE7DBFE94ACDC8E10F /* JKXR.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		5165E37678DF31A75D84C89F /* JKXR */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C4E5BE4F1763B984825A8584 /* Build configuration list for PBXNativeTarget "JKXR" */;
+			buildPhases = (
+				489954EF19B6D83C617B01CB /* Sources */,
+				B69A72AA6F9B7C29E318E617 /* Frameworks */,
+				FDB8E49709BAEABB8007FC1C /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = JKXR;
+			packageProductDependencies = (
+			);
+			productName = JKXR;
+			productReference = 959BE1DE7DBFE94ACDC8E10F /* JKXR.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		1FE53C122B2914A22ECE3529 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					5165E37678DF31A75D84C89F = {
+						DevelopmentTeam = 9VSUPJ942Y;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 23499C2BF1F0FAFB0BEFFEBC /* Build configuration list for PBXProject "JKXR" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = BA6D6FC6C97557A917052369;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = DF7DA449E2ED724A8DB4B653 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				5165E37678DF31A75D84C89F /* JKXR */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		489954EF19B6D83C617B01CB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				40BC6F5041D521B791E3FE53 /* AngleBridge.c in Sources */,
+				78CA5C5899D378FF4C88CE1D /* ContentView.swift in Sources */,
+				BCEEB8B7CE0E2A32AC9FF1E8 /* EngineHost.swift in Sources */,
+				FE04998D8653339058EDA0AB /* JKXRApp.swift in Sources */,
+				368A53BEA92B4E1DAE469734 /* WorldTracking.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		35E449CAA964D0FD79414BF3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ENABLE_DEBUG_DYLIB = NO;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"Frameworks\"",
+				);
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../../spikes/s4-angle/angle/include";
+				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Jedi Knight XR";
+				INFOPLIST_KEY_NSWorldSensingUsageDescription = "Kopf- und Controllerposition für das Spiel im Immersive Space.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				OTHER_LDFLAGS = "-Wl,-force_load,$(SRCROOT)/../../build-visionos/gl4es/lib/libGL.a -Wl,-alias_list,$(SRCROOT)/../../build-visionos/gl4es-aliases.txt $(SRCROOT)/../../build-visionos/link/rd-gles-merged.o $(SRCROOT)/../../build-visionos/link/jagame-merged.o $(SRCROOT)/../build/libopenjk_ja.a $(SRCROOT)/../build/libtbxr_visionos.a $(SRCROOT)/../build/liblibpng.a $(SRCROOT)/../build/liblibjpeg.a $(SRCROOT)/../build/liblibzip.a $(SRCROOT)/../build/liblibminizip.a $(SRCROOT)/../build/libsigc.a -lz -lc++ -framework AudioToolbox -framework AVFoundation -framework GameController";
+				PRODUCT_NAME = JKXR;
+				SDKROOT = xros;
+				SWIFT_OBJC_BRIDGING_HEADER = "Sources/Bridge/JKXR-Bridging-Header.h";
+				TARGETED_DEVICE_FAMILY = 7;
+			};
+			name = Debug;
+		};
+		769A77E2092FA576EEE3D926 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 9VSUPJ942Y;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = de.martek.jkxr;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = xros;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Release;
+		};
+		D4E295605475413F2C1ABE9A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ENABLE_DEBUG_DYLIB = NO;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"Frameworks\"",
+				);
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../../spikes/s4-angle/angle/include";
+				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Jedi Knight XR";
+				INFOPLIST_KEY_NSWorldSensingUsageDescription = "Kopf- und Controllerposition für das Spiel im Immersive Space.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				OTHER_LDFLAGS = "-Wl,-force_load,$(SRCROOT)/../../build-visionos/gl4es/lib/libGL.a -Wl,-alias_list,$(SRCROOT)/../../build-visionos/gl4es-aliases.txt $(SRCROOT)/../../build-visionos/link/rd-gles-merged.o $(SRCROOT)/../../build-visionos/link/jagame-merged.o $(SRCROOT)/../build/libopenjk_ja.a $(SRCROOT)/../build/libtbxr_visionos.a $(SRCROOT)/../build/liblibpng.a $(SRCROOT)/../build/liblibjpeg.a $(SRCROOT)/../build/liblibzip.a $(SRCROOT)/../build/liblibminizip.a $(SRCROOT)/../build/libsigc.a -lz -lc++ -framework AudioToolbox -framework AVFoundation -framework GameController";
+				PRODUCT_NAME = JKXR;
+				SDKROOT = xros;
+				SWIFT_OBJC_BRIDGING_HEADER = "Sources/Bridge/JKXR-Bridging-Header.h";
+				TARGETED_DEVICE_FAMILY = 7;
+			};
+			name = Release;
+		};
+		FBCCF9036E06C6E7306BDF6F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 9VSUPJ942Y;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = de.martek.jkxr;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = xros;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		23499C2BF1F0FAFB0BEFFEBC /* Build configuration list for PBXProject "JKXR" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FBCCF9036E06C6E7306BDF6F /* Debug */,
+				769A77E2092FA576EEE3D926 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C4E5BE4F1763B984825A8584 /* Build configuration list for PBXNativeTarget "JKXR" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				35E449CAA964D0FD79414BF3 /* Debug */,
+				D4E295605475413F2C1ABE9A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 1FE53C122B2914A22ECE3529 /* Project object */;
+}

@@ -1,0 +1,10 @@
+# Erzeugt aus Android.mk von mk2cmake.py — nicht von Hand ändern.
+
+add_library(libminizip STATIC
+    ioapi.c
+    unzip.c
+)
+
+target_include_directories(libminizip PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)

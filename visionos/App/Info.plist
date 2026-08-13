@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	    Diese beiden Schlüssel stehen hier und nicht als INFOPLIST_KEY_… in
+	    project.yml: Xcode kennt für INFOPLIST_KEY_ nur eine feste Liste, und
+	    UIFileSharingEnabled gehört nicht dazu. Es wird dann kommentarlos
+	    verworfen — die fertige Info.plist enthielt den Schlüssel schlicht nicht.
+
+	    Beide werden gebraucht, einer allein genügt nicht:
+	      UIFileSharingEnabled              macht Documents/ überhaupt sichtbar
+	      LSSupportsOpeningDocumentsInPlace  erlaubt Bearbeiten statt Kopieren
+
+	    Xcode mischt die generierten Schlüssel in diese Datei, solange
+	    GENERATE_INFOPLIST_FILE gesetzt bleibt. Alles Übrige steht daher
+	    weiterhin in project.yml.
+	-->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+</dict>
+</plist>

@@ -1,0 +1,97 @@
+name: JKXR
+
+options:
+  bundleIdPrefix: de.martek
+  createIntermediateGroups: true
+  deploymentTarget:
+    visionOS: "2.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: 9VSUPJ942Y
+    PRODUCT_BUNDLE_IDENTIFIER: de.martek.jkxr
+    GENERATE_INFOPLIST_FILE: "YES"
+
+targets:
+  JKXR:
+    type: application
+    platform: visionOS
+    sources:
+      - path: Sources
+    dependencies:
+      # ANGLE, gebaut aus angle/out/xros (patch-angle-visionos.py) mit
+      # Foveation-Unterstützung im Metal-Backend (patch-angle-foveation.py).
+      # embed, weil die App sie zur Laufzeit lädt.
+      - framework: Frameworks/libEGL.framework
+        embed: true
+        codeSign: true
+      - framework: Frameworks/libGLESv2.framework
+        embed: true
+        codeSign: true
+    settings:
+      base:
+        PRODUCT_NAME: JKXR
+        INFOPLIST_KEY_CFBundleDisplayName: Jedi Knight XR
+
+        # Ohne Zweckangabe verweigert visionOS den ARKit-Provider, und zwar
+        # wortlos — die Anfrage erreicht den Nutzer gar nicht erst.
+        INFOPLIST_KEY_NSWorldSensingUsageDescription: >-
+          Kopf- und Controllerposition für das Spiel im Immersive Space.
+
+        # Erzeugt UIApplicationSceneManifest mit UIApplicationSupportsMultipleScenes.
+        # Ohne diesen Eintrag weiß visionOS nicht, dass die App neben dem Fenster
+        # einen Immersive Space öffnen darf — openImmersiveSpace scheitert dann
+        # kommentarlos, und im Headset passiert schlicht nichts.
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: "YES"
+
+        # Die Spieldateien (assets0.pk3 … assets3.pk3, rund 1,2 GB) lassen sich
+        # nicht mitliefern; sie müssen über die Dateien-App hinein.
+        #
+        # Die beiden nötigen Schlüssel stehen in Info.plist, NICHT hier:
+        # UIFileSharingEnabled ist kein von Xcode unterstütztes INFOPLIST_KEY_
+        # und wird als solches kommentarlos verworfen. Xcode mischt die
+        # generierten Schlüssel in die Datei ein.
+        INFOPLIST_FILE: Info.plist
+
+        # Xcode baut Debug-Ziele sonst zweiteilig: ein Ladestub namens JKXR und
+        # daneben JKXR.debug.dylib mit dem eigentlichen Code (für SwiftUI-
+        # Vorschauen). Das ist hier unerwünscht, weil Sys_LoadDll RTLD_DEFAULT
+        # zurückgibt und dlsym dann über zwei Images suchen müsste — eine
+        # Unbekannte, die sich für nichts einhandelt.
+        ENABLE_DEBUG_DYLIB: "NO"
+
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/Bridge/JKXR-Bridging-Header.h
+        HEADER_SEARCH_PATHS: $(SRCROOT)/../../../spikes/s4-angle/angle/include
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
+
+        # Die Engine. Erklärung zu jedem Teil in link-visionos.sh:
+        #
+        #   *-merged.o    Teil-Link von Renderer und Spielcode. Beide Module
+        #                 bringen eigene Fassungen der gemeinsamen Funktionen
+        #                 mit (Com_Printf gibt es dreimal); der Teil-Link macht
+        #                 alles außer dem Einsprungpunkt lokal.
+        #   -force_load   ein Alias braucht sein Ziel im Link, und referenziert
+        #                 wird nur der Aliasname.
+        #   -alias_list   Mach-O kennt keine Compiler-Aliase (793 Stück).
+        #   -lc++         Xcode linkt eine Swift-App mit clang, nicht clang++,
+        #                 und zieht die C++-Standardbibliothek daher nicht von
+        #                 selbst hinzu. Die Engine ist C++.
+        OTHER_LDFLAGS: >-
+          -Wl,-force_load,$(SRCROOT)/../../build-visionos/gl4es/lib/libGL.a
+          -Wl,-alias_list,$(SRCROOT)/../../build-visionos/gl4es-aliases.txt
+          $(SRCROOT)/../../build-visionos/link/rd-gles-merged.o
+          $(SRCROOT)/../../build-visionos/link/jagame-merged.o
+          $(SRCROOT)/../build/libopenjk_ja.a
+          $(SRCROOT)/../build/libtbxr_visionos.a
+          $(SRCROOT)/../build/liblibpng.a
+          $(SRCROOT)/../build/liblibjpeg.a
+          $(SRCROOT)/../build/liblibzip.a
+          $(SRCROOT)/../build/liblibminizip.a
+          $(SRCROOT)/../build/libsigc.a
+          -lz
+          -lc++
+          -framework AudioToolbox
+          -framework AVFoundation
+          -framework GameController

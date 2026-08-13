@@ -1,0 +1,93 @@
+# Erzeugt aus Android_gles_ja.mk von mk2cmake.py — nicht von Hand ändern.
+# Modul: rd-gles-ja_arm, 44 Quelldateien
+
+add_library(rd-gles-ja_arm STATIC
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/qcommon/matcomp.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/qcommon/q_shared.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-common/tr_font.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-common/tr_image_jpg.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-common/tr_image_load.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-common/tr_image_png.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-common/tr_image_tga.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-common/tr_noise.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/G2_API.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/G2_bolts.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/G2_bones.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/G2_misc.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/G2_surfaces.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_WorldEffects.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_arb.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_backend.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_bsp.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_cmds.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_curve.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_draw.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_ghoul2.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_image.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_init.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_light.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_main.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_marks.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_mesh.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_model.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_quicksprite.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_scene.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_shade.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_shade_calc.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_shader.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_shadows.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_skin.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_sky.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_stl.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_subs.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_surface.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_surfacesprites.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles/tr_world.cpp
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/shared/qcommon/q_color.c
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/shared/qcommon/q_math.c
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/shared/qcommon/q_string.c
+)
+
+target_include_directories(rd-gles-ja_arm PUBLIC
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/JKXR
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/lib
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/client
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/server
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/libs/freetype2/include
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/common
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/gl
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenXR-SDK/include
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenXR-SDK/src/common
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/shared
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/ui
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/lib/gsl-lite/include
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/SupportLibs/libpng
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-gles
+    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/OpenJK/code/rd-common
+)
+
+target_compile_options(rd-gles-ja_arm PRIVATE
+    -DHAVE_GLES
+    -DFINAL_BUILD
+    -fexceptions
+    -Wall
+    -Wno-write-strings
+    -Wno-comment
+    -fno-caller-saves
+    -fno-tree-vectorize
+    -Wno-unused-but-set-variable
+    -fvisibility=hidden
+    -O1
+    -DRENDERER
+    -D_JK2EXE
+    -DSP_GAME
+    -Wno-narrowing
+    $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++14>
+    $<$<COMPILE_LANGUAGE:CXX>:-fvisibility-inlines-hidden>
+    $<$<COMPILE_LANGUAGE:CXX>:-Wno-invalid-offsetof>
+    $<$<COMPILE_LANGUAGE:CXX>:-fvisibility=hidden>
+    $<$<COMPILE_LANGUAGE:CXX>:-O1>
+)

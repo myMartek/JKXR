@@ -108,6 +108,14 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 		#define idx64
 		#define ARCH_STRING "x86_64"
 		#define Q3_LITTLE_ENDIAN
+	#elif defined(__aarch64__) || defined(__arm64__)
+		// Apple Silicon — von OpenJK nie vorgesehen, der Block kannte nur
+		// ppc, i386 und x86_64. Ohne diesen Zweig bleiben ARCH_STRING und
+		// die Endianness undefiniert, und die Datei bricht später mit
+		// "Architecture not supported" ab.
+		#define idx64
+		#define ARCH_STRING "arm64"
+		#define Q3_LITTLE_ENDIAN
 	#endif
 
     #define DLL_EXT ".dylib"

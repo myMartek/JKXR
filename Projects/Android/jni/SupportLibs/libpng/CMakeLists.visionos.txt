@@ -1,0 +1,25 @@
+# Erzeugt aus Android.mk von mk2cmake.py — nicht von Hand ändern.
+
+add_library(libpng STATIC
+    arm/arm_init.c
+    arm/filter_neon_intrinsics.c
+    png.c
+    pngerror.c
+    pngget.c
+    pngmem.c
+    pngpread.c
+    pngread.c
+    pngrio.c
+    pngrtran.c
+    pngrutil.c
+    pngset.c
+    pngtrans.c
+    pngwio.c
+    pngwrite.c
+    pngwtran.c
+    pngwutil.c
+)
+
+target_include_directories(libpng PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)

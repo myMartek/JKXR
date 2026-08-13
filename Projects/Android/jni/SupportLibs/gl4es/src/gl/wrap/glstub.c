@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "../attributes.h"
 
 #define STUB(ret, def, args)\
 ret gl4es_ ## def args {\
@@ -10,7 +11,7 @@ ret gl4es_ ## def args {\
     if (debug && strcmp(debug, "1") == 0)\
         printf("stub: %s;\n", #def);\
 } \
-ret def args __attribute((alias("gl4es_"#def))) __attribute__((visibility("default")));
+ret def args AliasExport("gl4es_"#def);
 
 /*STUB(void,glFogCoordd,(GLdouble coord));
 STUB(void,glFogCoordf,(GLfloat coord));

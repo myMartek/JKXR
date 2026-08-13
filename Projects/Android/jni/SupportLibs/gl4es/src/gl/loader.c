@@ -15,6 +15,9 @@ void load_libs() {
 #ifdef AMIGAOS4
 #include "../agl/amigaos.h"
 #include <limits.h>
+#elif defined(__APPLE__)
+#include <limits.h>
+#include <sys/syslimits.h>
 #else
 #include <linux/limits.h>
 #endif
@@ -74,6 +77,14 @@ static const char *egl_lib[] = {
     NULL
 };
 
+#ifdef __APPLE__
+/* Dieselben Flags wie in open_lib, ohne RTLD_DEEPBIND (gibt es auf Darwin
+ * nicht). Als Funktion, damit beide Aufrufstellen sie teilen. */
+static int flags_for_angle(void) {
+    return RTLD_LOCAL | RTLD_NOW;
+}
+#endif
+
 void *open_lib(const char **names, const char *override) {
     void *lib = NULL;
 
@@ -119,10 +130,39 @@ void load_libs() {
         vcos = open_lib(vcos_name, NULL);
     }
 #endif
+#ifdef __APPLE__
+    /* visionOS-Portierung, siehe patch-gl4es-darwin.py.
+     *
+     * open_lib() setzt Pfade als <prefix><name>.<ext> zusammen und sucht in
+     * /usr/lib und Verwandten. Auf visionOS gibt es dort kein GLES, und ANGLE
+     * liegt als eingebettetes Framework im App-Bundle — ein anderes Namens-
+     * schema, das die Tabelle nicht abbildet. Ohne diesen Zweig bleiben `gles`
+     * und `egl` NULL, gl4es meldet drei Warnungen und liefert danach still
+     * nichts mehr.
+     *
+     * dlopen mit dem Installationsnamen lädt nichts neu: das Framework hängt
+     * bereits als LC_LOAD_DYLIB im Programm, dlopen gibt nur sein Handle
+     * zurück. @rpath löst sich über @executable_path/Frameworks auf.
+     *
+     * NICHT RTLD_DEFAULT verwenden, so naheliegend es wirkt. Das Programm
+     * exportiert glDrawArrays und die übrigen GL-Namen selbst — als Aliase auf
+     * gl4es' eigene Wrapper (siehe -alias_list). dlsym(RTLD_DEFAULT, ...)
+     * durchsucht das Hauptprogramm zuerst und gäbe gl4es seine eigene Funktion
+     * zurück: endlose Rekursion statt eines Aufrufs an ANGLE.
+     */
+    gles = dlopen("@rpath/libGLESv2.framework/libGLESv2", flags_for_angle());
+    WARN_NULL(gles);
+#else
     gles = open_lib((globals4es.es==1)?gles_lib:gles2_lib, gles_override);
     WARN_NULL(gles);
+#endif
 
-#ifdef NOEGL
+#if defined(__APPLE__)
+    /* Auch mit NOEGL braucht gl4es an einigen Stellen eglGetProcAddress, und
+     * das exportiert libGLESv2 nicht — es liegt in libEGL. `egl = gles` wie im
+     * NOEGL-Zweig unten wäre hier also falsch. */
+    egl = dlopen("@rpath/libEGL.framework/libEGL", flags_for_angle());
+#elif defined(NOEGL)
     egl = gles;
 #else
     char *egl_override = getenv("LIBGL_EGL");

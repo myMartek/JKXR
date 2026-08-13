@@ -22,7 +22,18 @@
 
 #elif defined( __APPLE__ ) && defined( __MACH__ )
 
+// Der ursprüngliche Zweig band <MesaGL/gl.h> ein — aus der Zeit, als Mac OS X
+// OpenGL über Mesa bereitstellte. Auf Android greift stattdessen der
+// __linux__-Zweig mit HAVE_GLES, weil Android Linux ist. Für visionOS gilt
+// dasselbe wie dort: die GL-Header kommen von gl4es.
+#ifdef HAVE_GLES
+#include <GLES/gl.h>
+// glext.h liefert die EXT-Konstanten, etwa GL_TEXTURE_MAX_ANISOTROPY_EXT.
+// Auf Android zieht der NDK-Header sie mit herein, gl4es trennt sie.
+#include <GLES/glext.h>
+#else
 #include <MesaGL/gl.h>
+#endif
 
 #elif defined( __linux__ )
 

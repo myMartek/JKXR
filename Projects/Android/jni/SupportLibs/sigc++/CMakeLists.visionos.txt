@@ -1,0 +1,17 @@
+# Erzeugt aus Android.mk von mk2cmake.py — nicht von Hand ändern.
+
+add_library(sigc STATIC
+    ../sigc++/connection.cpp
+    ../sigc++/functors/slot_base.cpp
+    ../sigc++/signal.cpp
+    ../sigc++/signal_base.cpp
+    ../sigc++/trackable.cpp
+)
+
+target_include_directories(sigc PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_compile_options(sigc PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-fexceptions>
+)

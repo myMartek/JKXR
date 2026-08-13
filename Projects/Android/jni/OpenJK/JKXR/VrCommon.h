@@ -8,6 +8,8 @@
 
 #ifdef _WIN32
 #include "windows/TBXR_Common.h"
+#elif defined(__APPLE__)
+#include "visionos/TBXR_Common.h"
 #else
 #include "android/TBXR_Common.h"
 #endif

@@ -141,6 +141,25 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     )
 else()
     message(STATUS "Not on Linux: building without GLX support.")
+    # visionOS-Portierung, siehe patch-gl4es-darwin.py.
+    #
+    # "Ohne GLX" heißt nicht "ohne glx/": hardext.c definiert `hardext` und
+    # GetHardwareExtensions, die der gesamte GL-Kern benutzt, und behandelt
+    # NOX11+NOEGL bereits selbst. Der Emscripten-Zweig weiter unten nimmt
+    # genau diese eine Datei auf — hier ist es dieselbe Lage.
+    #
+    # darwin_stubs.c liefert die drei übrigen glx-Funktionen, die gl/init.c
+    # und gl/framebuffers.c unbedingt aufrufen.
+    if(APPLE)
+        include_directories(glx)
+        list(APPEND GL_SRC
+            glx/hardext.c
+            glx/darwin_stubs.c
+        )
+        list(APPEND GL_H
+            glx/hardext.h
+        )
+    endif()
 endif()
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")

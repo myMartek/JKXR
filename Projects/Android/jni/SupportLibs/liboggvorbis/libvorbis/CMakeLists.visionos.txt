@@ -1,0 +1,35 @@
+# Erzeugt aus Android.mk von mk2cmake.py — nicht von Hand ändern.
+
+add_library(libvorbis STATIC
+    analysis.c
+    bitrate.c
+    block.c
+    codebook.c
+    envelope.c
+    floor0.c
+    floor1.c
+    info.c
+    lookup.c
+    lpc.c
+    lsp.c
+    mapping0.c
+    mdct.c
+    psy.c
+    registry.c
+    res0.c
+    sharedbook.c
+    smallft.c
+    synthesis.c
+    vorbisenc.c
+    vorbisfile.c
+    window.c
+)
+
+target_include_directories(libvorbis PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_compile_options(libvorbis PRIVATE
+    $<$<COMPILE_LANGUAGE:C>:-ffast-math>
+    $<$<COMPILE_LANGUAGE:C>:-fsigned-char>
+)

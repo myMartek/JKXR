@@ -1,0 +1,503 @@
+// Nachbau des OpenXR-Action-Systems für visionOS.
+//
+// visionOS hat keine OpenXR-Laufzeit. JKXRs plattformneutraler Code ruft aber
+// direkt OpenXR auf — allerdings nur sechzehn Funktionen, und alle aus dem
+// Action-System. Kein Rendering, keine Session- oder Frame-Verwaltung.
+//
+// Statt OpenXrInput.cpp (1078 Zeilen) neu zu schreiben, werden hier diese
+// sechzehn Funktionen auf visionOS-APIs abgebildet. JKXRs Eingabelogik —
+// Bindings, Waffenausrichtung, Gestenerkennung — bleibt damit unverändert.
+//
+// Die Abbildung ist erstaunlich direkt, weil Apples Accessory-Tracking den
+// OpenXR-Konventionen folgt:
+//
+//   ar_accessory_location_name_grip / _aim   ==  /input/grip, /input/aim
+//   ar_accessory_tracking_provider_predict_anchor_at_timestamp
+//                                            ==  xrLocateSpace(time)
+//
+//   Posen und Geschwindigkeiten  ->  ARKit  (ar_accessory_tracking_provider)
+//   Tasten, Achsen, Haptik       ->  GameController (SpatialController)
+
+#include "TBXR_Common.h"
+
+#import <ARKit/ARKit.h>
+#import <GameController/GameController.h>
+
+// Von TBXR_Common.mm bereitgestellt.
+extern "C" void TBXR_visionOS_Vibrate(int hand, float amplitude, float seconds);
+
+/// XrTime ist in Nanosekunden, CFTimeInterval in Sekunden.
+static inline CFTimeInterval XrTimeToSeconds(XrTime time)
+{
+    return (CFTimeInterval)time / 1000000000.0;
+}
+
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+namespace {
+
+// ---------------------------------------------------------------------------
+// Pfade
+//
+// OpenXR adressiert alles über Zeichenketten-Pfade wie
+// "/user/hand/left/input/trigger/value", die zur Laufzeit in XrPath-Handles
+// übersetzt werden. Hier genügt eine fortlaufende Nummer je Pfad.
+// ---------------------------------------------------------------------------
+
+std::vector<std::string> gPaths{""};   // Index 0 bleibt frei: XR_NULL_PATH
+std::unordered_map<std::string, XrPath> gPathLookup;
+
+XrPath internPath(const std::string &text)
+{
+    auto found = gPathLookup.find(text);
+    if (found != gPathLookup.end()) return found->second;
+    gPaths.push_back(text);
+    XrPath path = static_cast<XrPath>(gPaths.size() - 1);
+    gPathLookup[text] = path;
+    return path;
+}
+
+// ---------------------------------------------------------------------------
+// Aktionen
+// ---------------------------------------------------------------------------
+
+struct Action {
+    std::string name;
+    XrActionType type;
+    std::vector<XrPath> subactionPaths;
+    // Aus xrSuggestInteractionProfileBindings: welcher Eingabepfad steuert
+    // diese Aktion. Ohne die Zuordnung wüssten wir nicht, welche Taste gemeint
+    // ist — JKXR legt sie einmalig beim Start fest.
+    std::vector<std::string> bindings;
+};
+
+std::vector<Action *> gActions;
+std::vector<void *>   gActionSets;
+
+/// Handles sind undurchsichtige Zeiger. Ein Zeiger auf unser eigenes Objekt
+/// erfüllt den Vertrag genauso wie ein Laufzeit-internes Handle.
+inline Action *toAction(XrAction handle) { return reinterpret_cast<Action *>(handle); }
+
+// ---------------------------------------------------------------------------
+// Geräte
+// ---------------------------------------------------------------------------
+
+ar_accessory_tracking_provider_t gTracking = nullptr;
+
+/// Die beiden Sense-Controller, nach Händigkeit sortiert. GameController
+/// liefert Tasten, ARKit die Posen — beide zum selben Gerät.
+GCController *gControllers[2] = { nil, nil };
+
+int handIndexForPath(const std::string &path)
+{
+    // OpenXR-Pfade beginnen mit /user/hand/left oder /user/hand/right.
+    if (path.find("/user/hand/left") == 0)  return 0;
+    if (path.find("/user/hand/right") == 0) return 1;
+    return -1;
+}
+
+/// Bildet einen OpenXR-Eingabepfad auf den Namen eines GameController-Elements ab.
+///
+/// ACHTUNG: Diese Zuordnung ist nach Bedeutung geraten, nicht gemessen. Wie die
+/// Sense-Controller ihre Elemente tatsächlich benennen, steht nicht fest —
+/// GCInputRightTrigger und Verwandte sind die Namen des erweiterten
+/// Gamepad-Profils, und ob ein räumlicher Controller dieselben verwendet, ist
+/// eine Annahme.
+///
+/// Deshalb wird unten über `physicalInputProfile` gesucht statt über
+/// `extendedGamepad`: das Profil legt alle Elemente als
+/// zeichenkettenindizierte Sammlung offen, und ein unbekannter Name führt dann
+/// zu "nicht gefunden" statt zu einem falschen Element. TBXR_visionOS_DumpInputs
+/// gibt die tatsächlichen Namen aus, damit die Tabelle hier gegen Gemessenes
+/// ersetzt werden kann.
+NSString *gcNameForInputPath(const std::string &path)
+{
+    auto ends = [&](const char *suffix) {
+        const size_t len = strlen(suffix);
+        return path.size() >= len && path.compare(path.size() - len, len, suffix) == 0;
+    };
+
+    if (ends("/trigger/value") || ends("/trigger"))   return GCInputRightTrigger;
+    if (ends("/squeeze/value") || ends("/squeeze"))   return GCInputRightShoulder;
+    if (ends("/thumbstick"))                          return GCInputRightThumbstick;
+    if (ends("/thumbstick/click"))                    return GCInputRightThumbstickButton;
+    if (ends("/a/click"))                             return GCInputButtonA;
+    if (ends("/b/click"))                             return GCInputButtonB;
+    if (ends("/x/click"))                             return GCInputButtonX;
+    if (ends("/y/click"))                             return GCInputButtonY;
+    if (ends("/menu/click"))                          return GCInputButtonMenu;
+    return nil;
+}
+
+/// Sucht den Eingabepfad einer Aktion für eine bestimmte Hand.
+const std::string *bindingForHand(const Action *action, int hand)
+{
+    for (const std::string &binding : action->bindings) {
+        if (handIndexForPath(binding) == hand) return &binding;
+    }
+    return action->bindings.empty() ? nullptr : &action->bindings.front();
+}
+
+int handForSubaction(const Action *action, XrPath subactionPath)
+{
+    if (subactionPath == XR_NULL_PATH || subactionPath >= gPaths.size()) {
+        // Ohne Angabe: die erste gebundene Hand.
+        for (const std::string &binding : action->bindings) {
+            int hand = handIndexForPath(binding);
+            if (hand >= 0) return hand;
+        }
+        return 0;
+    }
+    int hand = handIndexForPath(gPaths[subactionPath]);
+    return hand < 0 ? 0 : hand;
+}
+
+GCControllerButtonInput *buttonFor(const Action *action, int hand)
+{
+    GCController *controller = (hand >= 0 && hand < 2) ? gControllers[hand] : nil;
+    if (!controller) return nil;
+
+    const std::string *binding = bindingForHand(action, hand);
+    if (!binding) return nil;
+    NSString *name = gcNameForInputPath(*binding);
+    if (!name) return nil;
+
+    // physicalInputProfile statt einer konkreten Profilklasse: es legt jedes
+    // Element als zeichenkettenindizierte Sammlung offen. Ein unbekannter Name
+    // liefert dann nil, statt dass eine Profilklasse angenommen wird, die das
+    // Gerät womöglich gar nicht anbietet.
+    GCControllerButtonInput *button = controller.physicalInputProfile.buttons[name];
+    return button;
+}
+
+} // namespace
+
+// ---------------------------------------------------------------------------
+// Anbindung an die SwiftUI-Hülle
+// ---------------------------------------------------------------------------
+
+extern "C" void TBXR_visionOS_SetAccessoryTracking(void *provider)
+{
+    gTracking = (__bridge ar_accessory_tracking_provider_t)provider;
+}
+
+extern "C" void TBXR_visionOS_RefreshControllers(void)
+{
+    gControllers[0] = gControllers[1] = nil;
+    for (GCController *controller in [GCController controllers]) {
+        if (![controller.productCategory isEqualToString:GCProductCategorySpatialController])
+            continue;
+        // Händigkeit über GameControllers Angabe; ARKit liefert sie ebenfalls
+        // über ar_accessory_anchor_get_held_chirality.
+        if (@available(visionOS 26.0, *)) {
+            NSInteger index = (controller.playerIndex == GCControllerPlayerIndex1) ? 0 : 1;
+            gControllers[index] = controller;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Pfade
+// ---------------------------------------------------------------------------
+
+/// Gibt aus, wie die verbundenen Controller ihre Elemente tatsächlich benennen.
+///
+/// Ohne diese Ausgabe bleibt die Tastenzuordnung Raterei: welche Namen ein
+/// räumlicher Controller anbietet, steht nirgends geschrieben. Beim ersten Lauf
+/// auf echter Hardware einmal aufrufen und gcNameForInputPath danach ausrichten.
+extern "C" void TBXR_visionOS_DumpInputs(void)
+{
+    for (GCController *controller in [GCController controllers]) {
+        fprintf(stderr, "[TBXR] Controller: %s · %s\n",
+                controller.vendorName.UTF8String ?: "?",
+                controller.productCategory.UTF8String ?: "?");
+        for (NSString *name in controller.physicalInputProfile.buttons) {
+            fprintf(stderr, "[TBXR]   Taste:  %s\n", name.UTF8String);
+        }
+        for (NSString *name in controller.physicalInputProfile.axes) {
+            fprintf(stderr, "[TBXR]   Achse:  %s\n", name.UTF8String);
+        }
+        for (NSString *name in controller.physicalInputProfile.dpads) {
+            fprintf(stderr, "[TBXR]   Stick:  %s\n", name.UTF8String);
+        }
+    }
+}
+
+extern "C" XrResult xrStringToPath(XrInstance, const char *pathString, XrPath *path)
+{
+    *path = internPath(pathString ? pathString : "");
+    return XR_SUCCESS;
+}
+
+extern "C" XrResult xrPathToString(XrInstance, XrPath path, uint32_t capacity,
+                                   uint32_t *countOutput, char *buffer)
+{
+    const std::string &text = (path < gPaths.size()) ? gPaths[path] : gPaths[0];
+    *countOutput = static_cast<uint32_t>(text.size() + 1);
+    if (capacity == 0) return XR_SUCCESS;
+    if (capacity < *countOutput) return XR_ERROR_SIZE_INSUFFICIENT;
+    memcpy(buffer, text.c_str(), *countOutput);
+    return XR_SUCCESS;
+}
+
+extern "C" XrResult xrResultToString(XrInstance, XrResult value, char buffer[XR_MAX_RESULT_STRING_SIZE])
+{
+    snprintf(buffer, XR_MAX_RESULT_STRING_SIZE,
+             value >= 0 ? "XR_SUCCESS(%d)" : "XR_ERROR(%d)", (int)value);
+    return XR_SUCCESS;
+}
+
+// ---------------------------------------------------------------------------
+// Aktionen anlegen
+// ---------------------------------------------------------------------------
+
+extern "C" XrResult xrCreateActionSet(XrInstance, const XrActionSetCreateInfo *info,
+                                      XrActionSet *actionSet)
+{
+    gActionSets.push_back(new std::string(info ? info->actionSetName : ""));
+    *actionSet = reinterpret_cast<XrActionSet>(gActionSets.back());
+    return XR_SUCCESS;
+}
+
+extern "C" XrResult xrCreateAction(XrActionSet, const XrActionCreateInfo *info,
+                                   XrAction *action)
+{
+    Action *created = new Action();
+    created->name = info ? info->actionName : "";
+    created->type = info ? info->actionType : XR_ACTION_TYPE_BOOLEAN_INPUT;
+    if (info) {
+        for (uint32_t i = 0; i < info->countSubactionPaths; ++i)
+            created->subactionPaths.push_back(info->subactionPaths[i]);
+    }
+    gActions.push_back(created);
+    *action = reinterpret_cast<XrAction>(created);
+    return XR_SUCCESS;
+}
+
+extern "C" XrResult xrSuggestInteractionProfileBindings(
+    XrInstance, const XrInteractionProfileSuggestedBinding *bindings)
+{
+    if (!bindings) return XR_SUCCESS;
+    for (uint32_t i = 0; i < bindings->countSuggestedBindings; ++i) {
+        const XrActionSuggestedBinding &suggestion = bindings->suggestedBindings[i];
+        Action *action = toAction(suggestion.action);
+        if (!action) continue;
+        if (suggestion.binding < gPaths.size())
+            action->bindings.push_back(gPaths[suggestion.binding]);
+    }
+    return XR_SUCCESS;
+}
+
+extern "C" XrResult xrAttachSessionActionSets(XrSession, const XrSessionActionSetsAttachInfo *)
+{
+    // In OpenXR friert dieser Aufruf die Aktionen ein. Hier gibt es nichts
+    // einzufrieren — die Bindings liegen bereits vor.
+    return XR_SUCCESS;
+}
+
+extern "C" XrResult xrCreateActionSpace(XrSession, const XrActionSpaceCreateInfo *info,
+                                        XrSpace *space)
+{
+    // Der Raum einer Pose-Aktion ist durch die Aktion und die Hand bestimmt.
+    // Das Handle darf deshalb die Aktion selbst sein.
+    *space = reinterpret_cast<XrSpace>(info ? info->action : nullptr);
+    return XR_SUCCESS;
+}
+
+// ---------------------------------------------------------------------------
+// Zustand abfragen
+// ---------------------------------------------------------------------------
+
+extern "C" XrResult xrSyncActions(XrSession, const XrActionsSyncInfo *)
+{
+    // OpenXR holt hier einen konsistenten Schnappschuss. GameController und
+    // ARKit liefern jederzeit aktuelle Werte; nur die Controllerliste muss
+    // aktuell gehalten werden, falls einer dazukommt oder verschwindet.
+    TBXR_visionOS_RefreshControllers();
+    return XR_SUCCESS;
+}
+
+extern "C" XrResult xrGetActionStateBoolean(XrSession, const XrActionStateGetInfo *info,
+                                            XrActionStateBoolean *state)
+{
+    memset(state, 0, sizeof(*state));
+    state->type = XR_TYPE_ACTION_STATE_BOOLEAN;
+
+    Action *action = toAction(info ? info->action : nullptr);
+    if (!action) return XR_SUCCESS;
+
+    GCControllerButtonInput *button = buttonFor(action, handForSubaction(action, info->subactionPath));
+    if (!button) return XR_SUCCESS;
+
+    state->currentState = button.pressed ? XR_TRUE : XR_FALSE;
+    state->isActive = XR_TRUE;
+    return XR_SUCCESS;
+}
+
+extern "C" XrResult xrGetActionStateFloat(XrSession, const XrActionStateGetInfo *info,
+                                          XrActionStateFloat *state)
+{
+    memset(state, 0, sizeof(*state));
+    state->type = XR_TYPE_ACTION_STATE_FLOAT;
+
+    Action *action = toAction(info ? info->action : nullptr);
+    if (!action) return XR_SUCCESS;
+
+    GCControllerButtonInput *button = buttonFor(action, handForSubaction(action, info->subactionPath));
+    if (!button) return XR_SUCCESS;
+
+    state->currentState = button.value;
+    state->isActive = XR_TRUE;
+    return XR_SUCCESS;
+}
+
+extern "C" XrResult xrGetActionStateVector2f(XrSession, const XrActionStateGetInfo *info,
+                                             XrActionStateVector2f *state)
+{
+    memset(state, 0, sizeof(*state));
+    state->type = XR_TYPE_ACTION_STATE_VECTOR2F;
+
+    Action *action = toAction(info ? info->action : nullptr);
+    if (!action) return XR_SUCCESS;
+
+    const int hand = handForSubaction(action, info->subactionPath);
+    GCController *controller = (hand >= 0 && hand < 2) ? gControllers[hand] : nil;
+    if (!controller) return XR_SUCCESS;
+
+    const std::string *binding = bindingForHand(action, hand);
+    NSString *name = binding ? gcNameForInputPath(*binding) : nil;
+    GCControllerDirectionPad *stick =
+        name ? controller.physicalInputProfile.dpads[name] : nil;
+    if (!stick) return XR_SUCCESS;
+
+    state->currentState.x = stick.xAxis.value;
+    state->currentState.y = stick.yAxis.value;
+    state->isActive = XR_TRUE;
+    return XR_SUCCESS;
+}
+
+extern "C" XrResult xrGetCurrentInteractionProfile(
+    XrSession, XrPath, XrInteractionProfileState *profile)
+{
+    if (!profile) return XR_SUCCESS;
+    profile->type = XR_TYPE_INTERACTION_PROFILE_STATE;
+    // JKXR kennt TOUCH_CONTROLLERS und emuliert alles Unbekannte als Touch.
+    // Die Sense-Controller entsprechen dem Touch-Layout am ehesten.
+    profile->interactionProfile =
+        internPath("/interaction_profiles/oculus/touch_controller");
+    return XR_SUCCESS;
+}
+
+// ---------------------------------------------------------------------------
+// Posen
+// ---------------------------------------------------------------------------
+
+extern "C" XrResult xrLocateSpace(XrSpace space, XrSpace, XrTime time,
+                                  XrSpaceLocation *location)
+{
+    if (!location) return XR_SUCCESS;
+    location->locationFlags = 0;
+
+    Action *action = reinterpret_cast<Action *>(space);
+    if (!action || !gTracking) return XR_SUCCESS;
+
+    const int hand = handForSubaction(action, XR_NULL_PATH);
+    const std::string *binding = bindingForHand(action, hand);
+
+    // Grip oder Aim: OpenXR unterscheidet Griffpose (Handhaltung) und
+    // Zielpose (Blickrichtung der Waffe). ARKit kennt dieselbe Unterscheidung
+    // unter denselben Namen.
+    const char *locationName =
+        (binding && binding->find("/aim") != std::string::npos)
+            ? ar_accessory_location_name_aim
+            : ar_accessory_location_name_grip;
+
+    // Der Ablauf ist zweistufig: erst den aktuellen Anker der gesuchten Hand
+    // finden, dann auf den Anzeigezeitpunkt vorhersagen. Die Vorhersage ist
+    // nötig, weil zwischen Abfrage und Anzeige ein paar Millisekunden liegen.
+    ar_accessory_anchors_t anchors =
+        ar_accessory_tracking_provider_get_latest_anchors(gTracking);
+    if (!anchors) return XR_SUCCESS;
+
+    __block ar_accessory_anchor_t source = nil;
+    ar_accessory_anchors_enumerate_anchors(anchors,
+        ^bool(ar_accessory_anchor_t candidate) {
+            const bool isLeft =
+                ar_accessory_anchor_get_held_chirality(candidate) ==
+                    ar_accessory_chirality_left;
+            if ((hand == 0) == isLeft) { source = candidate; return false; }
+            return true;
+        });
+    if (!source || !ar_accessory_anchor_is_tracked(source)) return XR_SUCCESS;
+
+    ar_accessory_anchor_t anchor = ar_accessory_anchor_create();
+    if (!ar_accessory_tracking_provider_predict_anchor_at_timestamp(
+            gTracking, source, XrTimeToSeconds(time), anchor)) {
+        anchor = source;   // ohne Vorhersage lieber die aktuelle Pose als keine
+    }
+
+    simd_float4x4 transform =
+        ar_accessory_anchor_get_anchor_from_location_transform_with_correction(
+            anchor, locationName, ar_transform_correction_none);
+
+    location->pose.position = { transform.columns[3].x,
+                                transform.columns[3].y,
+                                transform.columns[3].z };
+    simd_quatf rotation = simd_quaternion(transform);
+    location->pose.orientation = { rotation.vector.x, rotation.vector.y,
+                                   rotation.vector.z, rotation.vector.w };
+    location->locationFlags = XR_SPACE_LOCATION_POSITION_VALID_BIT |
+                              XR_SPACE_LOCATION_ORIENTATION_VALID_BIT |
+                              XR_SPACE_LOCATION_POSITION_TRACKED_BIT |
+                              XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT;
+
+    // Geschwindigkeiten weiterreichen, falls angefordert: JKXRs
+    // Schwung- und Stichentdeckung hängt daran.
+    if (location->next) {
+        XrSpaceVelocity *velocity = static_cast<XrSpaceVelocity *>(location->next);
+        if (velocity->type == XR_TYPE_SPACE_VELOCITY) {
+            simd_float3 linear  = ar_accessory_anchor_get_velocity(anchor);
+            simd_float3 angular = ar_accessory_anchor_get_angular_velocity(anchor);
+            velocity->linearVelocity  = { linear.x, linear.y, linear.z };
+            velocity->angularVelocity = { angular.x, angular.y, angular.z };
+            velocity->velocityFlags = XR_SPACE_VELOCITY_LINEAR_VALID_BIT |
+                                      XR_SPACE_VELOCITY_ANGULAR_VALID_BIT;
+        }
+    }
+    return XR_SUCCESS;
+}
+
+// ---------------------------------------------------------------------------
+// Haptik
+// ---------------------------------------------------------------------------
+
+extern "C" XrResult xrApplyHapticFeedback(XrSession, const XrHapticActionInfo *info,
+                                          const XrHapticBaseHeader *header)
+{
+    Action *action = toAction(info ? info->action : nullptr);
+    if (!action || !header) return XR_SUCCESS;
+
+    const int hand = handForSubaction(action, info->subactionPath);
+    GCController *controller = (hand >= 0 && hand < 2) ? gControllers[hand] : nil;
+    if (!controller) return XR_SUCCESS;
+
+    const XrHapticVibration *vibration =
+        (header->type == XR_TYPE_HAPTIC_VIBRATION)
+            ? reinterpret_cast<const XrHapticVibration *>(header) : nullptr;
+    if (!vibration) return XR_SUCCESS;
+
+    // PSVR2 Sense unterstützt Vibration, aber weder die adaptiven Trigger noch
+    // die Präzisionshaptik der PlayStation. Amplitude genügt für JKXR.
+    TBXR_visionOS_Vibrate(hand, vibration->amplitude,
+                          vibration->duration / 1000000000.0f);
+    return XR_SUCCESS;
+}
+
+extern "C" XrResult xrStopHapticFeedback(XrSession, const XrHapticActionInfo *info)
+{
+    Action *action = toAction(info ? info->action : nullptr);
+    if (action) TBXR_visionOS_Vibrate(handForSubaction(action, info->subactionPath), 0.0f, 0.0f);
+    return XR_SUCCESS;
+}

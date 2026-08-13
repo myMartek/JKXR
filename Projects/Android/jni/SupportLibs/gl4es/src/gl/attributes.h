@@ -2,7 +2,12 @@
 #define _GL4ES_ATTRIBUTES_H_
 
 #ifndef AliasExport
- #ifdef __EMSCRIPTEN__
+ #if defined(__EMSCRIPTEN__)
+  #define AliasExport(name)
+ #elif defined(__APPLE__)
+  // Mach-O kennt keine Compiler-Aliase ("aliases are not supported on darwin").
+  // Die Aliase entstehen stattdessen beim Linken über -alias_list; die Liste
+  // erzeugt patch-gl4es-darwin.py aus genau diesen Deklarationen.
   #define AliasExport(name)
  #else
   #define AliasExport(name)   __attribute__((alias(name))) __attribute__((visibility("default")))

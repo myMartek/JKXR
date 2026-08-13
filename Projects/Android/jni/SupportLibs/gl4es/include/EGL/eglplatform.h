@@ -99,6 +99,16 @@ typedef int   EGLNativeDisplayType;
 typedef void *EGLNativeWindowType;
 typedef void *EGLNativePixmapType;
 
+#elif defined(__APPLE__)
+
+/* Auf Apple-Plattformen gibt es keine nativen EGL-Fenstertypen: den Kontext
+   erzeugt ANGLE, und gerendert wird in Texturen, die CompositorServices
+   liefert. Die Typen müssen nur definiert sein, damit die Deklarationen
+   übersetzen — benutzt werden sie nicht. */
+typedef void *EGLNativeDisplayType;
+typedef void *EGLNativePixmapType;
+typedef void *EGLNativeWindowType;
+
 #else
 #error "Platform not recognized"
 #endif

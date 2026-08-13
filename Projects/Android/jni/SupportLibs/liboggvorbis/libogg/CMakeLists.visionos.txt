@@ -1,0 +1,15 @@
+# Erzeugt aus Android.mk von mk2cmake.py — nicht von Hand ändern.
+
+add_library(libogg STATIC
+    bitwise.c
+    framing.c
+)
+
+target_include_directories(libogg PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_compile_options(libogg PRIVATE
+    $<$<COMPILE_LANGUAGE:C>:-ffast-math>
+    $<$<COMPILE_LANGUAGE:C>:-fsigned-char>
+)
