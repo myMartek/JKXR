@@ -31,10 +31,22 @@ add_compile_options(
 #   rd-gles-ja  (Renderer)  libpng libjpeg
 #   jagame                  —
 #
-# libogg, libvorbis und openal werden von keinem Modul referenziert; die
-# erzeugten Dateien liegen unter libs/, werden aber nicht gebaut. Audio läuft
+# libogg, libvorbis und openal werden von keinem Modul referenziert. Audio läuft
 # auf Android über OpenSL ES (-lOpenSLES) und gehört damit in die
 # Plattformschicht, nicht in eine dieser Bibliotheken.
+#
+# Für libogg und libvorbis lagen erzeugte Dateien unter libs/, ohne dass sie
+# jemand eingebunden hätte. Sie sind entfernt: unbenutzt und deshalb unbemerkt
+# zwei Werkzeugversionen hinterhergehinkt — mit heutigem mk2cmake.py entsteht
+# etwas anderes. Bei Bedarf neu erzeugen (die Makefiles liegen je Unterordner,
+# nicht im gemeinsamen liboggvorbis/Android.mk):
+#
+#   python3 mk2cmake.py Projects/Android/jni/SupportLibs/liboggvorbis/libogg \
+#       visionos/libs/libogg.cmake --context Projects/Android/jni/Application.mk
+#
+# Achtung: mk2cmake.py wertet ifeq nicht aus. libogg/Android.mk stellt seine
+# ARM32-Flags (-march=armv6, -mfpu=vfp) hinter ifeq ($(TARGET_ARCH),arm); die
+# landen ungefiltert in der Ausgabe und müssen für arm64 weg.
 include(libs/libpng.cmake)
 include(libs/jpeg8d.cmake)
 include(libs/libzip.cmake)

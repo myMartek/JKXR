@@ -161,8 +161,11 @@ final class EngineHost {
         frame.startSubmission()
         defer { frame.endSubmission() }
 
-        guard let drawable = frame.queryDrawable() else {
-            print("[JKXR] queryDrawable lieferte nil")
+        // queryDrawables, nicht queryDrawable: letzteres ist seit visionOS 26.0
+        // abgekündigt. Bei unserem Layout ist die Liste einelementig, leer heißt
+        // wie zuvor „diesen Frame auslassen".
+        guard let drawable = frame.queryDrawables().first else {
+            print("[JKXR] queryDrawables lieferte nichts")
             return nil
         }
 

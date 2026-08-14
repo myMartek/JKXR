@@ -101,7 +101,7 @@ python3 patch-gl4es-darwin.py Projects/Android/jni/SupportLibs/gl4es \
 
 cmake -S Projects/Android/jni/SupportLibs/gl4es -B build-visionos/gl4es \
   -DCMAKE_SYSTEM_NAME=visionOS -DCMAKE_OSX_SYSROOT=xros \
-  -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=2.0 \
+  -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=26.4 \
   -DNOX11=ON -DNOEGL=ON -DSTATICLIB=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
   -DCMAKE_C_FLAGS="-U__ARM_NEON__ -U__ARM_NEON"
 cmake --build build-visionos/gl4es -j8
@@ -186,15 +186,20 @@ Erzeugt mit [`mk2cmake.py`](mk2cmake.py), das JKXRs Android-Makefiles nach CMake
 liefe bei jedem JKXR-Update auseinander.
 
 ```bash
+# --context ist NICHT optional: ohne Application.mk bleibt $(SUPPORT_LIBS)
+# unaufgelöst, minizip verliert sein include/minizip, und der Build bricht
+# später mit "'ioapi.h' file not found" ab — an einer Stelle, die nichts mehr
+# mit der Erzeugung zu tun hat.
 for lib in libpng jpeg8d libzip sigc++ minizip; do
     python3 mk2cmake.py Projects/Android/jni/SupportLibs/$lib \
-        visionos/libs/$(basename $lib).cmake
+        visionos/libs/$(basename $lib).cmake \
+        --context Projects/Android/jni/Application.mk
 done
 python3 patch-supportlibs-darwin.py Projects/Android/jni/SupportLibs
 
 cmake -S visionos -B build-visionos/libs \
   -DCMAKE_SYSTEM_NAME=visionOS -DCMAKE_OSX_SYSROOT=xros \
-  -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=2.0
+  -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=26.4
 cmake --build build-visionos/libs -j8
 ```
 
@@ -212,6 +217,17 @@ Die Android-Makefiles verraten, was tatsächlich gebraucht wird:
 läuft auf Android über OpenSL ES (`-lOpenSLES` in `Android_client_ja.mk`) und
 gehört damit in die Plattformschicht, nicht in eine dieser Bibliotheken. Auf
 visionOS wäre das CoreAudio.
+
+Für libogg und libvorbis lagen trotzdem erzeugte Dateien unter `visionos/libs/`.
+Sie sind entfernt. Weil niemand sie einband, fiel auch niemandem auf, dass sie
+zwei Werkzeugversionen hinterherhinkten — sie trugen als einzige noch absolute
+Pfade, und neu erzeugt sehen sie heute anders aus. Ein erzeugtes Ergebnis, das
+sich nicht reproduzieren lässt, ist schlechter als keines.
+
+Beim Neuerzeugen zwei Fallen: die Makefiles liegen je Unterordner
+(`liboggvorbis/libogg/Android.mk`), nicht im gemeinsamen
+`liboggvorbis/Android.mk`, und `mk2cmake.py` wertet `ifeq` nicht aus — die
+ARM32-Flags aus `ifeq ($(TARGET_ARCH),arm)` landen ungefiltert in der Ausgabe.
 
 ### `<fp.h>` — ein Gruß aus Mac OS 9
 
@@ -253,6 +269,20 @@ for mod in client_ja gles_ja game_ja; do
         --exclude "JKXR/android/" --exclude "/code/android/"
 done
 ```
+
+### Zwei Nachbesserungen, beide auf einer zweiten Maschine aufgefallen
+
+**Die Pfade müssen relativ sein.** Zuerst schrieb `mk2cmake.py` absolute Pfade
+in `visionos/libs/*.cmake`. Auf der Maschine, auf der sie entstanden, fiel das
+nie auf; ein frischer Klon an anderer Stelle bricht dagegen sofort ab. Die
+Dateien sind versioniert, also müssen sie ortsunabhängig sein — sie stehen
+jetzt relativ zu `${CMAKE_CURRENT_LIST_DIR}`.
+
+**`from __future__ import annotations` muss vor jedem anderen Import stehen.**
+`mk2cmake.py` benutzt `str | None`; das gibt es erst ab Python 3.10, und macOS
+liefert weiterhin 3.9 mit. Die Zukunftsanweisung behebt das — aber nur an
+erster Stelle: Python verlangt sie vor jedem gewöhnlichen Import, sonst ist sie
+selbst ein `SyntaxError`.
 
 ### Header-Reihenfolge: gl4es vor ANGLE
 

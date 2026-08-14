@@ -4,7 +4,16 @@ options:
   bundleIdPrefix: de.martek
   createIntermediateGroups: true
   deploymentTarget:
-    visionOS: "2.0"
+    # 26.4, nicht 2.0.
+    #
+    # WorldTracking.m benutzt ar_accessory_tracking_provider_* und
+    # GCProductCategorySpatialController — beides gibt es erst ab visionOS 26.
+    # Mit Ziel 2.0 warnte der Compiler vierzehnmal (-Wunguarded-availability-new),
+    # und auf einem älteren System wäre es ein Absturz beim Start.
+    #
+    # Die vorgebauten ANGLE-Frameworks bleiben bei xros 2.0; ein niedrigeres
+    # minos in einer Abhängigkeit ist unkritisch.
+    visionOS: "26.4"
 
 settings:
   base:

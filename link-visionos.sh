@@ -62,7 +62,7 @@ partial_link() {
     for symbol in "$@"; do
         echo "_$symbol" >> "$WORK/$name.syms"
     done
-    xcrun --sdk xros ld -r -arch arm64 -platform_version xros 2.0 2.0 \
+    xcrun --sdk xros ld -r -arch arm64 -platform_version xros 26.4 26.4 \
         -exported_symbols_list "$WORK/$name.syms" \
         -o "$out" -all_load "$lib"
 
@@ -119,11 +119,11 @@ fi
 # früher wurde sie von Hand erzeugt und lag unversioniert unter
 # build-visionos/link/, womit das Skript auf einem frischen Klon scheiterte.
 echo "== Prüf-Hülle übersetzen"
-xcrun --sdk xros clang++ -c -target arm64-apple-xros2.0 -fobjc-arc -w \
+xcrun --sdk xros clang++ -c -target arm64-apple-xros26.4 -fobjc-arc -w \
     -o "$WORK/shell.o" "$HERE/visionos/linkcheck/shell.mm"
 
 echo "== linken (Prüfprogramm)"
-xcrun --sdk xros clang++ -target arm64-apple-xros2.0 -o "$OUT" \
+xcrun --sdk xros clang++ -target arm64-apple-xros26.4 -o "$OUT" \
     "$WORK/shell.o" \
     "$WORK/rd-gles-merged.o" "$WORK/jagame-merged.o" \
     -Wl,-force_load,"$HERE/build-visionos/gl4es/lib/libGL.a" \

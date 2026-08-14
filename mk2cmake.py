@@ -20,7 +20,16 @@ Aufruf:
                 (etwa Application.mk mit TOP_DIR, OPENJK_PATH, JK3_CODE_PATH)
 """
 
+# Hält das Skript auf Python 3.7+ lauffähig.
+#
+# Die Signaturen benutzen "str | None", was ohne diesen Import erst ab 3.10
+# übersetzt. Auf einem Rechner, dessen python3 etwa aus micromamba stammt (3.9),
+# scheitert sonst schon das Einlesen der Datei:
+#     TypeError: unsupported operand type(s) for |: 'type' and 'NoneType'
+from __future__ import annotations
+
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -187,18 +196,37 @@ def main() -> int:
                                        variables, module)
                 if f.startswith(FLAG_PREFIXES)]
 
+    # Pfade relativ zum Verzeichnis DIESER Datei ausgeben, nicht absolut.
+    #
+    # Die erzeugten Dateien sind versioniert und werden per include() eingebunden;
+    # CMAKE_CURRENT_LIST_DIR zeigt dabei auf das Verzeichnis der eingebundenen
+    # Datei, nicht auf das des Aufrufers. Absolute Pfade des Ursprungsrechners
+    # ließen jeden frischen Klon scheitern — CMake meldete dann bloß
+    # "No SOURCES given to target", ohne den eigentlichen Grund zu nennen.
+    out_dir = args.output.resolve().parent
+
+    def rel(p: Path) -> str:
+        try:
+            return "${CMAKE_CURRENT_LIST_DIR}/" + os.path.relpath(str(p), str(out_dir))
+        except ValueError:
+            # Anderes Laufwerk oder Ähnliches: dann bleibt nur absolut.
+            return str(p)
+
     lines = [
         f"# Erzeugt aus {makefile.name} von mk2cmake.py — nicht von Hand ändern.",
         f"# Modul: {module}, {len(resolved)} Quelldateien",
+        "#",
+        "# Pfade sind relativ zu dieser Datei (CMAKE_CURRENT_LIST_DIR), damit ein",
+        "# frischer Klon an beliebigem Ort konfiguriert.",
         "",
         f"add_library({module} STATIC",
     ]
-    lines += [f"    {p}" for p in sorted(set(resolved))]
+    lines += [f"    {rel(p)}" for p in sorted(set(resolved))]
     lines.append(")")
     lines.append("")
     lines.append(f"target_include_directories({module} PUBLIC")
-    lines.append(f"    {base.resolve()}")
-    lines += [f"    {p}" for p in dict.fromkeys(includes)]
+    lines.append(f"    {rel(base.resolve())}")
+    lines += [f"    {rel(p)}" for p in dict.fromkeys(includes)]
     lines.append(")")
 
     if cflags or cppflags:

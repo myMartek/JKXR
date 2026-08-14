@@ -1,17 +1,20 @@
 # Erzeugt aus Android.mk von mk2cmake.py — nicht von Hand ändern.
 # Modul: sigc, 5 Quelldateien
+#
+# Pfade sind relativ zu dieser Datei (CMAKE_CURRENT_LIST_DIR), damit ein
+# frischer Klon an beliebigem Ort konfiguriert.
 
 add_library(sigc STATIC
-    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/SupportLibs/sigc++/connection.cpp
-    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/SupportLibs/sigc++/functors/slot_base.cpp
-    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/SupportLibs/sigc++/signal.cpp
-    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/SupportLibs/sigc++/signal_base.cpp
-    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/SupportLibs/sigc++/trackable.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/../../Projects/Android/jni/SupportLibs/sigc++/connection.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/../../Projects/Android/jni/SupportLibs/sigc++/functors/slot_base.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/../../Projects/Android/jni/SupportLibs/sigc++/signal.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/../../Projects/Android/jni/SupportLibs/sigc++/signal_base.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/../../Projects/Android/jni/SupportLibs/sigc++/trackable.cpp
 )
 
 target_include_directories(sigc PUBLIC
-    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/SupportLibs
-    /Users/martek/Documents/Projects/botwvr/jkxr/Projects/Android/jni/SupportLibs
+    ${CMAKE_CURRENT_LIST_DIR}/../../Projects/Android/jni/SupportLibs
+    ${CMAKE_CURRENT_LIST_DIR}/../../Projects/Android/jni/SupportLibs
 )
 
 target_compile_options(sigc PRIVATE
