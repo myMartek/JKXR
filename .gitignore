@@ -279,3 +279,28 @@ JKXR-PCVR-Installer/JKA/base/GGDynamicWeapons.pk3
 JKXR-PCVR-Installer/JKA/base/Episode3blades.pk3
 JKXR-PCVR-Installer/JKA/base/DT_Stormtrooper_ROTJ_SP.pk3
 JKXR-PCVR-Installer/JKA/base/DT_Stormtrooper_ROTJ.pk3
+
+# --- visionOS-Portierung ---------------------------------------------------
+
+# Spieldateien. NICHT versionieren.
+#
+# assets0.pk3 bis assets3.pk3 stammen aus einer gekauften Jedi-Academy-
+# Installation (Steam) und sind urheberrechtlich geschützt — zusammen rund
+# 1,2 GB. Sie gehören auch auf einen privaten Server nicht hinein. Jeder, der
+# das Projekt baut, bringt sie aus seiner eigenen Installation mit.
+build-visionos/assets/
+
+# Bauausgaben
+build-visionos/
+visionos/build/
+visionos/DerivedData/
+spikes/*/build/
+spikes/*/DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# ANGLE-Baum: 24 GB, wird nicht gespiegelt.
+# Stand in spikes/s4-angle/ANGLE-COMMIT, Änderungen erzeugen die Patch-Skripte.
+spikes/s4-angle/angle/
+spikes/s4-angle/depot_tools/
+spikes/s4-angle/reference/

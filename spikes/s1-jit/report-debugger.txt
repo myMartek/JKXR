@@ -1,0 +1,23 @@
+S1 — JIT-Spike
+App-Starts für diesen Lauf: 2
+2026-08-11T11:06:03Z
+
+Host:          visionOS auf echter Hardware — der Lauf, der zählt
+Seitengröße:   16384 Bytes
+Debugger:      ANGEHÄNGT
+CodeSign:      0x32003005 [VALID GET_TASK_ALLOW ENFORCEMENT REQUIRE_LV DYLD_PLATFORM DEBUGGED SIGNED]
+Architektur:   arm64
+
+------------------------------------------------------------
+
+[FEHL] 1. mmap MAP_JIT + pthread_jit_write_protect_np
+       weit gekommen bis: kein Speicher
+       mmap(MAP_JIT) schlug fehl: Operation not permitted (errno 1) — das ist die erwartete Antwort ohne dynamic-codesigning-Entitlement
+
+[TOT ] 2. mmap PROT_READ|WRITE|EXEC (ohne MAP_JIT)
+       Diese Probe hat den Prozess hart beendet — kein abfangbares Signal, sondern Abschuss durch Kernel oder OS. Für Cemu heißt das: diesen Weg niemals versuchen.
+
+[????] 3. mmap RW -> mprotect RX — läuft gerade. Steht das beim nächsten Start noch hier, hat diese Probe den Prozess beendet.
+
+------------------------------------------------------------
+Fazit: Lauf unvollständig — 2 von 7 Proben erledigt. App erneut starten, um fortzusetzen.

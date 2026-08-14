@@ -1,0 +1,48 @@
+name: AngleSpike
+
+options:
+  bundleIdPrefix: de.martek
+  createIntermediateGroups: true
+  deploymentTarget:
+    visionOS: "2.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: 9VSUPJ942Y
+    PRODUCT_BUNDLE_IDENTIFIER: de.martek.anglespike
+    GENERATE_INFOPLIST_FILE: "YES"
+
+targets:
+  AngleSpike:
+    type: application
+    platform: visionOS
+    sources:
+      - path: Sources
+    dependencies:
+      # Aus angle/out/xros gebaut, per patch-angle-visionos.py ermöglicht.
+      # embed, weil die App sie zur Laufzeit dynamisch lädt.
+      - framework: Frameworks/libEGL.framework
+        embed: true
+        codeSign: true
+      - framework: Frameworks/libGLESv2.framework
+        embed: true
+        codeSign: true
+    settings:
+      base:
+        PRODUCT_NAME: AngleSpike
+        INFOPLIST_KEY_CFBundleDisplayName: ANGLE Spike
+        # World Tracking liefert die Kopfpose; ohne Zweckangabe verweigert
+        # visionOS den ARKit-Provider.
+        INFOPLIST_KEY_NSWorldSensingUsageDescription: >-
+          Kopfposition für stereoskopisches Rendering im Immersive Space.
+        # Erzeugt UIApplicationSceneManifest mit UIApplicationSupportsMultipleScenes.
+        # Ohne diesen Eintrag weiß visionOS nicht, dass die App neben dem Fenster
+        # einen Immersive Space öffnen darf — openImmersiveSpace scheitert dann
+        # kommentarlos, und im Headset passiert schlicht nichts.
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: "YES"
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/Angle/AngleSpike-Bridging-Header.h
+        HEADER_SEARCH_PATHS: $(SRCROOT)/../angle/include
+        # Die Frameworks liegen im Bundle unter Frameworks/.
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"

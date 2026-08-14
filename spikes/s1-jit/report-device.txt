@@ -1,0 +1,38 @@
+S1 — JIT-Spike
+App-Starts für diesen Lauf: 5
+2026-08-11T11:37:59Z
+
+Host:          visionOS auf echter Hardware — der Lauf, der zählt
+Seitengröße:   16384 Bytes
+Debugger:      nicht angehängt
+CodeSign:      0x22003305 [VALID GET_TASK_ALLOW HARD KILL ENFORCEMENT REQUIRE_LV DYLD_PLATFORM SIGNED]
+Architektur:   arm64
+
+------------------------------------------------------------
+
+[FEHL] 1. mmap MAP_JIT + pthread_jit_write_protect_np
+       weit gekommen bis: kein Speicher
+       mmap(MAP_JIT) schlug fehl: Operation not permitted (errno 1) — das ist die erwartete Antwort ohne dynamic-codesigning-Entitlement
+
+[TOT ] 2. mmap PROT_READ|WRITE|EXEC (ohne MAP_JIT)
+       Speicher ließ sich vorbereiten (ausführbar gemacht) — erst der Sprung in den Speicher beendete den Prozess. Das Mappen ist also erlaubt, die Ausführung nicht. [mmap(RWX) lieferte 0x104fe4000]
+
+[TOT ] 3. mmap RW -> mprotect RX
+       Speicher ließ sich vorbereiten (ausführbar gemacht) — erst der Sprung in den Speicher beendete den Prozess. Das Mappen ist also erlaubt, die Ausführung nicht. [mprotect(RX) auf 0x1005c8000 akzeptiert]
+
+[TOT ] 4. vm_remap Dual-Mapping (RW-Alias + RX-Alias)
+       Speicher ließ sich vorbereiten (ausführbar gemacht) — erst der Sprung in den Speicher beendete den Prozess. Das Mappen ist also erlaubt, die Ausführung nicht. [RW-Alias 0x102670000, RX-Alias 0x102674000 (Alias cur=rw- max=rwx)]
+
+[FEHL] 5. shm_open Dual-Mapping
+       weit gekommen bis: kein Speicher
+       shm_open schlug fehl: Operation not permitted (errno 1) — auf iOS-Familie-OSen verlangt die Sandbox oft ein App-Group-Präfix
+
+[FEHL] 6. vm_protect mit VM_PROT_COPY
+       weit gekommen bis: Code geschrieben
+       Region cur=rw- max=rwx; vm_protect(RX|COPY) schlug fehl: (os/kern) protection failure — Max erlaubt EXECUTE, das ist also eine Policy-Ablehnung
+
+[TOT ] 7. vm_map mit max=RWX, dann vm_protect RX
+       Speicher ließ sich vorbereiten (ausführbar gemacht) — erst der Sprung in den Speicher beendete den Prozess. Das Mappen ist also erlaubt, die Ausführung nicht. [vm_map lieferte 0x100cfc000 mit cur=rw- max=rwx, vm_protect(RX) akzeptiert]
+
+------------------------------------------------------------
+Fazit: KEIN ausführbarer Speicher auf diesem Weg. 4 Probe(n) beendeten den Prozess hart. Ein nativer Cemu-Port über den Recompiler ist auf dieser Konfiguration nicht möglich.

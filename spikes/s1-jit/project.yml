@@ -1,0 +1,58 @@
+name: JitSpike
+
+options:
+  bundleIdPrefix: de.martek
+  createIntermediateGroups: true
+  deploymentTarget:
+    visionOS: "2.0"
+    macOS: "14.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Automatic
+    # Team-ID, nicht die individuelle Entwickler-ID aus dem Zertifikat:
+    # das "Apple Development"-Zertifikat trägt S5QCBZZQUR (Marcels persönliche
+    # ID), signiert aber für das Team 9VSUPJ942Y, dem alle de.martek.*-Profile
+    # gehören.
+    DEVELOPMENT_TEAM: 9VSUPJ942Y
+    PRODUCT_BUNDLE_IDENTIFIER: de.martek.cemu
+    GENERATE_INFOPLIST_FILE: "YES"
+    SWIFT_OBJC_BRIDGING_HEADER: Sources/JitProbe/JitSpike-Bridging-Header.h
+    # Die Proben provozieren absichtlich Speicherschutzverletzungen.
+    # Optimierung aus, damit der Signal-Handler-Pfad nachvollziehbar bleibt.
+    GCC_OPTIMIZATION_LEVEL: "0"
+
+targets:
+  # Das eigentliche Ziel: beantwortet die Go/No-Go-Frage.
+  JitSpike:
+    type: application
+    platform: visionOS
+    sources:
+      - path: Sources
+    settings:
+      base:
+        PRODUCT_NAME: JitSpike
+        INFOPLIST_KEY_CFBundleDisplayName: JIT Spike
+
+  # Kontrollgruppe: dieselben Proben auf einer Plattform, wo JIT nachweislich
+  # funktioniert. Ohne diesen Vergleich lässt sich ein visionOS-Fehlschlag nicht
+  # von einem Fehler im Spike selbst unterscheiden.
+  JitSpikeMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+    settings:
+      base:
+        PRODUCT_NAME: JitSpikeMac
+        INFOPLIST_KEY_CFBundleDisplayName: JIT Spike (Mac)
+        # Bewusst OHNE Hardened Runtime und ohne com.apple.security.cs.allow-jit:
+        # so zeigt der Lauf, was eine gewöhnliche Mac-App ohne Sonderrechte
+        # bekommt. Genau das ist der Vergleichsmaßstab für visionOS.
+        ENABLE_HARDENED_RUNTIME: "NO"
+        # Das Team hat kein "Mac Development"-Zertifikat. Für ein lokales
+        # Diagnosewerkzeug reicht ad-hoc-Signierung völlig.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        DEVELOPMENT_TEAM: ""

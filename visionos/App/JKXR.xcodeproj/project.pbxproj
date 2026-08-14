@@ -198,7 +198,7 @@
 					"$(inherited)",
 					"\"Frameworks\"",
 				);
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../../spikes/s4-angle/angle/include";
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../spikes/s4-angle/angle-include";
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Jedi Knight XR";
 				INFOPLIST_KEY_NSWorldSensingUsageDescription = "Kopf- und Controllerposition für das Spiel im Immersive Space.";
@@ -281,7 +281,7 @@
 					"$(inherited)",
 					"\"Frameworks\"",
 				);
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../../spikes/s4-angle/angle/include";
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../spikes/s4-angle/angle-include";
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Jedi Knight XR";
 				INFOPLIST_KEY_NSWorldSensingUsageDescription = "Kopf- und Controllerposition für das Spiel im Immersive Space.";

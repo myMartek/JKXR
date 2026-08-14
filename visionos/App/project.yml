@@ -63,7 +63,7 @@ targets:
         ENABLE_DEBUG_DYLIB: "NO"
 
         SWIFT_OBJC_BRIDGING_HEADER: Sources/Bridge/JKXR-Bridging-Header.h
-        HEADER_SEARCH_PATHS: $(SRCROOT)/../../../spikes/s4-angle/angle/include
+        HEADER_SEARCH_PATHS: $(SRCROOT)/../../spikes/s4-angle/angle-include
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
 
         # Die Engine. Erklärung zu jedem Teil in link-visionos.sh:

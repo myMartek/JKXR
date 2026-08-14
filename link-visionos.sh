@@ -35,7 +35,9 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD="$HERE/visionos/build"
 WORK="$HERE/build-visionos/link"
-ANGLE="$HERE/../spikes/s4-angle/angle/out/xros"
+# Die gebauten ANGLE-Frameworks liegen im Repo (12 MB), nicht im 24-GB-Baum.
+# Neu bauen lässt sich ANGLE über spikes/s4-angle/README.md.
+ANGLE="$HERE/visionos/App/Frameworks"
 OUT="${1:-$WORK/jkxr}"
 
 mkdir -p "$WORK"

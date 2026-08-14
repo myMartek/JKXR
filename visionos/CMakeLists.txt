@@ -79,7 +79,7 @@ include_directories(BEFORE
 
 # ANGLE *nach* gl4es: die XR-Schicht braucht echtes GLES3 und die
 # EGL_METAL_*-Erweiterungen, die Engine dagegen gl4es' Emulation.
-set(ANGLE_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../spikes/s4-angle/angle/include"
+set(ANGLE_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../spikes/s4-angle/angle-include"
     CACHE PATH "ANGLE-Header")
 include_directories(${ANGLE_INCLUDE})
 

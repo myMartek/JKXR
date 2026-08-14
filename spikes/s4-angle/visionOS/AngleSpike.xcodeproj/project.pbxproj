@@ -1,0 +1,381 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		2FF926DAAE14DD7DE1076E71 /* libGLESv2.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 463FD9F38E2342BD65B94DC1 /* libGLESv2.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		3AC9C36A925A63D16D99735E /* libEGL.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 155188567083887955E8BADE /* libEGL.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		3CDEBE2D596695A8C693DCA3 /* AngleBridge.c in Sources */ = {isa = PBXBuildFile; fileRef = D5BE90684D4A2F753EF4EDE3 /* AngleBridge.c */; };
+		700C882786483BBF8599E67A /* libEGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 155188567083887955E8BADE /* libEGL.framework */; };
+		95723BF6AA8E7DE0A13CF9A2 /* libGLESv2.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 463FD9F38E2342BD65B94DC1 /* libGLESv2.framework */; };
+		9F1436C745BE463C3D3A5982 /* AngleSpikeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 561CC899CC23B261D358B0CE /* AngleSpikeApp.swift */; };
+		B0F87530FD7F0383136E972E /* ImmersiveRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9394845836261EB39092E7C /* ImmersiveRenderer.swift */; };
+		CF377131995CB2CA8AEF7EE4 /* Shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = C5762E8CCBF23CA7E36FE413 /* Shaders.metal */; };
+		D70D8665E8643F0394DCFCD6 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E06FE505161EA568D9C7C72F /* ContentView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		EB9F0883EDB90EA8EC595763 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				3AC9C36A925A63D16D99735E /* libEGL.framework in Embed Frameworks */,
+				2FF926DAAE14DD7DE1076E71 /* libGLESv2.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		155188567083887955E8BADE /* libEGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = libEGL.framework; path = Frameworks/libEGL.framework; sourceTree = "<group>"; };
+		2053BF6765B7C67E437D6C6F /* AngleBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AngleBridge.h; sourceTree = "<group>"; };
+		463FD9F38E2342BD65B94DC1 /* libGLESv2.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = libGLESv2.framework; path = Frameworks/libGLESv2.framework; sourceTree = "<group>"; };
+		561CC899CC23B261D358B0CE /* AngleSpikeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AngleSpikeApp.swift; sourceTree = "<group>"; };
+		AFC3445EC7915A4A163B0AEA /* AngleSpike-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "AngleSpike-Bridging-Header.h"; sourceTree = "<group>"; };
+		C5762E8CCBF23CA7E36FE413 /* Shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Shaders.metal; sourceTree = "<group>"; };
+		C9394845836261EB39092E7C /* ImmersiveRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImmersiveRenderer.swift; sourceTree = "<group>"; };
+		CA72A54515293932381CD816 /* AngleSpike.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AngleSpike.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D5BE90684D4A2F753EF4EDE3 /* AngleBridge.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = AngleBridge.c; sourceTree = "<group>"; };
+		E06FE505161EA568D9C7C72F /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		26027A9C88AF6959DBE3C80F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				700C882786483BBF8599E67A /* libEGL.framework in Frameworks */,
+				95723BF6AA8E7DE0A13CF9A2 /* libGLESv2.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1935FAC2E615E4347F36CACC /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				155188567083887955E8BADE /* libEGL.framework */,
+				463FD9F38E2342BD65B94DC1 /* libGLESv2.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		687122938EEE237FCD396F65 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				561CC899CC23B261D358B0CE /* AngleSpikeApp.swift */,
+				E06FE505161EA568D9C7C72F /* ContentView.swift */,
+				C9394845836261EB39092E7C /* ImmersiveRenderer.swift */,
+				C5762E8CCBF23CA7E36FE413 /* Shaders.metal */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		7CBDFADB743DCFE21927740D /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				876DFB691EDA7AADFAFFCDFA /* Angle */,
+				687122938EEE237FCD396F65 /* App */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		876DFB691EDA7AADFAFFCDFA /* Angle */ = {
+			isa = PBXGroup;
+			children = (
+				D5BE90684D4A2F753EF4EDE3 /* AngleBridge.c */,
+				2053BF6765B7C67E437D6C6F /* AngleBridge.h */,
+				AFC3445EC7915A4A163B0AEA /* AngleSpike-Bridging-Header.h */,
+			);
+			path = Angle;
+			sourceTree = "<group>";
+		};
+		8BE9A95C83279AAB460C57A6 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				CA72A54515293932381CD816 /* AngleSpike.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		D27963A2C9019EE6A3F02A4A = {
+			isa = PBXGroup;
+			children = (
+				7CBDFADB743DCFE21927740D /* Sources */,
+				1935FAC2E615E4347F36CACC /* Frameworks */,
+				8BE9A95C83279AAB460C57A6 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		DA959E5185F2C0DB408CA03A /* AngleSpike */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CF1AD7A2015FEEE8342CD60D /* Build configuration list for PBXNativeTarget "AngleSpike" */;
+			buildPhases = (
+				48F0B30600481852695E39B2 /* Sources */,
+				26027A9C88AF6959DBE3C80F /* Frameworks */,
+				EB9F0883EDB90EA8EC595763 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AngleSpike;
+			packageProductDependencies = (
+			);
+			productName = AngleSpike;
+			productReference = CA72A54515293932381CD816 /* AngleSpike.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		43FDB965171B77C1067A345A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					DA959E5185F2C0DB408CA03A = {
+						DevelopmentTeam = 9VSUPJ942Y;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 506992F6F4E38713F92B7498 /* Build configuration list for PBXProject "AngleSpike" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = D27963A2C9019EE6A3F02A4A;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 8BE9A95C83279AAB460C57A6 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				DA959E5185F2C0DB408CA03A /* AngleSpike */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		48F0B30600481852695E39B2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3CDEBE2D596695A8C693DCA3 /* AngleBridge.c in Sources */,
+				9F1436C745BE463C3D3A5982 /* AngleSpikeApp.swift in Sources */,
+				D70D8665E8643F0394DCFCD6 /* ContentView.swift in Sources */,
+				B0F87530FD7F0383136E972E /* ImmersiveRenderer.swift in Sources */,
+				CF377131995CB2CA8AEF7EE4 /* Shaders.metal in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		0EE62317E422D11BDA9FC994 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 9VSUPJ942Y;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = de.martek.anglespike;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = xros;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Release;
+		};
+		1E0059BA86F852F7E8A23025 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"Frameworks\"",
+				);
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../angle/include";
+				INFOPLIST_KEY_CFBundleDisplayName = "ANGLE Spike";
+				INFOPLIST_KEY_NSWorldSensingUsageDescription = "Kopfposition für stereoskopisches Rendering im Immersive Space.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				PRODUCT_NAME = AngleSpike;
+				SDKROOT = xros;
+				SWIFT_OBJC_BRIDGING_HEADER = "Sources/Angle/AngleSpike-Bridging-Header.h";
+				TARGETED_DEVICE_FAMILY = 7;
+			};
+			name = Release;
+		};
+		4FC5FA6913118DEEDA6F2E55 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"Frameworks\"",
+				);
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../angle/include";
+				INFOPLIST_KEY_CFBundleDisplayName = "ANGLE Spike";
+				INFOPLIST_KEY_NSWorldSensingUsageDescription = "Kopfposition für stereoskopisches Rendering im Immersive Space.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				PRODUCT_NAME = AngleSpike;
+				SDKROOT = xros;
+				SWIFT_OBJC_BRIDGING_HEADER = "Sources/Angle/AngleSpike-Bridging-Header.h";
+				TARGETED_DEVICE_FAMILY = 7;
+			};
+			name = Debug;
+		};
+		8CB3AF5F6A7ADA58A3ED4EF7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 9VSUPJ942Y;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = de.martek.anglespike;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = xros;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		506992F6F4E38713F92B7498 /* Build configuration list for PBXProject "AngleSpike" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8CB3AF5F6A7ADA58A3ED4EF7 /* Debug */,
+				0EE62317E422D11BDA9FC994 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		CF1AD7A2015FEEE8342CD60D /* Build configuration list for PBXNativeTarget "AngleSpike" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4FC5FA6913118DEEDA6F2E55 /* Debug */,
+				1E0059BA86F852F7E8A23025 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 43FDB965171B77C1067A345A /* Project object */;
+}
