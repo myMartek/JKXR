@@ -587,7 +587,24 @@ This is the only way control passes into the module.
 This must be the very first function compiled into the .qvm file
 ================
 */
+#if defined(JKXR_VISIONOS)
+// Auf visionOS ausgeklammert: NAMENSKOLLISION mit dem Spielcode.
+//
+// Dieses vmMain ist der Einsprungpunkt des UI-Moduls für den QVM- oder
+// DLL-Bau. Im Einzelspieler wird es nie gerufen — es gibt keinen Aufrufer im
+// Client, und der Rumpf ist "return 0;".
+//
+// Bei uns sind Client, Renderer und Spielcode zu EINEM Programm gelinkt, und
+// CL_InitCGameVM sucht den cgame-Einsprungpunkt über dlsym(RTLD_DEFAULT,
+// "vmMain"). Existieren zwei Definitionen, ist offen, welche geliefert wird.
+// Derzeit geht es gut, weil ui_main.cpp.o mangels gebrauchter Symbole gar
+// nicht aus dem Archiv gezogen wird — aber das ist Zufall, kein Entwurf. Der
+// eigenständige Prüflink in link-visionos.sh zieht es sehr wohl herein und
+// scheiterte an "duplicate symbol '_vmMain'".
+static intptr_t QDECL ui_vmMain_unused( int command, int arg0, int arg1, int arg2, int arg3, int arg4, int arg5, int arg6, int arg7, int arg8, int arg9, int arg10, int arg11  )
+#else
 extern "C" Q_EXPORT intptr_t QDECL vmMain( int command, int arg0, int arg1, int arg2, int arg3, int arg4, int arg5, int arg6, int arg7, int arg8, int arg9, int arg10, int arg11  )
+#endif
 {
 	return 0;
 }

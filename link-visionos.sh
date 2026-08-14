@@ -115,6 +115,13 @@ fi
 # einem doppelten _vmMain fehl, seit das Spielmodul es exportieren muss;
 # aussagekräftig bleibt er trotzdem für die gl4es-Aliase. Deshalb steht das
 # Verwerfen des App-Bündels davor: sonst nimmt "set -e" es mit.
+# Die Prüf-Hülle übersetzen. Sie liegt im Repo (visionos/linkcheck/shell.mm);
+# früher wurde sie von Hand erzeugt und lag unversioniert unter
+# build-visionos/link/, womit das Skript auf einem frischen Klon scheiterte.
+echo "== Prüf-Hülle übersetzen"
+xcrun --sdk xros clang++ -c -target arm64-apple-xros2.0 -fobjc-arc -w \
+    -o "$WORK/shell.o" "$HERE/visionos/linkcheck/shell.mm"
+
 echo "== linken (Prüfprogramm)"
 xcrun --sdk xros clang++ -target arm64-apple-xros2.0 -o "$OUT" \
     "$WORK/shell.o" \
