@@ -499,7 +499,7 @@ void drawScreenWallDepth(int eye)
     // andere falsche Verschiebung — das HUD wandert beim Drehen, erscheint in
     // einem Auge früher als im anderen und lässt sich nicht fusionieren.
     simd_float4x4 projection = cp_drawable_compute_projection(
-        gDrawable, cp_axis_direction_convention_right_down_back, eye);
+        gDrawable, cp_axis_direction_convention_right_up_back, eye);
     simd_float4x4 deviceFromView =
         cp_view_get_transform(cp_drawable_get_view(gDrawable, eye));
     // Vollständige ARKit-Gerätepose. Die inverse View-Matrix verschiebt die
@@ -2596,7 +2596,7 @@ extern "C" bool VR_GetScreenWall(int eye, float *projection16, float *modelview1
     // eine Spiegelung und eine Drehung vertauschen sich nicht: sobald der Kopf
     // geneigt wird, dreht sich das Bild nicht mit, sondern verformt sich.
     simd_float4x4 proj = cp_drawable_compute_projection(
-        gDrawable, cp_axis_direction_convention_right_down_back, eye);
+        gDrawable, cp_axis_direction_convention_right_up_back, eye);
     memcpy(projection16, &proj, sizeof(float) * 16);
 
     // Wand einmal einrasten, dann im Raum stehen lassen.
@@ -2683,12 +2683,21 @@ extern "C" bool VR_GetScreenWall(int eye, float *projection16, float *modelview1
                 simd_mul(mv, (simd_float4){320.0f, 0.0f, 0.0f, 1.0f});
             const simd_float4 clipC = simd_mul(proj, centre);
             const simd_float4 clipT = simd_mul(proj, top);
-            ALOGV("[Wand] Auge %d · Mitte im Auge %.3f %.3f %.3f · "
-                  "ndc Mitte %.3f %.3f · ndc Oberkante y %.3f\n",
-                  eye, centre.x, centre.y, centre.z,
+            // Die Kette lückenlos: Augenposition laut Compositor, dieselbe
+            // Position nach originFromDevice, und die Wandmitte im Augenraum.
+            //
+            // Rechnerisch MUSS die Wandmitte zwischen den Augen um genau den
+            // Augenabstand auseinanderliegen — eine Rotation ändert keine
+            // Längen. Gemessen sind es aber nur 0,025 m statt 0,064. Eine der
+            // drei Größen bricht die Kette, und diese Zeile zeigt welche.
+            const simd_float3 vPos = viewTf.columns[3].xyz;
+            const simd_float3 wPos = originFromView.columns[3].xyz;
+            ALOGV("[Wand] Auge %d · viewTf %.4f %.4f %.4f · originFromView "
+                  "%.4f %.4f %.4f · Mitte im Auge %.3f %.3f %.3f · ndc %.3f %.3f\n",
+                  eye, vPos.x, vPos.y, vPos.z, wPos.x, wPos.y, wPos.z,
+                  centre.x, centre.y, centre.z,
                   clipC.w != 0.0f ? clipC.x / clipC.w : 0.0f,
-                  clipC.w != 0.0f ? clipC.y / clipC.w : 0.0f,
-                  clipT.w != 0.0f ? clipT.y / clipT.w : 0.0f);
+                  clipC.w != 0.0f ? clipC.y / clipC.w : 0.0f);
         }
     }
 
