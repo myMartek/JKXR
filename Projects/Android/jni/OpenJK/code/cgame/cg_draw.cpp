@@ -1892,6 +1892,26 @@ static void CG_DrawHUD( centity_t *cent )
 	}
 
 	// Draw the lower left section of the HUD
+#ifdef JKXR_VISIONOS
+	// DIAGNOSE, wieder zu entfernen.
+	//
+	// Der vorige Messpunkt lag INNERHALB des folgenden Blocks und meldete sich
+	// nie — der Block wird also übersprungen. Diese Zeile steht davor und sagt,
+	// ob die Menüabfrage überhaupt gelingt.
+	{
+		static int probed = 0;
+		if ( probed < 3 ) {
+			++probed;
+			int lx = -1, ly = -1, lw = -1, lh = -1;
+			const int okLeft = cgi_UI_GetMenuInfo( "lefthud", &lx, &ly, &lw, &lh );
+			cgi_Printf( va( "[HUD] lefthud gefunden %d · Sektion %d,%d %dx%d · "
+				"cg_drawHUD %d · hudFiles %d\n",
+				okLeft, lx, ly, lw, lh,
+				cg_drawHUD.integer, cg_hudFiles.integer ) );
+		}
+	}
+#endif
+
 	if (cgi_UI_GetMenuInfo("lefthud",&sectionXPos,&sectionYPos,&sectionWidth,&sectionHeight))
 	{
 		// Draw all the HUD elements --eez
@@ -1903,6 +1923,7 @@ static void CG_DrawHUD( centity_t *cent )
 			CG_DrawSmallStringColor(sectionXPos+5, sectionYPos - 60,va("Armor:%d",cg.snap->ps.stats[STAT_ARMOR]), colorTable[CT_HUD_GREEN] );
 			CG_DrawSmallStringColor(sectionXPos+5, sectionYPos - 40,va("Health:%d",cg.snap->ps.stats[STAT_HEALTH]), colorTable[CT_HUD_GREEN] );
 		}
+
 
 		// Print scanline
 		cgi_R_SetColor( otherHUDBits[OHB_SCANLINE_LEFT].color);
@@ -2048,6 +2069,26 @@ void CG_DrawDataPadHUD( centity_t *cent )
 	CG_DrawMessageLit(cent,x,y);
 
 	cgi_R_SetColor( colorTable[CT_WHITE]);
+#ifdef JKXR_VISIONOS
+	// DIAGNOSE, wieder zu entfernen.
+	//
+	// DIES ist der HUD-Weg, den JKXR in VR nimmt — nicht CG_DrawHUD, das
+	// menügesteuerte. Beide vorherigen Messpunkte lagen dort und meldeten sich
+	// deshalb nie.
+	//
+	// Die Bögen daneben sind sichtbar, dieser bildfüllende Rahmen nicht. Da
+	// beide durch dieselbe Ortho laufen, bleibt als Unterschied nur das
+	// Grafikhandle: ist es 0, wurde "gfx/menus/datapad" nicht registriert.
+	{
+		static int probed = 0;
+		if ( probed < 3 ) {
+			++probed;
+			cgi_Printf( va( "[HUD] dataPadFrame %d · drawingHUD %d\n",
+				(int)cgs.media.dataPadFrame, (int)cg.drawingHUD ) );
+		}
+	}
+#endif
+
 	CG_DrawPic( 0, 0, 640, 480, cgs.media.dataPadFrame );
 
 }
@@ -4201,6 +4242,21 @@ CG_Draw2D
 extern void CG_SaberClashFlare( void );
 static void CG_Draw2D( void )
 {
+#ifdef JKXR_VISIONOS
+	// KONTROLLPUNKT, wieder zu entfernen.
+	//
+	// Drei Messpunkte in Folge blieben stumm. Bevor ich daraus schliesse, dass
+	// der jeweilige Code nicht laeuft, muss belegt sein, dass eine Ausgabe aus
+	// dem cgame ueberhaupt im Log ankommt — das Modul ist ein eigenes und
+	// druckt ueber cgi_Printf, waehrend ich Com_Printf benutzt hatte.
+	//
+	// Meldet sich diese Zeile und die anderen nicht, sind die anderen Wege
+	// wirklich tot. Meldet sich keine, lag es am Ausgabeweg.
+	{
+		static int seen = 0;
+		if ( seen < 2 ) { ++seen; cgi_Printf( "[HUD] CG_Draw2D laeuft\n" ); }
+	}
+#endif
 	char	text[1024]={0};
 	int		w,y_pos;
 	centity_t *cent = &cg_entities[cg.snap->ps.clientNum];

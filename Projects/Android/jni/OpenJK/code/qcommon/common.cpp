@@ -1104,7 +1104,21 @@ void Com_Init( char *commandLine ) {
 		Cmd_AddCommand ("writeconfig", Com_WriteConfig_f );
 
 		com_developer = Cvar_Get ("developer", "0", CVAR_TEMP );
-		com_logfile = Cvar_Get ("logfile", "0", CVAR_TEMP );
+		// Auf visionOS standardmäßig an, und zwar durchschreibend.
+		//
+		// Es gibt hier keine Konsole zum Mitlesen: der Weg über
+		// "devicectl --console" hat sich als riskant erwiesen (er stellt den
+		// Immersive Space wieder her und hat den Gerätezustand verdorben), und
+		// über die Konfigurationsdatei lässt sich der Wert nicht setzen — er
+		// ist CVAR_TEMP, und Com_WriteConfiguration entfernt die Zeile beim
+		// nächsten Schreiben wieder.
+		//
+		// Stufe 2 statt 1, weil Stufe 1 in 8-KB-Blöcken puffert. Die App endet
+		// hier praktisch immer per Signal, und alles nach dem ersten Block
+		// wäre verloren — genau daran sind zwei Messversuche gescheitert.
+		// FS_ForceFlush je Zeile kostet kaum etwas, da Com_Printf im laufenden
+		// Spiel selten aufgerufen wird.
+		com_logfile = Cvar_Get ("logfile", "2", CVAR_TEMP );
 		com_speedslog = Cvar_Get ("speedslog", "0", CVAR_TEMP );
 
 		com_timescale = Cvar_Get ("timescale", "1", CVAR_CHEAT );
