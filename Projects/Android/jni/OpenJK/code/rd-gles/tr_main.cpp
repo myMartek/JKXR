@@ -641,7 +641,7 @@ void R_SetupProjection( void ) {
 	// eine zweite Spiegelung. Genau dieselbe Fallunterscheidung trifft
 	// JKXR_visionOS_Ortho fürs 2D; ohne sie stand die Modellvorschau im Menü
 	// auf dem Kopf, während die Beschriftungen daneben richtig lagen.
-	if ( !( ri.TBXR_useScreenLayer && ri.TBXR_useScreenLayer() ) )
+	if ( !JKXR_visionOS_FlatTarget() )
 	{
 		const float swap = ymin;
 		ymin = ymax;
@@ -698,7 +698,7 @@ void R_SetupProjection( void ) {
 	// tr_init.cpp). Eine reversed Matrix gegen einen nicht reversed Puffer war
 	// genau der Grund, warum in der Modellvorschau Augen, Mund und Kleidung
 	// durcheinander verdeckten.
-	if ( !( ri.TBXR_useScreenLayer && ri.TBXR_useScreenLayer() ) )
+	if ( !JKXR_visionOS_FlatTarget() )
 	{
 		tr.viewParms.projectionMatrix[10] = -tr.viewParms.projectionMatrix[10];
 		tr.viewParms.projectionMatrix[14] = -tr.viewParms.projectionMatrix[14];

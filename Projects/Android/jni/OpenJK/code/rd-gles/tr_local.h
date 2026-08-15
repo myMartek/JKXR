@@ -1265,6 +1265,12 @@ int R_CullPointAndRadius( const vec3_t pt, float radius );
 int R_CullLocalPointAndRadius( const vec3_t pt, float radius );
 
 void R_SetupProjection( void );
+#ifdef JKXR_VISIONOS
+// Zeichnet die Engine gerade in den GL-Zwischenpuffer statt in die Augentextur?
+// Entscheidet über Y-Richtung, Tiefenkonvention und Wicklung. Definiert in
+// tr_init.cpp, dort steht auch die Begründung.
+qboolean JKXR_visionOS_FlatTarget( void );
+#endif
 void R_RotateForEntity( const trRefEntity_t *ent, const viewParms_t *viewParms, orientationr_t *ori );
 void R_RebuildViewParmsWorld( viewParms_t *parms );
 

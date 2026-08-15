@@ -86,6 +86,8 @@ void (*BindRenderbuffer)(GLenum, GLuint) = nullptr;
 void (*RenderbufferStorage)(GLenum, GLenum, GLsizei, GLsizei) = nullptr;
 void (*FramebufferRenderbuffer)(GLenum, GLenum, GLenum, GLuint) = nullptr;
 void (*DeleteRenderbuffers)(GLsizei, const GLuint *) = nullptr;
+// Nur für die Diagnose weiter unten.
+void (*ReadPixels)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void *) = nullptr;
 void (*Viewport)(GLint, GLint, GLsizei, GLsizei) = nullptr;
 void (*Enable)(GLenum) = nullptr;
 void (*Disable)(GLenum) = nullptr;
@@ -158,6 +160,7 @@ bool resolve()
     RESOLVE(RenderbufferStorage)
     RESOLVE(FramebufferRenderbuffer)
     RESOLVE(DeleteRenderbuffers)
+    RESOLVE(ReadPixels)
     RESOLVE(Viewport)
     RESOLVE(Enable)
     RESOLVE(Disable)
@@ -215,6 +218,13 @@ cp_frame_t     gFrame    = nullptr;
 cp_drawable_t  gDrawable = nullptr;
 id<MTLCommandQueue>  gQueue = nil;
 id<MTLCommandBuffer> gCommandBuffer = nil;
+
+// Sichtsonde über Metal (siehe TBXR_submitFrame). Der Blit läuft in einem
+// Bild, gelesen wird im nächsten — so muss nirgends auf die GPU gewartet
+// werden.
+static id<MTLTexture> gProbeStaging = nil;
+static id<MTLCommandBuffer> gProbeCommands = nil;
+static bool gProbePending = false;
 
 /// Pro Auge die aus der Drawable importierten GL-Objekte. Sie gelten nur für
 /// den laufenden Frame und werden in TBXR_finishEyeBuffer wieder abgeräumt.
@@ -1219,6 +1229,65 @@ void TBXR_FrameSetup()
     }
     gDrawable = cp_drawable_array_get_drawable(drawables, 0);
 
+    // Das Gesamtsichtfeld für die Engine hinterlegen.
+    //
+    // Android tut das in TBXR_Common.cpp:2130, Windows in :1152 — in dieser
+    // Fassung fehlte es, und vr.fov_x/fov_y blieben auf 0.
+    //
+    // Die Engine rechnet damit weiter, ohne sich zu beschweren:
+    //
+    //   cg_view.cpp:1425   fov_x = vr ? vr->fov_x : cg_fov.value;   -> 0
+    //   CG_CalcFov         tan(0) = 0, danach eine Division dadurch
+    //   cg_view.cpp:2074   speed = cg.refdef.fov_y / 75.0           -> NaN
+    //   cgi_SetUserCmdValue(..., speed, ...)  -> cl.cgameSensitivity = NaN
+    //   CL_MouseMove       mx = 0 * NaN = NaN, und die Wächterzeile
+    //                      "if (!mx && !my) return;" greift nicht, weil sich
+    //                      NaN nicht mit null vergleichen lässt
+    //   CL_AdjustAngles    cl.viewangles[YAW] wird nur AUFSUMMIERT und ist
+    //                      damit dauerhaft vergiftet
+    //
+    // Ergebnis war eine vollständig schwarze Spielwelt: AnglesToAxis macht aus
+    // dem NaN-Yaw die Blickachse (nan, nan, gültig), der Rasterizer verwirft
+    // NaN-Ecken stillschweigend, und die Engine meldet dabei keinen Fehler —
+    // über tausend Flächen laufen sauber durch. Das HUD blieb sichtbar, weil
+    // RB_SetGL2D sich seine eigene Modelview setzt.
+    //
+    // Gerechnet wird wie in der Android-Fassung: die waagerechte Ausdehnung
+    // über BEIDE Augen (linker Rand des linken, rechter Rand des rechten), die
+    // senkrechte aus einem Auge. Der Wert dient der Engine zum Aussortieren —
+    // er soll großzügig sein, nicht exakt.
+    {
+        // Tangenten hier direkt aus der Projektionsmatrix, nicht über die
+        // Hilfsfunktion weiter unten: die liegt in einem anonymen Namensraum,
+        // und eine Vorwärtsdeklaration erzeugte dort eine zweite Funktion.
+        const auto tangents = [&](size_t view, float *l, float *r,
+                                  float *d, float *u) {
+            const simd_float4x4 p = cp_drawable_compute_projection(
+                gDrawable, cp_axis_direction_convention_right_up_back, view);
+            const float sx = p.columns[0][0], ox = p.columns[2][0];
+            const float sy = p.columns[1][1], oy = p.columns[2][1];
+            *l = (-1.0f - ox) / sx;
+            *r = ( 1.0f - ox) / sx;
+            *d = (-1.0f - oy) / sy;
+            *u = ( 1.0f - oy) / sy;
+        };
+
+        const size_t views = cp_drawable_get_view_count(gDrawable);
+        if (views >= 1) {
+            float l0, r0, d0, u0;
+            tangents(0, &l0, &r0, &d0, &u0);
+            float rRight = r0;
+            if (views >= 2) {
+                float l1, r1, d1, u1;
+                tangents(1, &l1, &r1, &d1, &u1);
+                rRight = r1;
+            }
+            const float deg = 180.0f / (float)M_PI;
+            vr.fov_x = (fabsf(atanf(l0)) + fabsf(atanf(rRight))) * deg;
+            vr.fov_y = (fabsf(atanf(u0)) + fabsf(atanf(d0))) * deg;
+        }
+    }
+
     // Die Geräte-/Kopfpose muss zur Präsentationszeit vorhergesagt werden.
     // trackableAnchorTime ist für Hand- und Zubehöranker gedacht. Wird es hier
     // verwendet, rendert die Kamera mit einer anderen Zeitbasis als die
@@ -1476,8 +1545,33 @@ void TBXR_prepareEyeBuffer(int eye)
     angle::Viewport((GLint)viewport.originX, (GLint)viewport.originY,
                (GLsizei)viewport.width, (GLsizei)viewport.height);
 
-    ANGLESetDrawFramebufferRateMapMTL(
-        (__bridge const void *)cp_drawable_get_rasterization_rate_map(gDrawable, eye));
+    // DIAGNOSE: Rate-Map abschaltbar, Vorgabe AUS.
+    //
+    // Sie ist der letzte ungeprüfte Unterschied zwischen den beiden Zielen.
+    // Der Zwischenpuffer, in den die Welt nachweislich rendert, hat keine; die
+    // Augentextur, in der nur Clear und 2D ankommen, hat eine — und sie kommt
+    // aus einem eigenen ANGLE-Patch, ist also der am wenigsten erprobte Teil
+    // der Kette.
+    //
+    // Ohne Rate-Map muss auch die Ansicht auf die physische Texturgröße
+    // zurück: der Compositor gibt sie in Screen-Koordinaten (5087x4081), die
+    // Textur ist 2048x1984. Sonst läge nur eine Ecke des Bildes im Puffer.
+    // Getestet: OHNE Rate-Map bleibt die Welt ebenfalls aus. Sie ist damit
+    // nicht die Ursache, und der Normalzustand gilt wieder — sonst verfälscht
+    // die abgeschaltete Foveation samt geänderter Bildschirmauflösung jede
+    // weitere Messung (das HUD verlor dabei seine Weltstabilität).
+    static const int useRateMap = 1;
+    if (useRateMap) {
+        ANGLESetDrawFramebufferRateMapMTL(
+            (__bridge const void *)cp_drawable_get_rasterization_rate_map(gDrawable, eye));
+    } else {
+        ANGLESetDrawFramebufferRateMapMTL(nullptr);
+        id<MTLTexture> phys = cp_drawable_get_color_texture(gDrawable, eye);
+        if (phys) {
+            TBXR_visionOS_SetScreenRes((int)phys.width, (int)phys.height);
+            angle::Viewport(0, 0, (GLsizei)phys.width, (GLsizei)phys.height);
+        }
+    }
 
 
     // Reversed-Z wie vom Compositor erwartet. visionOS behandelt Pixel, deren
@@ -1760,6 +1854,103 @@ void TBXR_submitFrame()
             id<MTLRenderCommandEncoder> enc =
                 [gCommandBuffer renderCommandEncoderWithDescriptor:pass];
             [enc endEncoding];
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Sichtsonde über METAL statt über glReadPixels.
+    //
+    // glReadPixels liefert auf der importierten Drawable-Textur durchgehend
+    // Nullen — es meldet nicht einmal den Clear, der auf dem Gerät sichtbar
+    // ist. Damit war jede Messung darüber wertlos, und zwar unauffällig
+    // wertlos: sie sagt immer "schwarz".
+    //
+    // Metal kommt an dieselbe Textur heran. Sie liegt in MTLStorageModePrivate,
+    // also erst per Blit in einen sichtbaren Puffer kopieren.
+    //
+    // Gelesen wird das Ergebnis absichtlich ERST im nächsten Durchgang: sonst
+    // müsste hier auf die GPU gewartet werden, und das verfälscht genau die
+    // Zeitmessung, an der der Compositor die App beurteilt.
+    if ((gFrameCounter % 90) == 0 || gProbePending) {
+        id<MTLTexture> src = cp_drawable_get_color_texture(gDrawable, 0);
+
+        if (gProbePending && gProbeStaging && gProbeCommands &&
+            gProbeCommands.status == MTLCommandBufferStatusCompleted) {
+            const int grid = 8;
+            const NSUInteger w = gProbeStaging.width, h = gProbeStaging.height;
+            char map[8 * 9 + 1];
+            int at = 0, filled = 0, brightest = 0;
+            // Das Format der Drawable ist NICHT 8-Bit.
+            //
+            // cp_drawable_get_color_texture liefert hier MTLPixelFormatRGBA16Float
+            // (115) — acht Byte je Bildpunkt als Halbfloats. Vier Byte zu lesen
+            // und als 0..255 zu deuten ergibt Unsinn, und zwar unauffälligen:
+            // es kommt einfach "schwarz" heraus. Genau daran ist die vorherige
+            // Fassung gescheitert, obwohl der Clear sichtbar auf dem Gerät war.
+            const bool halfFloat =
+                (gProbeStaging.pixelFormat == MTLPixelFormatRGBA16Float);
+            const NSUInteger stride = halfFloat ? 8 : 4;
+            for (int gy = 0; gy < grid; ++gy) {          // Zeile 0 = oben
+                for (int gx = 0; gx < grid; ++gx) {
+                    unsigned char raw[8] = {0};
+                    MTLRegion r = MTLRegionMake2D(
+                        gx * (w / grid) + (w / grid) / 2,
+                        gy * (h / grid) + (h / grid) / 2, 1, 1);
+                    [gProbeStaging getBytes:raw bytesPerRow:stride
+                                 fromRegion:r mipmapLevel:0];
+                    unsigned char px[4];
+                    if (halfFloat) {
+                        const __fp16 *f = (const __fp16 *)raw;
+                        for (int c = 0; c < 4; ++c) {
+                            float v = (float)f[c];
+                            v = v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
+                            px[c] = (unsigned char)(v * 255.0f + 0.5f);
+                        }
+                    } else {
+                        memcpy(px, raw, 4);
+                    }
+                    const int sum = px[0] + px[1] + px[2];
+                    if (sum > brightest) brightest = sum;
+                    // Der Diagnose-Clear ist (0.25, 0, 0.45).
+                    const bool isClear = (px[0] > 45 && px[0] < 85 &&
+                                          px[1] < 25 && px[2] > 95 && px[2] < 135);
+                    const bool content = (sum > 12 && !isClear);
+                    map[at++] = content ? '#' : (isClear ? '.' : ' ');
+                    if (content) ++filled;
+                }
+                map[at++] = '\n';
+            }
+            map[at] = 0;
+            ALOGV("[Metal-Sicht] Bild %d, %lux%lu: %d/64 belegt, hellster %d\n%s",
+                  gFrameCounter, (unsigned long)w, (unsigned long)h,
+                  filled, brightest, map);
+            gProbePending = false;
+        }
+
+        if (!gProbePending && src && (gFrameCounter % 90) == 0) {
+            if (!gProbeStaging || gProbeStaging.width != src.width ||
+                gProbeStaging.height != src.height) {
+                MTLTextureDescriptor *d = [MTLTextureDescriptor
+                    texture2DDescriptorWithPixelFormat:src.pixelFormat
+                                                 width:src.width
+                                                height:src.height
+                                             mipmapped:NO];
+                d.storageMode = MTLStorageModeShared;
+                d.usage = MTLTextureUsageShaderRead;
+                gProbeStaging = [cp_layer_renderer_get_device(gLayerRenderer)
+                                    newTextureWithDescriptor:d];
+            }
+            if (gProbeStaging) {
+                id<MTLBlitCommandEncoder> blit = [gCommandBuffer blitCommandEncoder];
+                [blit copyFromTexture:src sourceSlice:0 sourceLevel:0
+                         sourceOrigin:MTLOriginMake(0, 0, 0)
+                           sourceSize:MTLSizeMake(src.width, src.height, 1)
+                            toTexture:gProbeStaging destinationSlice:0
+                     destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
+                [blit endEncoding];
+                gProbeCommands = gCommandBuffer;
+                gProbePending = true;
+            }
         }
     }
 

@@ -375,6 +375,7 @@ CL_AdjustAngles
 Moves the local angle positions
 ================
 */
+
 void CL_AdjustAngles( void ) {
     cl.viewangles[YAW] -= old_move.yaw;
     cl.viewangles[YAW] += new_move.yaw;
@@ -389,6 +390,7 @@ void CL_AdjustAngles( void ) {
     cl.viewangles[ROLL] = new_move.roll;
 
 	VectorCopy(cl.viewangles, vr.clientviewangles);
+
 }
 
 /*
@@ -558,7 +560,30 @@ void CL_MouseMove( usercmd_t *cmd ) {
 	cl.mouseDx[cl.mouseIndex] = 0;
 	cl.mouseDy[cl.mouseIndex] = 0;
 
-	rate = SQRTFAST( mx * mx + my * my ) / speed;
+	// Division durch null vermeiden: frame_msec ist im ersten Bild nach dem
+	// Betreten der Welt 0, weil old_com_frameTime dann noch gleich
+	// com_frameTime ist.
+	//
+	// Ohne diese Abfrage rechnet die Zeile 0/0 und liefert NaN. Der Schaden
+	// entsteht erst danach, und zwar dauerhaft:
+	//
+	//   mx *= accelSensitivity;   ->  0 * NaN = NaN
+	//   if (!mx && !my) return;   ->  greift NICHT, denn NaN != 0 ist wahr
+	//   cl.viewangles[YAW] -= m_yaw->value * mx;
+	//
+	// cl.viewangles[YAW] wird nur AUFSUMMIERT, nie neu zugewiesen — anders als
+	// PITCH und ROLL. Ein einziges NaN bleibt deshalb für immer, auch wenn
+	// längst wieder saubere Werte hineinlaufen. Über vr.clientviewangles
+	// erreicht es cg.refdef.viewangles, und AnglesToAxis macht daraus eine
+	// Blickachse (nan, nan, gültig): X und Y hängen am Yaw, Z nur am Pitch.
+	//
+	// Sichtbar wurde das als vollständig schwarze Spielwelt. Die Engine meldet
+	// dabei keinen Fehler: sie reicht über tausend Flächen fehlerfrei durch,
+	// der Rasterizer verwirft NaN-Ecken stillschweigend. Das 2D-HUD blieb
+	// sichtbar, weil es sich in RB_SetGL2D seine eigene Modelview setzt.
+	rate = ( speed > 0.0f )
+		? SQRTFAST( mx * mx + my * my ) / speed
+		: 0.0f;
 	accelSensitivity = cl_sensitivity->value + rate * cl_mouseAccel->value;
 
 	// scale by FOV
@@ -567,6 +592,7 @@ void CL_MouseMove( usercmd_t *cmd ) {
 	if ( rate && cl_showMouseRate->integer ) {
 		Com_Printf( "%f : %f\n", rate, accelSensitivity );
 	}
+
 
 	mx *= accelSensitivity;
 	my *= accelSensitivity;

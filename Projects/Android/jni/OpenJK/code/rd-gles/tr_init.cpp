@@ -1205,7 +1205,7 @@ void R_ScreenShot_f (void) {
 **
 ** Dieselbe Fallunterscheidung trifft R_SetupProjection für die Projektion.
 */
-static qboolean JKXR_visionOS_FlatTarget( void )
+qboolean JKXR_visionOS_FlatTarget( void )
 {
 	return ( ri.TBXR_useScreenLayer && ri.TBXR_useScreenLayer() ) ? qtrue : qfalse;
 }
@@ -1216,6 +1216,7 @@ static qboolean JKXR_visionOS_FlatTarget( void )
 ** bleiben deshalb unangetastet — sie mitzudrehen wäre ein stiller Fehler in
 ** den Mehrfachdurchgängen, die auf GL_EQUAL aufbauen.
 */
+
 void JKXR_visionOS_DepthFunc( GLenum func )
 {
 	if ( !JKXR_visionOS_FlatTarget() ) {

@@ -594,7 +594,34 @@ void SCR_UpdateScreen( void ) {
 		}
 		else
 		{
-			qboolean useStereoReplay = qtrue;
+			// Stereo-Replay auf visionOS abschaltbar, Vorgabe aus.
+			//
+			// Der Replay zeichnet die Szene EINMAL zentral, schneidet die
+			// Renderbefehle mit und spielt sie je Auge mit angepasster
+			// Projektion ab. Er ist der einzige Pfad, den das laufende Spiel
+			// nimmt — Menüs, Ladebild und Kamerafahrten gehen direkt pro Auge.
+			// Genau deshalb war die Spielwelt schwarz, während alles andere
+			// zeichnete.
+			//
+			// Gemessen wurde: der Replay fängt die Befehle ein und patcht sie
+			// korrekt (282 Flaechen, Ansicht 5086x4080, Projektion mit
+			// gespiegeltem Y und Reversed-Z), in der Augentextur landet aber
+			// nichts — glReadPixels liefert über 1024 Punkte hinweg exakt
+			// null. Alles bis zum Abspielen stimmt also; das Abspielen selbst
+			// erreicht unseren Puffer nicht.
+			//
+			// Der direkte Pfad darunter rendert jedes Auge vollständig und ist
+			// erprobt: er zeichnet die Kamerafahrten. Er kostet einen zweiten
+			// Durchlauf der Szene pro Bild, dafür ist er nachweislich richtig.
+			//
+			// Über cvar, damit sich beides ohne Neuübersetzung vergleichen
+			// lässt: "vr_stereo_replay 1" schaltet den Replay wieder ein.
+			static cvar_t *vr_stereo_replay = NULL;
+			if ( !vr_stereo_replay ) {
+				vr_stereo_replay = Cvar_Get( "vr_stereo_replay", "0", CVAR_ARCHIVE );
+			}
+			qboolean useStereoReplay =
+				( vr_stereo_replay && vr_stereo_replay->integer ) ? qtrue : qfalse;
 			qboolean replayed = qfalse;
 
 			if (useStereoReplay &&

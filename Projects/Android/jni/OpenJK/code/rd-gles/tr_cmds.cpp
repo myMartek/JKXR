@@ -203,6 +203,35 @@ static void R_VR_PatchDrawSurfsCommand( drawSurfsCommand_t *cmd, stereoFrame_t s
 	tr.viewParms = savedViewParms;
 	tr.currentStereoFrame = savedStereoFrame;
 	tr.vrStereoReplayCapture = savedReplayCapture;
+
+#ifdef JKXR_VISIONOS
+	// Diagnose: kommen im Replay überhaupt Flächen an, und wohin geht die
+	// Ansicht?
+	//
+	// Die Sichtsonde in TBXR_finishEyeBuffer zeigt, dass in der Augentextur
+	// nichts landet, obwohl der Replay Zeichenbefehle einfängt. Damit bleiben
+	// genau zwei Möglichkeiten, und diese Zeile trennt sie:
+	//
+	//   numDrawSurfs == 0   die Flächen fallen vorher weg (Aussortierung)
+	//   Ansicht daneben     es wird gezeichnet, nur nicht in den sichtbaren
+	//                       Bereich der Textur
+	{
+		static int logged = 0;
+		if ( logged < 6 ) {
+			++logged;
+			ri.Printf( PRINT_ALL,
+				"[Replay] Auge %d: %d Flaechen, Ansicht %d,%d %dx%d, "
+				"zFar %.0f, Projektion[0] %.3f [5] %.3f [10] %.4f\n",
+				eye, cmd->numDrawSurfs,
+				cmd->viewParms.viewportX, cmd->viewParms.viewportY,
+				cmd->viewParms.viewportWidth, cmd->viewParms.viewportHeight,
+				cmd->viewParms.zFar,
+				cmd->viewParms.projectionMatrix[0],
+				cmd->viewParms.projectionMatrix[5],
+				cmd->viewParms.projectionMatrix[10] );
+		}
+	}
+#endif
 }
 
 static void R_VR_PatchStereoReplayCommands( byte *cmds, stereoFrame_t stereoFrame ) {
