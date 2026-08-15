@@ -119,6 +119,20 @@ struct ContentView: View {
     private func startGame() async {
         switch await openImmersiveSpace(id: "game") {
         case .opened:
+            // Fenster schließen, sobald das Spiel läuft.
+            //
+            // War zwischenzeitlich draußen, weil die App nicht mehr startete
+            // und dieser Aufruf verdächtig aussah: das Schließen unmittelbar
+            // nach openImmersiveSpace könnte kurz den Vordergrundzustand
+            // kosten, und der Compositor hält die Ebene dann pausiert.
+            //
+            // Das war eine Fehlvermutung. Die App startete auch ohne den
+            // Aufruf nicht — behoben hat es erst ein Neustart der Brille. Es
+            // lag also am Gerätezustand, nicht hier.
+            //
+            // Sollte der Start irgendwann wieder hängenbleiben, ist das hier
+            // trotzdem der erste Kandidat zum Ausprobieren — dann aber messen
+            // statt vermuten.
             dismissWindow()
         case .userCancelled:
             progress = "Der Immersive Space wurde abgebrochen."

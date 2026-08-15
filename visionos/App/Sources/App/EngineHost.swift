@@ -140,15 +140,49 @@ final class EngineHost {
     /// dazwischen ab. Die Engine muss auf die größere Fläche rendern, sonst
     /// verschenkt man genau die Auflösung, für die die Foveation da ist.
     private func probeResolution() -> (width: Int, height: Int)? {
-        // Der Compositor liefert erst Frames, wenn die Ebene läuft.
-        while layerRenderer.state == .paused {
-            layerRenderer.waitUntilRunning()
+        // Der Compositor liefert erst Frames, wenn die Ebene läuft — und der
+        // Zustand kann sich zwischen Prüfung und Abfrage wieder ändern.
+        //
+        // Genau das passierte hier: das Startfenster wird unmittelbar nach dem
+        // Öffnen des Immersive Space geschlossen, und dabei wechselt kurz der
+        // Szenenzustand. queryNextFrame lieferte dann nil, die Auflösung blieb
+        // unbekannt, und die Engine startete gar nicht erst — im Headset sah
+        // man nach dem Fenster einfach nichts mehr.
+        //
+        // Deshalb mehrere Versuche statt eines einzigen. Der Abbruch bleibt
+        // erhalten, greift aber erst, wenn die Ebene dauerhaft nichts liefert.
+        // Warten, bis ein Bild kommt — ohne Frist.
+        //
+        // Ein Zeitlimit ist hier falsch: wie lange es dauert, hängt allein
+        // davon ab, wann der Benutzer den Immersive Space betritt und die
+        // Brille aufsetzt. Eine feste Schranke (erst gar keine, dann vier
+        // Sekunden) hat genau das abgewürgt — die Hülle gab auf, bevor die
+        // Ebene lief, meldete "Auflösung nicht ermittelbar" und startete die
+        // Engine nie. Im Headset kam nach dem Fenster einfach nichts.
+        //
+        // Abgebrochen wird nur beim einzigen echten Endzustand: die Ebene ist
+        // ungültig, weil der Immersive Space geschlossen wurde. Die Schleife
+        // dreht dabei nicht heiß, denn waitUntilRunning blockiert.
+        var frame: LayerRenderer.Frame?
+        var attempts = 0
+        while frame == nil {
+            if layerRenderer.state == .invalidated {
+                print("[JKXR] Ebene ungültig — Immersive Space wurde geschlossen")
+                return nil
+            }
+            while layerRenderer.state == .paused {
+                layerRenderer.waitUntilRunning()
+            }
+            frame = layerRenderer.queryNextFrame()
+            if frame == nil {
+                attempts += 1
+                if attempts % 250 == 0 {
+                    print("[JKXR] warte weiter auf das erste Bild (\(attempts) Versuche)")
+                }
+                Thread.sleep(forTimeInterval: 0.02)
+            }
         }
-
-        guard let frame = layerRenderer.queryNextFrame() else {
-            print("[JKXR] queryNextFrame lieferte nil")
-            return nil
-        }
+        guard let frame else { return nil }
 
         frame.startUpdate()
         frame.endUpdate()

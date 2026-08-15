@@ -1004,34 +1004,120 @@ void	RB_SetGL2D (void) {
 	qglScissor( 0, 0, glConfig.vidWidth, glConfig.vidHeight );
 
 #if defined(JKXR_VISIONOS)
-	// 2D auf einer virtuellen Wand statt flach im Bildpuffer.
+	// 2D kopf-fest, wie im Android- und PCVR-Zweig.
 	//
-	// Hier laufen ALLE 2D-Inhalte durch: Menü, HUD und Video. Ein
-	// orthographisches qglOrtho zeichnet sie in beide Augen identisch, womit
-	// sie im Unendlichen liegen und die Bilder auseinanderlaufen.
+	// Vorher stand hier eine in der Welt eingerastete Wand: das 2D wurde mit
+	// der echten Augenprojektion auf eine Fläche in 2 m Entfernung gezeichnet,
+	// damit die Disparität aus der Geometrie entsteht statt aus einem
+	// Stellwert. Die Idee ist sauber, in der Praxis aber schwer beherrschbar —
+	// das HUD stand am falschen Ort, ließ sich nicht fusionieren und wanderte
+	// beim Drehen.
 	//
-	// Stattdessen die echte Projektion des jeweiligen Auges und eine Wand in
-	// einstellbarer Entfernung (vr_screen_wall_dist, vr_screen_wall_width).
-	// Die Disparität ergibt sich dann aus der Geometrie, nicht aus einem
-	// Stellwert. Android erreicht dasselbe über ein Quad-Layer, das es auf
-	// visionOS nicht gibt.
+	// JKXR selbst löst das anders und einfacher (R_VR_GetHudReplayOffset in
+	// tr_cmds.cpp): orthographisch in beide Augenpuffer, am Kopf hängend, und
+	// die Tiefenwirkung kommt aus einem festen Versatz von cg_hudStereo Pixeln
+	// je Auge — links nach rechts, rechts nach links.
+	//
+	// Verschoben wird das FENSTER, nicht der Inhalt: ein nach links gerücktes
+	// Ortho-Fenster schiebt das Bild nach rechts. Deshalb bekommt das linke
+	// Auge -dx und das rechte +dx.
 	{
-		float proj[16], mv[16];
-		if ( VR_GetScreenWall( VR_GetCurrentEye(), proj, mv ) )
-		{
-			qglMatrixMode( GL_PROJECTION );
-			qglLoadMatrixf( proj );
-			qglMatrixMode( GL_MODELVIEW );
-			qglLoadMatrixf( mv );
-		}
-		else
-		{
-			qglMatrixMode( GL_PROJECTION );
-			qglLoadIdentity();
-			qglOrtho( 0, 640, 480, 0, 0, 1 );
-			qglMatrixMode( GL_MODELVIEW );
-			qglLoadIdentity();
-		}
+		// Vorgabe 35, deutlich mehr als die 20 der anderen Plattformen.
+		//
+		// Der Wert verschiebt das Ortho-FENSTER je Auge und damit den Inhalt
+		// in die Gegenrichtung:
+		//
+		//   Auge 0 (links):  dx = -wert -> Fenster links  -> Inhalt nach rechts
+		//   Auge 1 (rechts): dx = +wert -> Fenster rechts -> Inhalt nach links
+		//
+		// Das ist genau die Konvergenz, die ein HUD auf endliche Entfernung
+		// rückt. Auf dem Gerät gemessen war die Trennung bei 20 noch sichtbar
+		// und musste um rund 10 cm verringert werden — bei etwa 2 m sind das
+		// 2,9°, also knapp 15 Einheiten je Auge obendrauf.
+		//
+		// Umrechnung für dieses Gerät: Sichtfeld ~105° auf w = 640/vr_hudSize
+		// ~1067 Einheiten, also ~10,2 Einheiten je Grad.
+		//
+		// Der Zahlenwert der anderen Plattformen ist NICHT übertragbar: dort
+		// ist das Fenster 640 Einheiten breit und das Sichtfeld schmaler,
+		// dieselbe Zahl ergibt dort einen ganz anderen Winkel.
+		// Die cvars EINMAL holen, nicht je Bild.
+		//
+		// Cvar_Get setzt auch auf einer vorhandenen cvar bedingungslos
+		// cvar_modifiedFlags |= flags (cvar.cpp:418). Mit CVAR_ARCHIVE je Aufruf
+		// gilt die Konfiguration damit in JEDEM Bild als geändert — und das seit
+		// kurzem je Bild laufende Com_WriteConfiguration schreibt dann die 8 KB
+		// große Datei ebenso oft. Die Engine kommt nicht mehr zum Zeichnen, und
+		// visionOS beendet sie als nicht mehr liefernd.
+		//
+		// Zwei für sich harmlose Änderungen, die zusammen die App anhalten.
+		static cvar_t *hudStereo = NULL;
+		static cvar_t *hudSize = NULL;
+		static cvar_t *hudDown = NULL;
+		if ( !hudStereo ) hudStereo = ri.Cvar_Get( "cg_hudStereo", "35", CVAR_ARCHIVE );
+		const float dx = ( hudStereo ? hudStereo->value : 35.0f )
+			* ( VR_GetCurrentEye() == 0 ? -1.0f : 1.0f );
+
+		// Wie viel vom Sichtfeld das HUD einnimmt.
+		//
+		// Ein Ortho über 0..640 legt die Bildschirmfläche auf das GESAMTE
+		// Sichtfeld des Auges — auf der Vision Pro rund 105°. Auf einem
+		// Monitor ist das die richtige Abbildung, im Headset nicht: die Ränder
+		// liegen dann außerhalb dessen, was man bequem überblickt, und man
+		// muss die Augen bewegen, um die Anzeigen zu erreichen.
+		//
+		// Der Wert ist der ANTEIL des Sichtfelds, den die 640x480 einnehmen.
+		// 1.0 entspricht dem bisherigen Verhalten, kleinere Werte rücken das
+		// HUD zusammen. Umgesetzt wird das durch Aufweiten des Ortho-Fensters:
+		// mehr virtueller Raum ringsum bedeutet kleinere Darstellung.
+		//
+		// Nicht zu verwechseln mit cg_hudScale (Vorgabe 2.5): das skaliert die
+		// Elemente INNERHALB der 640x480, nicht die Abbildung aufs Sichtfeld.
+		if ( !hudSize ) hudSize = ri.Cvar_Get( "vr_hudSize", "0.6", CVAR_ARCHIVE );
+		float size = hudSize ? hudSize->value : 0.6f;
+		if ( size < 0.1f ) size = 0.1f;
+		if ( size > 1.0f ) size = 1.0f;
+
+		const float w = 640.0f / size;
+		const float h = 480.0f / size;
+		const float padX = ( w - 640.0f ) * 0.5f;
+		const float padY = ( h - 480.0f ) * 0.5f;
+
+		// KEIN Ausgleich des Achsversatzes — geprüft und verworfen.
+		//
+		// Naheliegend wäre: die Frusta der Vision Pro sind achsversetzt (die
+		// Frustumsmitte liegt je Auge rund 7,5° außen), also müsste dieselbe
+		// NDC-Position in beiden Augentexturen unterschiedliche
+		// Blickrichtungen bedeuten und ein Ausgleich um ox·w/2 nötig sein.
+		//
+		// Auf dem Gerät wurde es dadurch deutlich SCHLECHTER: die beiden Bilder
+		// standen anschließend rund eine HUD-Breite auseinander statt nur
+		// leicht. Der Compositor rechnet den Achsversatz beim Anzeigen also
+		// bereits selbst heraus — gleiche NDC-Position heißt gleiche
+		// Blickrichtung, und ein zusätzlicher Ausgleich schlägt ein zweites Mal
+		// auf.
+		//
+		// Die verbleibende Trennung ist damit allein cg_hudStereo, also
+		// gewollt: sie rückt das HUD auf eine endliche Entfernung statt ins
+		// Unendliche. Zu viel davon lässt sich nicht mehr fusionieren, deshalb
+		// ist der Wert die Schraube, an der zu drehen ist.
+		// Höhe des HUD im Blickfeld.
+		//
+		// Positiv verschiebt nach UNTEN. Umgesetzt wird das durch Verschieben
+		// des Ortho-FENSTERS nach oben: der Inhalt rutscht dann relativ dazu
+		// nach unten — dieselbe Mechanik wie beim seitlichen Versatz.
+		//
+		// Nötig, weil id Tech 3 das HUD für einen Monitor auslegt, bei dem der
+		// Blick mittig sitzt. Im Headset schaut man eher geradeaus, und die
+		// Anzeigen liegen dann zu hoch.
+		if ( !hudDown ) hudDown = ri.Cvar_Get( "vr_hudOffsetY", "40", CVAR_ARCHIVE );
+		const float dy = hudDown ? hudDown->value : 40.0f;
+
+		qglMatrixMode( GL_PROJECTION );
+		qglLoadIdentity();
+		qglOrtho( -padX + dx, w - padX + dx, h - padY - dy, -padY - dy, 0, 1 );
+		qglMatrixMode( GL_MODELVIEW );
+		qglLoadIdentity();
 	}
 #else
 	qglMatrixMode(GL_PROJECTION);

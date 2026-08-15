@@ -87,5 +87,20 @@ struct JKXRApp: App {
             }
         }
         .immersionStyle(selection: .constant(.full), in: .full)
+
+        // Systemüberlagerungen ausblenden.
+        //
+        // Ohne das bleiben Home-Anzeige und Griffleiste sichtbar, und die
+        // zugehörigen Gesten liegen mitten im Spielbereich — beim Fechten mit
+        // dem Lichtschwert trifft man sie ständig versehentlich.
+        //
+        // War kurzzeitig draußen, weil die App nicht mehr startete. Das lag
+        // aber am Zustand der Brille (behoben durch deren Neustart), nicht
+        // hier.
+        //
+        // Was visionOS NICHT freigibt: den Druck auf die Digital Crown und den
+        // Blick nach oben fürs Kontrollzentrum. Beides behält das System sich
+        // vor, damit man aus jeder App wieder herausfindet.
+        .persistentSystemOverlays(.hidden)
     }
 }

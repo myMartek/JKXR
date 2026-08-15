@@ -1371,7 +1371,39 @@ void Com_Frame( void ) {
 		TBXR_FrameSetup();
 
 		// write config file if anything changed
+#ifdef JKXR_VISIONOS
+		// Auf visionOS wieder aktiv.
+		//
+		// Der Aufruf war auskommentiert, und geschrieben wurde nur noch in
+		// Com_Shutdown. Das wird hier praktisch nie erreicht: die App endet,
+		// wenn der Immersive Space schliesst oder das System sie beendet —
+		// nicht ueber einen sauberen Quit. Jede Aenderung im Menue war damit
+		// beim naechsten Start wieder weg.
+		//
+		// HOECHSTENS alle zwei Sekunden, nicht in jedem Bild.
+		//
+		// Com_WriteConfiguration prueft zwar selbst cvar_modifiedFlags, aber
+		// dieses Flag ist leichter gesetzt als gedacht: Cvar_Get setzt es auch
+		// auf einer laengst vorhandenen cvar bedingungslos (cvar.cpp:418).
+		// Ein einziger Cvar_Get-Aufruf mit CVAR_ARCHIVE im Renderpfad genuegt
+		// also, damit die 8 KB grosse Datei in JEDEM Bild neu geschrieben wird
+		// — die Engine kommt dann nicht mehr zum Zeichnen, und visionOS
+		// beendet sie als nicht mehr liefernd. Genau das ist passiert.
+		//
+		// Die Aufrufer sind inzwischen korrigiert, aber der Motor hat hunderte
+		// Cvar_Get-Stellen. Die Bremse hier ist billiger als die Annahme, sie
+		// alle geprueft zu haben.
+		{
+			static int lastConfigWrite = 0;
+			const int now = Sys_Milliseconds();
+			if ( now - lastConfigWrite > 2000 ) {
+				lastConfigWrite = now;
+				Com_WriteConfiguration();
+			}
+		}
+#else
 		//Com_WriteConfiguration();
+#endif
 
 		//
 		// main event loop

@@ -2636,11 +2636,26 @@ extern "C" bool VR_GetScreenWall(int eye, float *projection16, float *modelview1
     // Bildschirmkoordinaten (0..640, 0..480) in Wandkoordinaten (Meter):
     //   x = (sx/640 - 0.5) * width
     //   y = (0.5 - sy/480) * height      (y läuft in 2D nach unten)
+    // Y-Richtung der Wand.
+    //
+    // Die Orientierung des 2D-Inhalts hängt an ZWEI Größen: hier und an der
+    // Achsenkonvention der Projektion. Die Konvention wurde in beiden Varianten
+    // geprüft (right_up_back und right_down_back) — das Bild stand beide Male
+    // auf dem Kopf. Damit kann es nicht an ihr liegen, sondern nur an dieser
+    // Zeile.
+    //
+    // Positiv statt negativ: Bildschirm-y läuft nach unten, Wand-Y nach oben.
+    // Zusammen mit der Verschiebung darunter landet die Bildschirmoberkante
+    // (y = 0) damit an der Wandoberkante.
+    //
+    // Der Tiefenpass (drawScreenWallDepth) ist davon nicht betroffen: er
+    // zeichnet ein symmetrisches Viereck ohne diese Matrix, und seine
+    // Tiefenwerte ändern sich durch eine Spiegelung nicht.
     simd_float4x4 scale = matrix_identity_float4x4;
     scale.columns[0].x =  width / 640.0f;
-    scale.columns[1].y = -height / 480.0f;
+    scale.columns[1].y =  height / 480.0f;
     scale.columns[3].x = -width * 0.5f;
-    scale.columns[3].y =  height * 0.5f;
+    scale.columns[3].y = -height * 0.5f;
 
     // cp_view_get_transform ist Gerät-aus-Auge. Mit der vollständigen
     // Welt-aus-Gerät-Pose entsteht Welt-aus-Auge; deren Inverse bewegt die
@@ -2675,29 +2690,55 @@ extern "C" bool VR_GetScreenWall(int eye, float *projection16, float *modelview1
     // Zusätzlich ndc_y für die Frage der Spiegelung: die Oberkante des
     // Bildschirms (y = 0) muss im Bild OBEN landen.
     {
-        static int frame[2] = { 0, 0 };
-        if ((++frame[eye] % 30) == 0) {
+        // Beide Augen MÜSSEN aus demselben Bild stammen.
+        //
+        // RB_SetGL2D läuft mehrfach je Bild und nicht zwingend gleich oft für
+        // beide Augen. Zwei unabhängige Zähler liefern deshalb Zeilen aus
+        // verschiedenen Bildern — mit Kopfbewegung dazwischen. Genau daraus
+        // entstand der scheinbare Widerspruch, die Wandmitte liege nur 0,037 m
+        // statt 0,063 m auseinander: verglichen wurden zwei Kopfposen.
+        //
+        // Deshalb wird die Probe von Auge 0 gemerkt und erst ausgegeben, wenn
+        // Auge 1 im GLEICHEN gFrameCounter ankommt.
+        static int lastFrame = -1;
+        static int sampleFrame = -1;
+        static simd_float4 sampleCentre = { 0, 0, 0, 0 };
+        static simd_float3 sampleView = { 0, 0, 0 };
+        static float sampleNdcX = 0.0f;
+        const bool pairReady = (eye == 1 && sampleFrame == gFrameCounter);
+        if (eye == 0 && gFrameCounter != lastFrame && (gFrameCounter % 30) == 0) {
+            lastFrame = gFrameCounter;
+            sampleFrame = gFrameCounter;
+        }
+        if (eye == 0 || pairReady) {
             const simd_float4 centre =
                 simd_mul(mv, (simd_float4){320.0f, 240.0f, 0.0f, 1.0f});
-            const simd_float4 top =
-                simd_mul(mv, (simd_float4){320.0f, 0.0f, 0.0f, 1.0f});
             const simd_float4 clipC = simd_mul(proj, centre);
-            const simd_float4 clipT = simd_mul(proj, top);
-            // Die Kette lückenlos: Augenposition laut Compositor, dieselbe
-            // Position nach originFromDevice, und die Wandmitte im Augenraum.
-            //
-            // Rechnerisch MUSS die Wandmitte zwischen den Augen um genau den
-            // Augenabstand auseinanderliegen — eine Rotation ändert keine
-            // Längen. Gemessen sind es aber nur 0,025 m statt 0,064. Eine der
-            // drei Größen bricht die Kette, und diese Zeile zeigt welche.
-            const simd_float3 vPos = viewTf.columns[3].xyz;
-            const simd_float3 wPos = originFromView.columns[3].xyz;
-            ALOGV("[Wand] Auge %d · viewTf %.4f %.4f %.4f · originFromView "
-                  "%.4f %.4f %.4f · Mitte im Auge %.3f %.3f %.3f · ndc %.3f %.3f\n",
-                  eye, vPos.x, vPos.y, vPos.z, wPos.x, wPos.y, wPos.z,
-                  centre.x, centre.y, centre.z,
-                  clipC.w != 0.0f ? clipC.x / clipC.w : 0.0f,
-                  clipC.w != 0.0f ? clipC.y / clipC.w : 0.0f);
+            const float ndcX = clipC.w != 0.0f ? clipC.x / clipC.w : 0.0f;
+
+            if (eye == 0) {
+                sampleCentre = centre;
+                sampleView   = viewTf.columns[3].xyz;
+                sampleNdcX   = ndcX;
+            } else {
+                // Erst jetzt ausgeben, mit beiden Proben aus demselben Bild.
+                const simd_float3 dEye = centre.xyz - sampleCentre.xyz;
+                const simd_float3 dView = viewTf.columns[3].xyz - sampleView;
+
+                // Ist originFromView wirklich starr? Eine Rotation hat
+                // Spaltenlängen 1. Weicht das ab, steckt eine Skalierung drin,
+                // und dann darf die Länge tatsächlich schrumpfen.
+                const float c0 = simd_length(originFromView.columns[0].xyz);
+                const float c1 = simd_length(originFromView.columns[1].xyz);
+                const float c2 = simd_length(originFromView.columns[2].xyz);
+
+                ALOGV("[Wand] Bild %d · Augenabstand laut Compositor %.4f · "
+                      "Wandmitte auseinander %.4f · ndc %.3f vs %.3f · "
+                      "Spalten von originFromView %.4f %.4f %.4f\n",
+                      gFrameCounter, simd_length(dView), simd_length(dEye),
+                      sampleNdcX, ndcX, c0, c1, c2);
+                sampleFrame = -1;
+            }
         }
     }
 
