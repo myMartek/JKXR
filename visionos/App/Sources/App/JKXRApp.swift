@@ -28,7 +28,23 @@ struct JKXRLayerConfiguration: CompositorLayerConfiguration {
         //   - die 3D-Szene rendert über ANGLE und braucht dafür unseren Patch
         //     im Metal-Backend (patch-angle-foveation.py), der die Rate-Map
         //     über ANGLESetDrawFramebufferRateMapMTL entgegennimmt
-        configuration.isFoveationEnabled = capabilities.supportsFoveation
+        // Vorerst AUS.
+        //
+        // Der ANGLE-Patch, der die Rate-Map entgegennimmt, greift für den
+        // GL-Pfad nachweislich nicht: die Engine rendert mit einer Ansicht von
+        // 5087x4081 (Screen-Koordinaten) in eine 2048x1984 große Textur. Ohne
+        // wirksame Rate-Map landet das Bild in einer Ecke, und der Compositor
+        // zieht die Textur anschließend auf die volle Fläche auseinander, weil
+        // er ein foveiertes Bild erwartet — sichtbar als kleiner Ausschnitt
+        // oben links mit stark verzerrten Rändern.
+        //
+        // Ohne Foveation sind Ansicht und Textur wieder identisch (beide
+        // 2048x1984, siehe EngineHost: ohne Rate-Map wird die Texturgröße
+        // gemeldet). Das kostet Auflösung, ist aber in sich stimmig.
+        //
+        // Wieder einschalten, sobald patch-angle-foveation.py für den GL-Pfad
+        // trägt; die Prüfung dafür ist genau dieses Bild.
+        configuration.isFoveationEnabled = false
         if !configuration.isFoveationEnabled {
             print("[JKXR] WARNUNG: Foveation nicht verfügbar. Ohne sie deckelt "
                 + "CompositorServices die Drawable-Auflösung, und die Vision Pro "

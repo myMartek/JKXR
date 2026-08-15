@@ -143,7 +143,19 @@ static void VisionOS_SndConfigureSession(void)
     NSError *err = nil;
     AVAudioSession *session = [AVAudioSession sharedInstance];
 
-    if (![session setCategory:AVAudioSessionCategoryAmbient error:&err]) {
+    // Playback, nicht Ambient.
+    //
+    // Ambient ist an den Vordergrundzustand gebunden: sobald das Startfenster
+    // zugeht und nur noch der Immersive Space offen ist, deaktiviert das System
+    // die Sitzung und der Ton verstummt — ohne Fehlermeldung, denn die
+    // RemoteIO-AudioUnit läuft weiter und schreibt nur ins Leere.
+    //
+    // Ursprünglich war Ambient bewusst gewählt, um den Lautlos-Schalter zu
+    // respektieren und fremden Ton nicht zu verdrängen. Das ist die richtige
+    // Etikette im GETEILTEN Raum — wir laufen aber in einem VOLLEN Immersive
+    // Space (immersionStyle .full in JKXRApp.swift). Dort ist die App die
+    // Erfahrung, und Playback ist die dafür vorgesehene Kategorie.
+    if (![session setCategory:AVAudioSessionCategoryPlayback error:&err]) {
         Com_Printf("SNDDMA: setCategory fehlgeschlagen: %s\n",
                    [[err localizedDescription] UTF8String]);
     }

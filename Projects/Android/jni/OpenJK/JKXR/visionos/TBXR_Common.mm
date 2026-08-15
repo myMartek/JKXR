@@ -298,6 +298,19 @@ bool gWallSnapped = false;
 /// keine scheinbare Neigung in eine Yaw-Drehung.
 simd_float4x4 screenWallOriginFromDevice()
 {
+    // Die Y-Spiegelung der Kopfdrehung BLEIBT — sie ist geprüft, nicht geraten.
+    //
+    // Der Versuch, sie zu entfernen (Verdacht: doppelte Korrektur, seit die
+    // Achsenkonvention der Projektion auf right_down_back steht), hat die
+    // Disparität NICHT verändert — gemessen weiterhin 0,025 m statt der
+    // 0,064 m Augenabstand — und stattdessen das HUD beim Hoch- und
+    // Runterschauen wandern lassen. Sie gleicht hier also etwas Echtes aus.
+    //
+    // Die zu kleine Disparität bleibt damit ungeklärt und ist der nächste
+    // Ansatzpunkt: rechnerisch MUSS ein fester Weltpunkt in den beiden
+    // Augenräumen um genau den Augenabstand auseinanderliegen, egal wie die
+    // Kopfpose aussieht. Dass dabei nur 40 % ankommen, lässt sich mit einer
+    // Rotation allein nicht erklären — eine Rotation ändert keine Längen.
     simd_float4x4 headRotation = gHeadTransform;
     headRotation.columns[3] = (simd_float4){0.0f, 0.0f, 0.0f, 1.0f};
 
@@ -474,8 +487,19 @@ void drawScreenWallDepth(int eye)
 {
     if (!gWallSnapped || !gHeadValid || !ensureScreenWallDepthProgram()) return;
 
+    // MUSS dieselbe Konvention benutzen wie der Farbpass.
+    //
+    // VR_GetScreenWall zeichnet die Wand mit right_DOWN_back, weil GL den
+    // Framebuffer von unten adressiert und Metal Zeile 0 oben zeigt. Blieb es
+    // hier bei right_up_back, wurde die Tiefe der Wand SENKRECHT GESPIEGELT zu
+    // ihrer Farbe geschrieben.
+    //
+    // Das ist nicht bloß unsauber: der Compositor reprojiziert die Farbe
+    // anhand der Tiefe. Stimmen beide nicht überein, bekommt jedes Auge eine
+    // andere falsche Verschiebung — das HUD wandert beim Drehen, erscheint in
+    // einem Auge früher als im anderen und lässt sich nicht fusionieren.
     simd_float4x4 projection = cp_drawable_compute_projection(
-        gDrawable, cp_axis_direction_convention_right_up_back, eye);
+        gDrawable, cp_axis_direction_convention_right_down_back, eye);
     simd_float4x4 deviceFromView =
         cp_view_get_transform(cp_drawable_get_view(gDrawable, eye));
     // Vollständige ARKit-Gerätepose. Die inverse View-Matrix verschiebt die
@@ -1266,10 +1290,10 @@ void TBXR_FrameSetup()
                 gDrawable, cp_axis_direction_convention_right_up_back, view);
             const float sx = p.columns[0][0], ox = p.columns[2][0];
             const float sy = p.columns[1][1], oy = p.columns[2][1];
-            *l = (-1.0f - ox) / sx;
-            *r = ( 1.0f - ox) / sx;
-            *d = (-1.0f - oy) / sy;
-            *u = ( 1.0f - oy) / sy;
+            *l = (ox - 1.0f) / sx;
+            *r = (ox + 1.0f) / sx;
+            *d = (oy - 1.0f) / sy;
+            *u = (oy + 1.0f) / sy;
         };
 
         const size_t views = cp_drawable_get_view_count(gDrawable);
@@ -1344,8 +1368,8 @@ void TBXR_FrameSetup()
             const float sx = p.columns[0][0], ox = p.columns[2][0];
             const float sy = p.columns[1][1], oy = p.columns[2][1];
             ALOGV("[Stereo] Auge %zu: tanL % .4f tanR % .4f tanD % .4f tanU % .4f",
-                  v, (-1.0f - ox) / sx, (1.0f - ox) / sx,
-                  (-1.0f - oy) / sy, (1.0f - oy) / sy);
+                  v, (ox - 1.0f) / sx, (ox + 1.0f) / sx,
+                  (oy - 1.0f) / sy, (oy + 1.0f) / sy);
         }
         if (views >= 2) {
             const simd_float3 f0 =
@@ -1479,6 +1503,17 @@ void TBXR_prepareEyeBuffer(int eye)
     TRACE("[Bild %d] prepareEyeBuffer Auge %d", gFrameCounter, eye);
     if (!gDrawable) return;
 
+    // Zieltextur und Projektion gehören zum SELBEN Augenindex.
+    //
+    // Der Gegentest ist gelaufen: mit vertauschter Textur kehrt sich die
+    // Disparität um. Auf dem Gerät äußert sich das als "der Fokuspunkt wirkt
+    // invertiert", das HUD erscheint nur in einem Auge, und die Wand wandert
+    // beim Drehen auf einer Umlaufbahn — jedes Auge bekommt die Geometrie, die
+    // fürs andere berechnet wurde.
+    //
+    // Der Tausch schien kurzzeitig besser, das war aber unter der starken
+    // Verzerrung der nicht wirksamen Rate-Map beurteilt, in der Stereo gar
+    // nicht einschätzbar war.
     id<MTLTexture> color = cp_drawable_get_color_texture(gDrawable, eye);
     id<MTLTexture> depth = cp_drawable_get_depth_texture(gDrawable, eye);
 
@@ -2149,12 +2184,28 @@ static void tangentsForView(size_t view, float *tanLeft, float *tanRight,
 {
     const simd_float4x4 p = cp_drawable_compute_projection(
         gDrawable, cp_axis_direction_convention_right_up_back, view);
+    // Herleitung, weil das Vorzeichen von ox/oy hier zweimal falsch war:
+    //
+    //   x_clip = sx·x_e + ox·z_e        w_clip = -z_e
+    //   ndc_x  = (sx·x_e + ox·z_e) / (-z_e) = sx·tan - ox   mit tan = x_e/(-z_e)
+    //
+    //   linker Rand  (ndc_x = -1):  tanLeft  = (ox - 1) / sx
+    //   rechter Rand (ndc_x = +1):  tanRight = (ox + 1) / sx
+    //
+    // Mit (-1 - ox)/sx statt (ox - 1)/sx kippt das Vorzeichen des Versatzes,
+    // und das Frustum wird horizontal GESPIEGELT: aus den echten -60°…+45° des
+    // linken Auges werden -45°…+60°, also die Geometrie des rechten.
+    //
+    // Auf dem Gerät äußerte sich das als unmögliche Fusion — der Fokuspunkt
+    // wirkte invertiert. Ein Tausch der Augentexturen schien deshalb zu helfen,
+    // kompensierte aber nur die Hälfte des Fehlers. Bei Y dasselbe, sichtbar
+    // als Verzerrung beim Hoch- und Runterschauen.
     const float sx = p.columns[0][0], ox = p.columns[2][0];
     const float sy = p.columns[1][1], oy = p.columns[2][1];
-    *tanLeft  = (-1.0f - ox) / sx;
-    *tanRight = ( 1.0f - ox) / sx;
-    *tanDown  = (-1.0f - oy) / sy;
-    *tanUp    = ( 1.0f - oy) / sy;
+    *tanLeft  = (ox - 1.0f) / sx;
+    *tanRight = (ox + 1.0f) / sx;
+    *tanDown  = (oy - 1.0f) / sy;
+    *tanUp    = (oy + 1.0f) / sy;
 }
 
 bool VR_GetFovTangentsForEye(int eye, float *tanLeft, float *tanRight,
@@ -2204,10 +2255,10 @@ bool VR_GetFovTangentsForEye(int eye, float *tanLeft, float *tanRight,
     // Elementen [0][0]/[0][2] beziehungsweise [1][1]/[1][2].
     const float sx = p.columns[0][0], ox = p.columns[2][0];
     const float sy = p.columns[1][1], oy = p.columns[2][1];
-    *tanLeft  = (-1.0f - ox) / sx;
-    *tanRight = ( 1.0f - ox) / sx;
-    *tanDown  = (-1.0f - oy) / sy;
-    *tanUp    = ( 1.0f - oy) / sy;
+    *tanLeft  = (ox - 1.0f) / sx;
+    *tanRight = (ox + 1.0f) / sx;
+    *tanDown  = (oy - 1.0f) / sy;
+    *tanUp    = (oy + 1.0f) / sy;
     return true;
 }
 
@@ -2221,8 +2272,36 @@ float VR_GetEyeStereoSeparation(int eye)
     cp_view_t right = cp_drawable_get_view(gDrawable, 1);
     simd_float4x4 lt = cp_view_get_transform(left);
     simd_float4x4 rt = cp_view_get_transform(right);
-    float separation = simd_distance(lt.columns[3].xyz, rt.columns[3].xyz);
-    return (eye == 0) ? -separation * 0.5f : separation * 0.5f;
+    const float ipd = simd_distance(lt.columns[3].xyz, rt.columns[3].xyz);
+
+    // Spieleinheiten, nicht Meter.
+    //
+    // Der Rückgabewert geht in tr_cmds.cpp direkt in
+    //
+    //   VectorMA( refdef.vieworg, sep, refdef.viewaxis[1], refdef.vieworg );
+    //
+    // also in Weltkoordinaten der Engine. Ohne worldScale wären es rund 0,03
+    // Einheiten statt 1,1 — praktisch kein Versatz. Beide Augen rendern dann
+    // von derselben Stelle, aber mit den stark asymmetrischen Frusta der
+    // Brille (gemessen -45°…+60° links, -60°…+45° rechts). Die Bilder liegen
+    // dadurch rund 15° auseinander, ohne dass eine Parallaxe das erklärt —
+    // genau das Gefühl, ein Auge schaue in eine andere Richtung.
+    //
+    // VORZEICHEN: positiv für Auge 0. viewaxis[1] ist in id Tech 3 der LINKS-
+    // Vektor, das linke Auge muss also nach links. Die Fassung davor hatte es
+    // umgekehrt und vertauschte damit effektiv die Augen. Der Rückfallweg der
+    // Engine direkt daneben zeigt dieselbe Konvention:
+    //
+    //   sep = ( eye == 0 ? 0.5f : -0.5f ) * stereoSeparation * worldScale;
+    //
+    // und die Android-Fassung ebenso (JKXR_SurfaceView.cpp:588).
+    float worldScale = 33.5f;
+    cvar_t *worldScaleCvar = Cvar_Get("cg_worldScale", "33.5", 0);
+    if (worldScaleCvar) {
+        worldScale = worldScaleCvar->value;
+    }
+
+    return (eye == 0 ? 0.5f : -0.5f) * ipd * worldScale;
 }
 
 // ---------------------------------------------------------------------------
@@ -2581,12 +2660,36 @@ extern "C" bool VR_GetScreenWall(int eye, float *projection16, float *modelview1
     // nicht am Compositor, sondern an unserer Rechnung.
     //
     // Ausgegeben wird die Wandmitte (Bildschirmmitte 320/240) im Augenraum.
-    static int frame = 0;
-    if (eye == 0 && (++frame % 30) == 0) {
-        simd_float4 centre = simd_mul(mv, (simd_float4){320.0f, 240.0f, 0.0f, 1.0f});
-        ALOGV("[Wand] Kopf vorwaerts %.3f %.3f %.3f  ->  Wandmitte im Auge %.3f %.3f %.3f",
-              -gHeadTransform.columns[2].x, -gHeadTransform.columns[2].y,
-              -gHeadTransform.columns[2].z, centre.x, centre.y, centre.z);
+    // Wandmitte im Augenraum UND als Bildposition, für beide Augen.
+    //
+    // "Im linken Auge ganz rechts, im rechten ganz links" ist der Richtung nach
+    // korrekte Parallaxe — aber viel zu stark. Bei 2 m Wandabstand und 6,4 cm
+    // Augenabstand wären es keine 1°. Die Zahlen trennen die beiden Fälle:
+    //
+    //   ndc_x knapp auseinander   Parallaxe stimmt, das Problem liegt woanders
+    //   ndc_x weit auseinander    die Wand steht zu nah oder der Versatz ist
+    //                             falsch skaliert
+    //   ndc_x mit falschem
+    //   Vorzeichen                die Augen bekommen vertauschte Geometrie
+    //
+    // Zusätzlich ndc_y für die Frage der Spiegelung: die Oberkante des
+    // Bildschirms (y = 0) muss im Bild OBEN landen.
+    {
+        static int frame[2] = { 0, 0 };
+        if ((++frame[eye] % 30) == 0) {
+            const simd_float4 centre =
+                simd_mul(mv, (simd_float4){320.0f, 240.0f, 0.0f, 1.0f});
+            const simd_float4 top =
+                simd_mul(mv, (simd_float4){320.0f, 0.0f, 0.0f, 1.0f});
+            const simd_float4 clipC = simd_mul(proj, centre);
+            const simd_float4 clipT = simd_mul(proj, top);
+            ALOGV("[Wand] Auge %d · Mitte im Auge %.3f %.3f %.3f · "
+                  "ndc Mitte %.3f %.3f · ndc Oberkante y %.3f\n",
+                  eye, centre.x, centre.y, centre.z,
+                  clipC.w != 0.0f ? clipC.x / clipC.w : 0.0f,
+                  clipC.w != 0.0f ? clipC.y / clipC.w : 0.0f,
+                  clipT.w != 0.0f ? clipT.y / clipT.w : 0.0f);
+        }
     }
 
     return true;

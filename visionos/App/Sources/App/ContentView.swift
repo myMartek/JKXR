@@ -10,6 +10,13 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @Environment(\.openImmersiveSpace) private var openImmersiveSpace
 
+    /// Das Startfenster schließen, sobald das Spiel läuft.
+    ///
+    /// Es hat seine Aufgabe dann erledigt — die Spieldateien liegen bereit und
+    /// der Immersive Space ist offen. Bleibt es stehen, hängt es mitten im
+    /// Bild und muss von Hand weggeschoben werden.
+    @Environment(\.dismissWindow) private var dismissWindow
+
     @State private var assets = AssetStore.status()
     @State private var importing = false
     @State private var progress: String?
@@ -28,7 +35,7 @@ struct ContentView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Button("Spielen") {
-                    Task { _ = await openImmersiveSpace(id: "game") }
+                    Task { await startGame() }
                 }
                 .buttonStyle(.borderedProminent)
 
@@ -80,7 +87,7 @@ struct ContentView: View {
                case .ready = assets {
                 didAutoStart = true
                 print("[JKXR] Diagnose-Autostart des Immersive Space")
-                _ = await openImmersiveSpace(id: "game")
+                await startGame()
             }
         }
         // Der verlässliche Weg. Das Navigieren in der Dateien-App hängt davon
@@ -99,6 +106,29 @@ struct ContentView: View {
 
     /// Kopiert im Hintergrund: die Dateien sind zusammen rund 1,2 GB, das würde
     /// die Oberfläche sonst für Minuten einfrieren.
+    /// Immersive Space öffnen und danach das Startfenster schließen.
+    ///
+    /// Geschlossen wird NUR bei Erfolg. Scheitert das Öffnen, bleibt das
+    /// Fenster stehen — sonst stünde der Benutzer in einer leeren Umgebung
+    /// ohne Bedienelemente und ohne Hinweis, was schiefging.
+    ///
+    /// Dass das Schließen den Ton nicht mehr abwürgt, hängt an der
+    /// Audio-Kategorie: visionos_snd.mm benutzt seit dieser Änderung Playback
+    /// statt Ambient. Ambient ist an den Vordergrundzustand gebunden und
+    /// verstummt, sobald nur noch der Immersive Space offen ist.
+    private func startGame() async {
+        switch await openImmersiveSpace(id: "game") {
+        case .opened:
+            dismissWindow()
+        case .userCancelled:
+            progress = "Der Immersive Space wurde abgebrochen."
+        case .error:
+            progress = "Der Immersive Space ließ sich nicht öffnen."
+        @unknown default:
+            break
+        }
+    }
+
     private func copy(_ urls: [URL]) async {
         for (index, url) in urls.enumerated() {
             progress = "Kopiere \(url.lastPathComponent) (\(index + 1)/\(urls.count))…"

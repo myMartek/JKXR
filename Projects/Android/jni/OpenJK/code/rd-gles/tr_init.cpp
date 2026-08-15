@@ -1210,16 +1210,39 @@ qboolean JKXR_visionOS_FlatTarget( void )
 	return ( ri.TBXR_useScreenLayer && ri.TBXR_useScreenLayer() ) ? qtrue : qfalse;
 }
 
-/*
-** Der Vergleich dreht sich, weil "näher" auf visionOS die GRÖSSERE Tiefe ist.
-** GL_EQUAL, GL_NOTEQUAL, GL_ALWAYS und GL_NEVER kennen keine Richtung und
-** bleiben deshalb unangetastet — sie mitzudrehen wäre ein stiller Fehler in
-** den Mehrfachdurchgängen, die auf GL_EQUAL aufbauen.
-*/
+static GLclampf s_jkxrClearDepth = 1.0f;
 
-void JKXR_visionOS_DepthFunc( GLenum func )
+/*
+** Tiefenzustand merken statt nur übersetzen.
+**
+** Vergleich, Bereich und Löschwert sind KLEBRIGER GL-Zustand, und die Engine
+** setzt sie nur, wenn sie sich ändern:
+**
+**   if ( diff & GLS_DEPTHFUNC_EQUAL ) { qglDepthFunc( ... ); }   (GL_State)
+**
+** Ein Wrapper, der bloß zum Aufrufzeitpunkt umrechnet, legt den Wert damit auf
+** das Ziel fest, das gerade zufällig aktiv war. Im Menü zeichnet die Engine in
+** den Zwischenpuffer, setzt dort GL_LEQUAL ohne Umkehr — und ruft danach nie
+** wieder auf, weil sich das Zustandsbit nicht ändert. Der Augen-Pfad behielt so
+** LEQUAL, während Löschwert und Projektion längst auf Reversed-Z standen.
+**
+** Sichtbar war das als "Hintergründe legen sich vor alles": bei Löschwert 1e-4
+** und LEQUAL besteht nur, was ganz hinten liegt.
+**
+** Deshalb wird hier gemerkt, was die Engine MEINTE, und der zum Ziel passende
+** Wert bei jedem Bild neu gesetzt — in JKXR_visionOS_Clear, das zu Beginn jeder
+** Ansicht läuft.
+*/
+static GLenum   s_jkxrDepthFunc = GL_LEQUAL;
+static GLclampf s_jkxrDepthNear = 0.0f;
+static GLclampf s_jkxrDepthFar  = 1.0f;
+
+static void JKXR_visionOS_ApplyDepthState( void )
 {
-	if ( !JKXR_visionOS_FlatTarget() ) {
+	const qboolean flat = JKXR_visionOS_FlatTarget();
+
+	GLenum func = s_jkxrDepthFunc;
+	if ( !flat ) {
 		switch ( func ) {
 			case GL_LESS:    func = GL_GREATER; break;
 			case GL_LEQUAL:  func = GL_GEQUAL;  break;
@@ -1229,13 +1252,37 @@ void JKXR_visionOS_DepthFunc( GLenum func )
 		}
 	}
 	glDepthFunc( func );
+
+	if ( flat ) {
+		glDepthRangef( s_jkxrDepthNear, s_jkxrDepthFar );
+	} else {
+		glDepthRangef( 1.0f - s_jkxrDepthFar, 1.0f - s_jkxrDepthNear );
+	}
+
+	if ( flat ) {
+		glClearDepthf( s_jkxrClearDepth );
+	} else {
+		const float reversed = 1.0f - s_jkxrClearDepth;
+		glClearDepthf( reversed < 1.0e-4f ? 1.0e-4f : reversed );
+	}
+}
+
+void JKXR_visionOS_ClearDepth( GLclampf depth )
+{
+	s_jkxrClearDepth = depth;
+	JKXR_visionOS_ApplyDepthState();
+}
+
+void JKXR_visionOS_DepthFunc( GLenum func )
+{
+	s_jkxrDepthFunc = func;
+	JKXR_visionOS_ApplyDepthState();
 }
 
 /*
 ** Der Tiefenbereich wird gespiegelt UND vertauscht: (n,f) -> (1-f, 1-n).
 **
-** Nur so bleibt die Reihenfolge innerhalb des Bereichs erhalten. Die drei
-** Aufrufe der Engine gehen damit auf das über, was sie bedeuten sollen:
+** Nur so bleibt die Reihenfolge innerhalb des Bereichs erhalten:
 **
 **   (0, 1)   volle Tiefe        -> (0, 1)   unverändert
 **   (0, 0)   ganz vorn (Waffe)  -> (1, 1)   in Reversed-Z ist 1 das Nächste
@@ -1246,55 +1293,22 @@ void JKXR_visionOS_DepthFunc( GLenum func )
 */
 void JKXR_visionOS_DepthRange( GLclampf zNear, GLclampf zFar )
 {
-	if ( JKXR_visionOS_FlatTarget() ) {
-		glDepthRangef( zNear, zFar );
-		return;
-	}
-	glDepthRangef( 1.0f - zFar, 1.0f - zNear );
+	s_jkxrDepthNear = zNear;
+	s_jkxrDepthFar  = zFar;
+	JKXR_visionOS_ApplyDepthState();
 }
 
 /*
-** Der Löschwert kippt mit: 1.0 ("fern" im Original) wird zu 0.0.
+** Vor jedem Löschen den gesamten Tiefenzustand neu setzen.
 **
-** Nicht ganz auf 0: visionOS wertet Pixel, deren Tiefe exakt dem Clear-Wert 0
-** entspricht, als NICHT belegt und verwirft dort die Farbe. Denselben Grund
-** nennt TBXR_prepareEyeBuffer, das aus diesem Grund auf 1e-4 löscht — dieselbe
-** Untergrenze gilt hier.
-*/
-/*
-** Nur merken, nicht setzen — gesetzt wird in JKXR_visionOS_Clear.
-**
-** Die Engine ruft das hier praktisch nur einmal beim Start auf. Würde der Wert
-** sofort umgerechnet, stünde er für den ganzen Lauf nach dem Ziel, das beim
-** Start zufällig aktiv war. Genau daran verschwand die Modellvorschau: gelöscht
-** wurde weiterhin mit dem Reversed-Wert ~0, und gegen GL_LEQUAL fiel das
-** gesamte Modell durch.
-*/
-static GLclampf s_jkxrClearDepth = 1.0f;
-
-void JKXR_visionOS_ClearDepth( GLclampf depth )
-{
-	s_jkxrClearDepth = depth;
-}
-
-/*
-** Löschwert der Tiefe passend zum aktuellen Ziel setzen, dann löschen.
-**
-** Im Zwischenpuffer gilt der Wert der Engine unverändert. Für die Augentextur
-** kippt er: 1.0 ("fern" im Original) wird zu 0.0 — aber nicht ganz, denn
-** visionOS wertet Pixel, deren Tiefe exakt dem Clear-Wert 0 entspricht, als
-** NICHT belegt und verwirft dort die Farbe. Dieselbe Untergrenze nennt
-** TBXR_prepareEyeBuffer, das aus demselben Grund auf 1e-4 löscht.
+** qglClear läuft zu Beginn jeder Ansicht (RB_BeginDrawingView) und ist damit
+** die Stelle, an der ein Zielwechsel zuverlässig auffällt — die Engine selbst
+** meldet ihn nirgends.
 */
 void JKXR_visionOS_Clear( GLbitfield mask )
 {
 	if ( mask & GL_DEPTH_BUFFER_BIT ) {
-		if ( JKXR_visionOS_FlatTarget() ) {
-			glClearDepthf( s_jkxrClearDepth );
-		} else {
-			const float reversed = 1.0f - s_jkxrClearDepth;
-			glClearDepthf( reversed < 1.0e-4f ? 1.0e-4f : reversed );
-		}
+		JKXR_visionOS_ApplyDepthState();
 	}
 	glClear( mask );
 }
