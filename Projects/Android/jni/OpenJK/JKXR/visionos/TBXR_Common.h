@@ -376,6 +376,16 @@ void TBXR_visionOS_SetScreenCinematic(bool cinematic);
 void TBXR_copyEyeBuffer(int sourceEye, int destinationEye );
 void TBXR_submitFrame();
 
+/// Gibt während langer Ladephasen ein leeres Bild ab.
+///
+/// visionOS beendet eine App, die im Immersive Space aufhört zu rendern.
+/// RE_LoadWorldMap lädt synchron und erreicht die Hauptschleife minutenlang
+/// nicht — ohne diese Pumpe endet jeder Kartenwechsel mit SIGKILL.
+///
+/// Gefahrlos aus dem Renderer aufzurufen: läuft bereits ein Bild oder ist noch
+/// keine Zeit vergangen, kehrt sie sofort zurück.
+void TBXR_visionOS_PumpLoadingFrame(void);
+
 #define VIVE_CONTROLLERS 10
 #define INDEX_CONTROLLERS 11
 #define PICO_CONTROLLERS 12

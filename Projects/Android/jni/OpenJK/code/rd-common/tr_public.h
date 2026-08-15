@@ -133,6 +133,17 @@ typedef struct {
 	bool 				(*TBXR_GetFovTangentsForEye)		(int eye, float *tanLeft, float *tanRight, float *tanUp, float *tanDown);
 	float				(*TBXR_GetEyeStereoSeparation)		(int eye);
 
+	// Gibt während langer Ladephasen ein leeres Bild ab.
+	//
+	// visionOS beendet eine App, die im Immersive Space aufhört zu rendern.
+	// R_CreateImage lädt beim Kartenwechsel hunderte Texturen hoch, ohne dass
+	// die Hauptschleife dazwischen ein Bild abgäbe — ohne diesen Aufruf endet
+	// jeder Kartenwechsel mit SIGKILL.
+	//
+	// Auf allen anderen Plattformen ist der Zeiger null; der Renderer prüft
+	// ihn wie die übrigen JKXR-Einträge auch.
+	void				(*TBXR_PumpLoadingFrame)			(void);
+
 } refimport_t;
 
 extern refimport_t ri;

@@ -9,10 +9,34 @@
 #define qglBlendFunc glBlendFunc
 #define qglCallList glCallList
 #define qglCallLists glCallLists
+#ifdef JKXR_VISIONOS
+// Der Löschwert der Tiefe muss beim Löschen stimmen, nicht beim Setzen.
+//
+// glClearDepth setzt KLEBRIGEN GL-Zustand, und die Engine ruft es praktisch nur
+// einmal beim Start auf. Ein Wrapper, der bloß zum Aufrufzeitpunkt umrechnet,
+// legt den Wert also für den ganzen Lauf nach dem Ziel fest, das gerade
+// zufällig aktiv war — obwohl die Engine danach zwischen Augentextur und
+// Zwischenpuffer hin und her wechselt.
+//
+// Deshalb merkt sich JKXR_visionOS_ClearDepth nur, was die Engine MEINTE, und
+// der richtige Wert wird hier gesetzt, unmittelbar vor dem Löschen.
+void JKXR_visionOS_Clear(GLbitfield mask);
+#define qglClear JKXR_visionOS_Clear
+#else
 #define qglClear glClear
+#endif
 #define qglClearAccum glClearAccum
 #define qglClearColor glClearColor
-#ifdef HAVE_GLES
+#ifdef JKXR_VISIONOS
+// Gehört zur Reversed-Z-Naht weiter unten (qglDepthFunc/qglDepthRange).
+//
+// Die Engine löscht die Tiefe bei JEDER Ansicht selbst (tr_backend.cpp) und
+// benutzt dafür 1.0 — in Reversed-Z wäre das "überall ganz nah", und alles
+// Nachfolgende fiele durch den Tiefentest. Ohne diese Zeile bliebe das Bild
+// schwarz, obwohl Vergleich und Bereich schon stimmen.
+void JKXR_visionOS_ClearDepth(GLclampf depth);
+#define qglClearDepth JKXR_visionOS_ClearDepth
+#elif defined(HAVE_GLES)
 #define qglClearDepth glClearDepthf
 #else
 #define qglClearDepth glClearDepth
@@ -72,16 +96,52 @@
 #define qglCopyTexImage2D glCopyTexImage2D
 #define qglCopyTexSubImage1D glCopyTexSubImage1D
 #define qglCopyTexSubImage2D glCopyTexSubImage2D
+#ifdef JKXR_VISIONOS
+// Wicklungsrichtung mitführen — sie hängt am Ziel, nicht am Programmstart.
+//
+// Die Y-Spiegelung für die Augentextur dreht die Wicklung jedes Dreiecks um und
+// wird über glFrontFace(GL_CW) ausgeglichen. Im GL-Zwischenpuffer wird aber
+// OHNE Spiegelung gezeichnet, dort gilt weiterhin GL_CCW.
+//
+// Einmal beim Start zu setzen genügt deshalb nicht: die Engine wechselt
+// innerhalb eines Bildes zwischen beiden Zielen. Da sie die Aussortierung
+// ohnehin je Fläche setzt, ist dieser Aufruf die passende Stelle.
+void JKXR_visionOS_CullFace(GLenum mode);
+#define qglCullFace JKXR_visionOS_CullFace
+#else
 #define qglCullFace glCullFace
+#endif
 #define qglDeleteLists glDeleteLists
 #define qglDeleteTextures glDeleteTextures
+#ifdef JKXR_VISIONOS
+// Reversed-Z: die eine Naht, an der die Tiefenkonvention gedreht wird.
+//
+// CompositorServices liefert eine Reversed-Z-Projektion — der SDK-Header sagt
+// es ausdrücklich: "depth should still be written in reverse-Z for best
+// precision". Nah liegt damit bei GROSSER Tiefe, fern bei kleiner, und
+// TBXR_prepareEyeBuffer löscht passend dazu auf ~0 und setzt GL_GREATER.
+//
+// id Tech 3 stammt aus der Zeit davor und setzt GL_LEQUAL mit glDepthRange(0,1).
+// Es überschreibt die Einstellung des Compositors bei der ersten Fläche — und
+// dann fällt JEDE Weltfläche durch den Tiefentest. Das HUD blieb sichtbar, weil
+// es ohne Tiefentest gezeichnet wird: genau das Bild, das wir hatten.
+//
+// Hier zu drehen statt an den rund zwanzig Aufrufstellen hat zwei Gründe: die
+// Engine bleibt unverändert lesbar, und ein später hinzukommender Aufruf ist
+// automatisch mit erfasst.
+void JKXR_visionOS_DepthFunc(GLenum func);
+void JKXR_visionOS_DepthRange(GLclampf zNear, GLclampf zFar);
+#define qglDepthFunc JKXR_visionOS_DepthFunc
+#define qglDepthRange JKXR_visionOS_DepthRange
+#else
 #define qglDepthFunc glDepthFunc
-#define qglDepthMask glDepthMask
 #ifdef HAVE_GLES
 #define qglDepthRange glDepthRangef
 #else
 #define qglDepthRange glDepthRange
 #endif
+#endif
+#define qglDepthMask glDepthMask
 #define qglDisable glDisable
 #define qglDisableClientState glDisableClientState
 #define qglDrawArrays glDrawArrays
@@ -214,7 +274,24 @@
 #define qglNormal3s glNormal3s
 #define qglNormal3sv glNormal3sv
 #define qglNormalPointer glNormalPointer
-#ifdef HAVE_GLES
+#ifdef JKXR_VISIONOS
+// Y-Umkehr fürs 2D — dieselbe Ursache wie bei der Weltprojektion.
+//
+// GL adressiert den Framebuffer von unten, Metal zeigt Speicherzeile 0 oben.
+// Alles, was GL in die Augentextur zeichnet, erscheint deshalb gespiegelt.
+//
+// Für die Welt dreht die Achsenkonvention in VR_GetVRProjection das gerade.
+// Das 2D geht aber NICHT über diese Matrix: die Engine setzt sich mit
+// qglOrtho(0, 640, 480, 0, ...) ihre eigene Bildschirmprojektion, mit y=0 oben.
+// Ohne diese Umkehr stünde das HUD weiterhin kopf, während die Welt bereits
+// richtig herum ist — genau der Zustand, den man beim Suchen für zwei
+// verschiedene Fehler hält.
+//
+// Vertauscht werden bottom und top; alles andere bleibt.
+void JKXR_visionOS_Ortho(GLfloat left, GLfloat right, GLfloat bottom,
+                         GLfloat top, GLfloat zNear, GLfloat zFar);
+#define qglOrtho JKXR_visionOS_Ortho
+#elif defined(HAVE_GLES)
 #define qglOrtho glOrthof
 #else
 #define qglOrtho glOrtho

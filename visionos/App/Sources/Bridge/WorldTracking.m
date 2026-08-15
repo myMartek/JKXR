@@ -268,8 +268,28 @@ static void rebuildAccessories(void)
             ar_accessory_tracking_configuration_set_accessories(config, accessories);
             sAccessory = ar_accessory_tracking_provider_create(config);
 
-            if (sProviders && sAccessory) {
-                ar_data_providers_add_data_provider(sProviders, sAccessory);
+            if (sProvider && sAccessory) {
+                // Die Sammlung FRISCH aufbauen, nicht ergänzen.
+                //
+                // Vorher wurde der neue Zubehör-Provider einfach zu sProviders
+                // hinzugefügt. Beim ersten Mal geht das gut — beim zweiten
+                // steckt der alte noch drin, und ar_session_run wirft beim
+                // Durchzählen der Provider eine NSException, die niemand fängt:
+                //
+                //   ARKitCore ar_session_run
+                //   ARKitCore ar_data_providers_enumerate_data_providers
+                //   → uncaught NSException → SIGABRT
+                //
+                // Ein zweiter Durchlauf ist der Normalfall, kein Randfall: er
+                // passiert, sobald ein Controller einschläft und wieder
+                // aufwacht, denn dann ändert sich die Geräteanzahl.
+                //
+                // World Tracking kommt wieder mit hinein, damit es beim
+                // Neustart der Sitzung nicht ausfällt.
+                ar_data_providers_t providers = ar_data_providers_create();
+                ar_data_providers_add_data_provider(providers, sProvider);
+                ar_data_providers_add_data_provider(providers, sAccessory);
+                sProviders = providers;
                 ar_session_run(sSession, sProviders);
 
                 // Den Provider ans Action-System durchreichen.

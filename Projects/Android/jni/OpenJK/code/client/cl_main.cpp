@@ -1202,6 +1202,9 @@ void CL_InitRef( void ) {
 	rit.TBXR_GetVRProjection = VR_GetVRProjection;
 	rit.TBXR_GetFovTangentsForEye = VR_GetFovTangentsForEye;
 	rit.TBXR_GetEyeStereoSeparation = VR_GetEyeStereoSeparation;
+#ifdef JKXR_VISIONOS
+	rit.TBXR_PumpLoadingFrame = TBXR_visionOS_PumpLoadingFrame;
+#endif
 
 	ret = GetRefAPI( REF_API_VERSION, &rit );
 

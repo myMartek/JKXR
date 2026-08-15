@@ -3642,9 +3642,37 @@ void AssetCache(void)
 _UI_DrawSides
 =================
 */
+#ifdef JKXR_VISIONOS
+// Rahmendicke gegen eine feste Bezugsbreite statt gegen die echte Auflösung.
+//
+// _UI_DrawSides und _UI_DrawTopBottom bekommen x/y/w/h in 640x480-Koordinaten,
+// multiplizieren `size` aber mit vidWidth/640. Die Dicke wächst damit MIT der
+// Auflösung — nicht in Pixeln, sondern im Verhältnis zur Oberfläche:
+//
+//   1920 (Desktop)      Faktor 3,0
+//   5087 (Vision Pro)   Faktor 7,95
+//
+// Auf einem Bildschirm fällt das kaum auf, weil die üblichen Auflösungen nah
+// beieinander liegen. Die Brille rendert die Oberfläche aber mit 5087 Punkten
+// Breite, und dort sind die Rahmen rund zweieinhalbmal so dick wie gewohnt —
+// sie drücken die Symbole in ihren Feldern zusammen.
+//
+// 1280 als Bezug entspricht dem Erscheinungsbild eines gewöhnlichen Desktops.
+// Wer die Rahmen dicker oder dünner will, ändert genau diese Zahl.
+#define JKXR_UI_REFERENCE_WIDTH		1280.0f
+static float JKXR_UI_BorderScale( void )
+{
+	return JKXR_UI_REFERENCE_WIDTH / 640.0f;
+}
+#endif
+
 void _UI_DrawSides(float x, float y, float w, float h, float size)
 {
+#ifdef JKXR_VISIONOS
+	size *= JKXR_UI_BorderScale();
+#else
 	size *= uiInfo.uiDC.xscale;
+#endif
 	trap_R_DrawStretchPic( x, y, size, h, 0, 0, 0, 0, uiInfo.uiDC.whiteShader );
 	trap_R_DrawStretchPic( x + w - size, y, size, h, 0, 0, 0, 0, uiInfo.uiDC.whiteShader );
 }
@@ -3656,7 +3684,11 @@ _UI_DrawTopBottom
 */
 void _UI_DrawTopBottom(float x, float y, float w, float h, float size)
 {
+#ifdef JKXR_VISIONOS
+	size *= JKXR_UI_BorderScale();
+#else
 	size *= uiInfo.uiDC.yscale;
+#endif
 	trap_R_DrawStretchPic( x, y, w, size, 0, 0, 0, 0, uiInfo.uiDC.whiteShader );
 	trap_R_DrawStretchPic( x, y + h - size, w, size, 0, 0, 0, 0, uiInfo.uiDC.whiteShader );
 }

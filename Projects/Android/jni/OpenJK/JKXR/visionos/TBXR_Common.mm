@@ -80,6 +80,12 @@ void (*GenFramebuffers)(GLsizei, GLuint *) = nullptr;
 void (*BindFramebuffer)(GLenum, GLuint) = nullptr;
 void (*FramebufferTexture2D)(GLenum, GLenum, GLenum, GLuint, GLint) = nullptr;
 GLenum (*CheckFramebufferStatus)(GLenum) = nullptr;
+// Für den Tiefenpuffer des Flat-Screen-Ziels.
+void (*GenRenderbuffers)(GLsizei, GLuint *) = nullptr;
+void (*BindRenderbuffer)(GLenum, GLuint) = nullptr;
+void (*RenderbufferStorage)(GLenum, GLenum, GLsizei, GLsizei) = nullptr;
+void (*FramebufferRenderbuffer)(GLenum, GLenum, GLenum, GLuint) = nullptr;
+void (*DeleteRenderbuffers)(GLsizei, const GLuint *) = nullptr;
 void (*Viewport)(GLint, GLint, GLsizei, GLsizei) = nullptr;
 void (*Enable)(GLenum) = nullptr;
 void (*Disable)(GLenum) = nullptr;
@@ -147,6 +153,11 @@ bool resolve()
     RESOLVE(BindFramebuffer)
     RESOLVE(FramebufferTexture2D)
     RESOLVE(CheckFramebufferStatus)
+    RESOLVE(GenRenderbuffers)
+    RESOLVE(BindRenderbuffer)
+    RESOLVE(RenderbufferStorage)
+    RESOLVE(FramebufferRenderbuffer)
+    RESOLVE(DeleteRenderbuffers)
     RESOLVE(Viewport)
     RESOLVE(Enable)
     RESOLVE(Disable)
@@ -224,6 +235,8 @@ GLuint    gScreenPanelProgram = 0;
 // Textur als echte Wand in die Welt. Dadurch gelangen weder ARKits Pose noch
 // die visionOS-Projektionsmatrix durch gl4es' Fixed-Function-Matrixemulation.
 GLuint gFlatScreenFramebuffer = 0;
+// Tiefenpuffer des Zwischenpuffers; ohne ihn hat die Menü-3D keinen Tiefentest.
+GLuint gFlatScreenDepth = 0;
 GLuint gFlatScreenTexture = 0;
 EGLImageKHR gFlatScreenImage = EGL_NO_IMAGE_KHR;
 id<MTLTexture> gFlatScreenMetalTexture = nil;
@@ -289,6 +302,11 @@ simd_float4x4 screenWallOriginFromDevice()
 /// Nur zur Fehlersuche: die ersten Bilder Schritt für Schritt protokollieren.
 /// Der Absturz kommt wortlos, also muss die letzte erreichte Stelle her.
 int gFrameCounter = 0;
+
+// Zeitpunkt des zuletzt abgegebenen Bildes, gesetzt in TBXR_submitFrame.
+// TBXR_visionOS_PumpLoadingFrame springt nur ein, wenn dieser Wert alt ist —
+// solange die Engine selbst zeichnet, bleibt die Pumpe still.
+static double gLastFrameSubmitted = 0.0;
 #define TRACE(...) do { if (gFrameCounter < 3) ALOGV(__VA_ARGS__); } while (0)
 
 bool forceMetalClear()
@@ -495,6 +513,13 @@ void drawScreenWallDepth(int eye)
 
 bool ensureFlatScreenTarget()
 {
+    // Die Maße MÜSSEN glConfig.vidWidth/vidHeight entsprechen.
+    //
+    // RB_SetGL2D setzt die Ansicht auf glConfig.vidWidth/vidHeight; weicht der
+    // Puffer davon ab, zeichnet die Engine nur in einen Teil von ihm, während
+    // das Panel den ganzen anzeigt. Ein Versuch, hier auf 4:3 zu gehen (die
+    // Oberfläche rechnet in 640x480, das Panel ist 4:3), hat deshalb nichts
+    // verbessert und die beiden Größen auseinanderlaufen lassen.
     const int width = (int)(gAppState.Width * gSuperSampling);
     const int height = (int)(gAppState.Height * gSuperSampling);
     if (width <= 0 || height <= 0) return false;
@@ -544,6 +569,24 @@ bool ensureFlatScreenTarget()
     angle::BindFramebuffer(GL_FRAMEBUFFER, gFlatScreenFramebuffer);
     angle::FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                                 GL_TEXTURE_2D, gFlatScreenTexture, 0);
+
+    // Tiefenpuffer — für 2D überflüssig, für die Menü-3D unverzichtbar.
+    //
+    // Der Zwischenpuffer hatte bisher nur eine Farbanlage. Für Text und
+    // Schaltflächen genügt das, aber die Charakter- und Lichtschwertvorschau
+    // rendern ein echtes 3D-Modell hier hinein. Ohne Tiefenpuffer ist der
+    // Tiefentest wirkungslos, und es entscheidet allein die Zeichenreihenfolge:
+    // Mund und Augen liegen im Modell HINTER dem Gesicht, werden aber später
+    // gezeichnet — und scheinen dadurch mitten durch den Kopf.
+    if (!gFlatScreenDepth) {
+        angle::GenRenderbuffers(1, &gFlatScreenDepth);
+    }
+    angle::BindRenderbuffer(GL_RENDERBUFFER, gFlatScreenDepth);
+    angle::RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, width, height);
+    angle::FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                                   GL_RENDERBUFFER, gFlatScreenDepth);
+    angle::BindRenderbuffer(GL_RENDERBUFFER, 0);
+
     const GLenum status = angle::CheckFramebufferStatus(GL_FRAMEBUFFER);
     if (status != GL_FRAMEBUFFER_COMPLETE) {
         ALOGE("2D-Zwischenpuffer unvollstaendig: 0x%04x", status);
@@ -1134,12 +1177,47 @@ void TBXR_FrameSetup()
     cp_time_wait_until(cp_frame_timing_get_optimal_input_time(timing));
 
     cp_frame_start_submission(gFrame);
-    gDrawable = cp_frame_query_drawable(gFrame);
-    if (!gDrawable) {
-        cp_frame_end_submission(gFrame);
+
+    // cp_frame_query_drawables, nicht die Einzahlform.
+    //
+    // cp_frame_query_drawable ist seit visionOS 26.0 abgekündigt. Der Grund ist
+    // nicht kosmetisch: die Mehrzahlform unterscheidet zwischen "keine Drawable"
+    // und "Bild abgebrochen", und nur sie sagt, wie ein abgebrochenes Bild zu
+    // behandeln ist.
+    //
+    // Ein abgebrochenes Bild darf NICHT beendet werden. Der Header ist dazu
+    // unmissverständlich:
+    //
+    //   "If array count is 0, the frame has been cancelled as there are no
+    //    drawables to draw to and the frame should be discarded and is invalid
+    //    to access."
+    //
+    // Das vorherige cp_frame_end_submission auf genau diesem Pfad war deshalb
+    // ein Zugriff auf ein ungültiges Bild, und CompositorServices beendet den
+    // Prozess dafür hart:
+    //
+    //   CompositorNonUI  __BUG_IN_CLIENT__
+    //   CompositorNonUI  cp_frame_end_submission
+    //   JKXR             TBXR_FrameSetup()
+    //
+    // Ausgelöst wird der Pfad, sobald der Compositor ein Bild fallen lässt —
+    // beim Kartenladen etwa, wenn die Engine lange nicht zeichnet.
+    cp_drawable_array_t drawables = cp_frame_query_drawables(gFrame);
+    if (!drawables || cp_drawable_array_get_count(drawables) == 0) {
+        // Verwerfen heißt: nichts mehr am Bild aufrufen, auch kein
+        // end_submission. Der Compositor räumt es selbst ab; der nächste
+        // Durchlauf holt über query_next_frame ein frisches.
+        //
+        // ALOGV statt TRACE: TRACE schweigt ab dem dritten Bild, und dieses
+        // Ereignis tritt gerade dann auf, wenn die Engine lange nicht zeichnet
+        // — beim Kartenladen also. Genau dort muss es sichtbar sein.
+        ALOGV("[Bild %d] Compositor hat das Bild abgebrochen — verworfen\n",
+              gFrameCounter);
+        gDrawable = nullptr;
         gFrame = nullptr;
         return;
     }
+    gDrawable = cp_drawable_array_get_drawable(drawables, 0);
 
     // Die Geräte-/Kopfpose muss zur Präsentationszeit vorhergesagt werden.
     // trackableAnchorTime ist für Hand- und Zubehöranker gedacht. Wird es hier
@@ -1175,6 +1253,44 @@ void TBXR_FrameSetup()
                 ALOGV("[Drawable]  Tiefe %zu: KEINE — visionOS verwirft Frames "
                       "ohne geschriebene Tiefe lautlos (siehe S4)", i);
             }
+        }
+
+        // Stereo-Geometrie einmal ausmessen statt annehmen.
+        //
+        // Die Engine versetzt die Augen ausschließlich seitlich
+        // (VectorMA in tr_cmds.cpp) und dreht sie nicht. Auf Geräten mit
+        // gekippten Ansichten ist das falsch. Ob und wie stark diese Brille
+        // kippt, steht in keiner Dokumentation — also messen.
+        for (size_t v = 0; v < views && v < 2; ++v) {
+            cp_view_t view = cp_drawable_get_view(gDrawable, v);
+            const simd_float4x4 t = cp_view_get_transform(view);
+            const simd_float3 pos = t.columns[3].xyz;
+            const simd_float3 fwd = -t.columns[2].xyz;   // -Z ist die Blickrichtung
+            ALOGV("[Stereo] Auge %zu: Position % .4f % .4f % .4f · "
+                  "Blick % .4f % .4f % .4f",
+                  v, pos.x, pos.y, pos.z, fwd.x, fwd.y, fwd.z);
+
+            const simd_float4x4 p = cp_drawable_compute_projection(
+                gDrawable, cp_axis_direction_convention_right_up_back, v);
+            const float sx = p.columns[0][0], ox = p.columns[2][0];
+            const float sy = p.columns[1][1], oy = p.columns[2][1];
+            ALOGV("[Stereo] Auge %zu: tanL % .4f tanR % .4f tanD % .4f tanU % .4f",
+                  v, (-1.0f - ox) / sx, (1.0f - ox) / sx,
+                  (-1.0f - oy) / sy, (1.0f - oy) / sy);
+        }
+        if (views >= 2) {
+            const simd_float3 f0 =
+                -cp_view_get_transform(cp_drawable_get_view(gDrawable, 0)).columns[2].xyz;
+            const simd_float3 f1 =
+                -cp_view_get_transform(cp_drawable_get_view(gDrawable, 1)).columns[2].xyz;
+            const float dot = simd_clamp(simd_dot(simd_normalize(f0),
+                                                  simd_normalize(f1)), -1.0f, 1.0f);
+            const simd_float3 p0 =
+                cp_view_get_transform(cp_drawable_get_view(gDrawable, 0)).columns[3].xyz;
+            const simd_float3 p1 =
+                cp_view_get_transform(cp_drawable_get_view(gDrawable, 1)).columns[3].xyz;
+            ALOGV("[Stereo] Kippwinkel %.2f Grad · Augenabstand %.4f m",
+                  acosf(dot) * 180.0f / (float)M_PI, simd_length(p1 - p0));
         }
     }
 
@@ -1270,7 +1386,26 @@ void TBXR_FrameSetup()
 
 void TBXR_prepareEyeBuffer(int eye)
 {
+    // Das aktuelle Auge auch der Spiel-/Renderseite mitteilen, nicht nur intern.
+    //
+    // Android (TBXR_Common.cpp:2066) und Windows (:1080) tun das in derselben
+    // Funktion als erste Zeile; in dieser Fassung fehlte sie.
+    //
+    // R_SetupProjection liest `vr->eye`, um die FOV-Tangenten des richtigen
+    // Auges zu holen. Ohne diese Zeile bleibt der Wert stehen, und BEIDE Augen
+    // rendern mit der Projektion desselben Auges.
+    //
+    // Das fällt nur deshalb so stark auf, weil die Frusta hier kräftig
+    // asymmetrisch sind — gemessen auf diesem Gerät:
+    //
+    //   Auge 0: tanL -1.000  tanR +1.732   (-45° … +60°)
+    //   Auge 1: tanL -1.732  tanR +1.000   (-60° … +45°)
+    //
+    // Die Achsen liegen also 15° auseinander. Nimmt ein Auge die Projektion des
+    // anderen, schaut es sichtbar an der Szene vorbei. Der Kippwinkel der
+    // Ansichten beträgt dagegen nur 1,13° und war NICHT die Ursache.
     gCurrentEye = eye;
+    vr.eye = eye;
     gRenderingFlatScreen[eye] = false;
     TRACE("[Bild %d] prepareEyeBuffer Auge %d", gFrameCounter, eye);
     if (!gDrawable) return;
@@ -1672,6 +1807,69 @@ void TBXR_submitFrame()
     TRACE("[Bild %d] submitFrame fertig", gFrameCounter);
     ++gFrameCounter;
     gAppState.FrameSetup = false;
+    // Jedes abgegebene Bild zählt — auch die der Pumpe. Sie misst dagegen.
+    gLastFrameSubmitted = CACurrentMediaTime();
+}
+
+// ---------------------------------------------------------------------------
+// Bildpumpe für lange Ladephasen
+//
+// visionOS beendet eine App, die einen Immersive Space offen hält und aufhört,
+// Bilder abzugeben. Das trifft id Tech 3 an einer Stelle hart: RE_LoadWorldMap
+// lädt die Karte synchron und lädt dabei hunderte Texturen hoch, ohne die
+// Hauptschleife auch nur einmal zu erreichen. Belegt durch den Absturzbericht:
+//
+//   RE_LoadWorldMap → R_FindShader → R_FindImageFile → R_CreateImage
+//     → glTexImage2D → ANGLE → Metal replaceRegion → waitUntilCompleted
+//     ... SIGKILL
+//
+// Diese Funktion gibt zwischendurch ein leeres Bild ab. Gezeichnet wird nichts:
+// TBXR_prepareEyeBuffer löscht Farbe und Tiefe bereits selbst, und ein
+// gelöschtes Bild genügt dem Compositor vollauf — es geht nur darum, dass
+// überhaupt eines kommt.
+//
+// Aufgerufen wird sie aus R_CreateImage, also je Textur. Die Entscheidung, ob
+// tatsächlich ein Bild fällig ist, liegt bewusst HIER und nicht dort: der
+// Renderer soll nichts über Bildraten wissen müssen.
+void TBXR_visionOS_PumpLoadingFrame(void)
+{
+    if (!gLayerRenderer) return;
+
+    // Läuft bereits ein Bild, gehört es der Hauptschleife — dann ist die Engine
+    // ohnehin am Zeichnen und die Pumpe überflüssig. Ein zweites Bild zu holen
+    // wäre genau der Fehler, den der Wächter in TBXR_FrameSetup abfängt.
+    if (gAppState.FrameSetup) return;
+
+    // Schutz gegen Rekursion: prepareEyeBuffer darf nicht in einer Pumpe landen,
+    // die selbst wieder eine Textur anlegt.
+    static bool pumping = false;
+    if (pumping) return;
+
+    // Nur einspringen, wenn die Engine WIRKLICH stillsteht.
+    //
+    // Der erste Entwurf pumpte alle 8 ms, also mit voller Bildrate. Das hält
+    // die App zwar am Leben, schiebt aber ein leeres Bild zwischen jedes Bild,
+    // das die Engine selbst zeichnet — und der Ladebildschirm flackerte heftig.
+    //
+    // Die Engine zeichnet während des Ladens durchaus, nur unregelmäßig. Es
+    // genügt daher, den Abstand zum zuletzt ABGEGEBENEN Bild zu messen, egal
+    // von wem es kam: solange die Engine liefert, schweigt die Pumpe ganz.
+    //
+    // Eine Sekunde ist reichlich Abstand zur Schwelle des Systems — beobachtet
+    // wurde die Beendigung nach rund zehn Sekunden ohne Bild.
+    const double now = CACurrentMediaTime();
+    if (now - gLastFrameSubmitted < 1.0) return;
+
+    pumping = true;
+    TBXR_FrameSetup();
+    if (gDrawable) {
+        TBXR_prepareEyeBuffer(0);
+        TBXR_finishEyeBuffer(0);
+        TBXR_prepareEyeBuffer(1);
+        TBXR_finishEyeBuffer(1);
+        TBXR_submitFrame();
+    }
+    pumping = false;
 }
 
 int TBXR_GetRefresh()
@@ -1697,10 +1895,54 @@ bool VR_GetVRProjection(int eye, float zNear, float zFar,
 {
     if (!gDrawable) return false;
 
+    // NICHT die Brillenprojektion aufzwingen, wenn die Szene gar nicht in der
+    // Welt steht. Beide Wächter stehen wörtlich so in der Android-Fassung
+    // (JKXR_SurfaceView.cpp:475 ff.) und fehlten hier.
+    //
+    // Gibt diese Funktion false zurück, baut die Engine ihre eigene Projektion
+    // aus der Spiel-FOV (R_SetupProjection) — und genau die brauchen die
+    // 3D-Vorschauen im Menü: Charakterauswahl und Lichtschwert rendern ein
+    // Modell in ein kleines Rechteck der Oberfläche, mit RDF_NOWORLDMODEL.
+    //
+    // Für dieses Flag überspringt R_SetupProjection den Tangenten-Pfad und
+    // landet hier. Ohne die Wächter bekam die Vorschau das 105°-Frustum der
+    // Brille samt Achsversatz — das Modell lag weit außerhalb des Rechtecks und
+    // war schlicht nicht zu sehen.
+    if (vr.cin_camera && !vr.immersive_cinematics) return false;
+    if (vr.using_screen_layer) return false;
+
+    // Dieselbe Falle wie in VR_GetFovTangentsForEye: -1 steht für "Mitte" und
+    // würde als size_t zu SIZE_MAX. Hier genügt Auge 0 — diese Funktion ist
+    // nur der Rückfallweg, und der Erfassungsdurchgang holt seine Tangenten
+    // ohnehin über die Vereinigung beider Frusta.
+    if (eye < 0) eye = 0;
+
     // Der Compositor liefert die Projektion passend zur aktuellen Kopfpose und
     // Linsengeometrie — sie selbst aus FOV-Winkeln aufzubauen wäre ungenauer.
+    //
+    // right_DOWN_forward, nicht right_up_back — hier gezielt abweichend vom
+    // Rest der Datei.
+    //
+    // Diese Matrix ist die einzige, die in GL geladen wird; die übrigen
+    // Aufrufe von cp_drawable_compute_projection speisen Metal-Pässe und
+    // bleiben bei right_up_back.
+    //
+    // GL adressiert einen Framebuffer von UNTEN, Metal zeigt Speicherzeile 0
+    // OBEN. Mit +Y=oben landet daher die Oberkante des Bildes in der letzten
+    // Zeile und wird unten angezeigt — das Bild steht auf dem Kopf. Mit
+    // +Y=unten stimmt es.
+    //
+    // "back" bleibt: die Wicklung wird bewusst NICHT hier ausgeglichen.
+    //
+    // Diese Funktion ist nur der Rückfallweg. Für die Welt baut die Engine ihre
+    // Projektion selbst aus den FOV-Tangenten (R_SetupProjection in
+    // tr_main.cpp) und spiegelt Y dort. Beide Wege müssen deshalb dieselbe
+    // Wicklung erzeugen, sonst stimmt sie in genau einem der beiden Fälle nicht
+    // — und welcher greift, hängt an RDF_NOWORLDMODEL, also an der Szene.
+    //
+    // Ausgeglichen wird einmal zentral über glFrontFace(GL_CW).
     simd_float4x4 matrix = cp_drawable_compute_projection(
-        gDrawable, cp_axis_direction_convention_right_up_back, eye);
+        gDrawable, cp_axis_direction_convention_right_down_back, eye);
 
     // Zoom (Fernglas, Scharfschützenmodus) skaliert die beiden ersten Spalten.
     matrix.columns[0] *= zZoomX;
@@ -1710,10 +1952,59 @@ bool VR_GetVRProjection(int eye, float zNear, float zFar,
     return true;
 }
 
+// Tangenten eines Auges aus seiner Projektionsmatrix zurückrechnen.
+static void tangentsForView(size_t view, float *tanLeft, float *tanRight,
+                            float *tanDown, float *tanUp)
+{
+    const simd_float4x4 p = cp_drawable_compute_projection(
+        gDrawable, cp_axis_direction_convention_right_up_back, view);
+    const float sx = p.columns[0][0], ox = p.columns[2][0];
+    const float sy = p.columns[1][1], oy = p.columns[2][1];
+    *tanLeft  = (-1.0f - ox) / sx;
+    *tanRight = ( 1.0f - ox) / sx;
+    *tanDown  = (-1.0f - oy) / sy;
+    *tanUp    = ( 1.0f - oy) / sy;
+}
+
 bool VR_GetFovTangentsForEye(int eye, float *tanLeft, float *tanRight,
                              float *tanUp, float *tanDown)
 {
     if (!gDrawable) return false;
+
+    // eye < 0 heißt "Mitte" und MUSS abgefangen werden.
+    //
+    // R_SetupProjection übergibt -1, wenn der Stereo-Replay seinen zentralen
+    // Erfassungsdurchgang zeichnet (tr_main.cpp). Ungeprüft landet die -1 als
+    // size_t in cp_drawable_compute_projection — also als SIZE_MAX und damit
+    // als ungültiger View-Index. Die Matrix ist dann Unsinn, es überlebt keine
+    // Fläche das Aussortieren, und der Replay spielt anschließend ein leeres
+    // Kommandoband ab: das Spiel bleibt schwarz.
+    //
+    // Kamerafahrten fielen nicht darauf herein, weil sie ohne Replay direkt
+    // pro Auge zeichnen und dort 0 oder 1 übergeben. Genau deshalb war das
+    // eine sichtbar und das andere nicht.
+    //
+    // Für die Mitte ist die VEREINIGUNG beider Augenfrusta richtig, nicht das
+    // Frustum eines der beiden: der Erfassungsdurchgang sammelt die Flächen
+    // für BEIDE Augen ein. Nimmt man nur eines, fehlen später am Rand des
+    // anderen Auges genau die Flächen, die dort sichtbar wären.
+    if (eye < 0) {
+        const size_t views = cp_drawable_get_view_count(gDrawable);
+        if (views == 0) return false;
+
+        float l, r, d, u;
+        tangentsForView(0, &l, &r, &d, &u);
+        for (size_t v = 1; v < views; ++v) {
+            float l2, r2, d2, u2;
+            tangentsForView(v, &l2, &r2, &d2, &u2);
+            l = fminf(l, l2);
+            r = fmaxf(r, r2);
+            d = fminf(d, d2);
+            u = fmaxf(u, u2);
+        }
+        *tanLeft = l; *tanRight = r; *tanDown = d; *tanUp = u;
+        return true;
+    }
 
     simd_float4x4 p = cp_drawable_compute_projection(
         gDrawable, cp_axis_direction_convention_right_up_back, eye);
@@ -2023,9 +2314,19 @@ extern "C" bool VR_GetScreenWall(int eye, float *projection16, float *modelview1
     const float width = 2.4f;
     const float height = width * (480.0f / 640.0f);
 
-    // Projektion des Auges, unverändert übernommen.
+    // right_DOWN_back, wie überall dort, wo in die Augentextur gezeichnet wird.
+    //
+    // Diese Matrix geht direkt per qglLoadMatrixf in GL (RB_SetGL2D) und
+    // umgeht damit BEIDE Stellen, an denen sonst die Y-Achse gedreht wird:
+    // den Tausch von ymin/ymax in R_SetupProjection und den Ortho-Wrapper
+    // JKXR_visionOS_Ortho. Sie muss die Umkehr deshalb selbst mitbringen.
+    //
+    // Ohne sie ist die Wand gegenüber dem Rest der Szene gespiegelt. Das fällt
+    // im Stand kaum auf — die Wand steht ja an der richtigen Stelle —, aber
+    // eine Spiegelung und eine Drehung vertauschen sich nicht: sobald der Kopf
+    // geneigt wird, dreht sich das Bild nicht mit, sondern verformt sich.
     simd_float4x4 proj = cp_drawable_compute_projection(
-        gDrawable, cp_axis_direction_convention_right_up_back, eye);
+        gDrawable, cp_axis_direction_convention_right_down_back, eye);
     memcpy(projection16, &proj, sizeof(float) * 16);
 
     // Wand einmal einrasten, dann im Raum stehen lassen.

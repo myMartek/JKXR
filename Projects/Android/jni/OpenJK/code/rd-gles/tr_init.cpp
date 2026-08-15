@@ -1181,12 +1181,183 @@ void R_ScreenShot_f (void) {
 
 //============================================================================
 
+#ifdef JKXR_VISIONOS
+/*
+** ZWEI Ziele, zwei Konventionen — die Regel für alles hier unten.
+**
+** Die Engine zeichnet auf visionOS in zwei verschiedene Puffer, und nur einer
+** davon verlangt Apples Konventionen:
+**
+**   Augentextur des Compositors   Y gespiegelt (GL adressiert von unten,
+**   (Welt, HUD im Spiel)          Metal zeigt Zeile 0 oben) und Reversed-Z
+**                                 (nah = große Tiefe, Löschwert ~0).
+**
+**   GL-Zwischenpuffer             Ganz normales GL. Er wird von GL gefüllt und
+**   (Menü, Ladebild, Video)       später als Ganzes präsentiert; nach außen
+**                                 tritt er nie in Erscheinung.
+**
+** Im Zwischenpuffer die visionOS-Konventionen anzuwenden ist nicht bloß
+** unnötig, sondern falsch: die 2D-Ortho der Engine legt ihre Elemente auf
+** Fenstertiefe 0, was unter Reversed-Z "ganz fern" bedeutet. Gegen einen auf ~0
+** gelöschten Puffer fallen sie mit GL_GEQUAL durch — Hintergrundvideo, Cursor
+** und Farbfelder verschwanden auf genau diesem Weg, sobald der Puffer
+** überhaupt eine Tiefenanlage bekam.
+**
+** Dieselbe Fallunterscheidung trifft R_SetupProjection für die Projektion.
+*/
+static qboolean JKXR_visionOS_FlatTarget( void )
+{
+	return ( ri.TBXR_useScreenLayer && ri.TBXR_useScreenLayer() ) ? qtrue : qfalse;
+}
+
+/*
+** Der Vergleich dreht sich, weil "näher" auf visionOS die GRÖSSERE Tiefe ist.
+** GL_EQUAL, GL_NOTEQUAL, GL_ALWAYS und GL_NEVER kennen keine Richtung und
+** bleiben deshalb unangetastet — sie mitzudrehen wäre ein stiller Fehler in
+** den Mehrfachdurchgängen, die auf GL_EQUAL aufbauen.
+*/
+void JKXR_visionOS_DepthFunc( GLenum func )
+{
+	if ( !JKXR_visionOS_FlatTarget() ) {
+		switch ( func ) {
+			case GL_LESS:    func = GL_GREATER; break;
+			case GL_LEQUAL:  func = GL_GEQUAL;  break;
+			case GL_GREATER: func = GL_LESS;    break;
+			case GL_GEQUAL:  func = GL_LEQUAL;  break;
+			default: break;
+		}
+	}
+	glDepthFunc( func );
+}
+
+/*
+** Der Tiefenbereich wird gespiegelt UND vertauscht: (n,f) -> (1-f, 1-n).
+**
+** Nur so bleibt die Reihenfolge innerhalb des Bereichs erhalten. Die drei
+** Aufrufe der Engine gehen damit auf das über, was sie bedeuten sollen:
+**
+**   (0, 1)   volle Tiefe        -> (0, 1)   unverändert
+**   (0, 0)   ganz vorn (Waffe)  -> (1, 1)   in Reversed-Z ist 1 das Nächste
+**   (0, .3)  vorderes Drittel   -> (.7, 1)
+**
+** Bloßes Spiegeln zu (1-n, 1-f) wäre der naheliegende Fehler: aus (0,.3) würde
+** (1,.7), und darin läge das Nahe HINTEN — die Waffe verschwände in der Wand.
+*/
+void JKXR_visionOS_DepthRange( GLclampf zNear, GLclampf zFar )
+{
+	if ( JKXR_visionOS_FlatTarget() ) {
+		glDepthRangef( zNear, zFar );
+		return;
+	}
+	glDepthRangef( 1.0f - zFar, 1.0f - zNear );
+}
+
+/*
+** Der Löschwert kippt mit: 1.0 ("fern" im Original) wird zu 0.0.
+**
+** Nicht ganz auf 0: visionOS wertet Pixel, deren Tiefe exakt dem Clear-Wert 0
+** entspricht, als NICHT belegt und verwirft dort die Farbe. Denselben Grund
+** nennt TBXR_prepareEyeBuffer, das aus diesem Grund auf 1e-4 löscht — dieselbe
+** Untergrenze gilt hier.
+*/
+/*
+** Nur merken, nicht setzen — gesetzt wird in JKXR_visionOS_Clear.
+**
+** Die Engine ruft das hier praktisch nur einmal beim Start auf. Würde der Wert
+** sofort umgerechnet, stünde er für den ganzen Lauf nach dem Ziel, das beim
+** Start zufällig aktiv war. Genau daran verschwand die Modellvorschau: gelöscht
+** wurde weiterhin mit dem Reversed-Wert ~0, und gegen GL_LEQUAL fiel das
+** gesamte Modell durch.
+*/
+static GLclampf s_jkxrClearDepth = 1.0f;
+
+void JKXR_visionOS_ClearDepth( GLclampf depth )
+{
+	s_jkxrClearDepth = depth;
+}
+
+/*
+** Löschwert der Tiefe passend zum aktuellen Ziel setzen, dann löschen.
+**
+** Im Zwischenpuffer gilt der Wert der Engine unverändert. Für die Augentextur
+** kippt er: 1.0 ("fern" im Original) wird zu 0.0 — aber nicht ganz, denn
+** visionOS wertet Pixel, deren Tiefe exakt dem Clear-Wert 0 entspricht, als
+** NICHT belegt und verwirft dort die Farbe. Dieselbe Untergrenze nennt
+** TBXR_prepareEyeBuffer, das aus demselben Grund auf 1e-4 löscht.
+*/
+void JKXR_visionOS_Clear( GLbitfield mask )
+{
+	if ( mask & GL_DEPTH_BUFFER_BIT ) {
+		if ( JKXR_visionOS_FlatTarget() ) {
+			glClearDepthf( s_jkxrClearDepth );
+		} else {
+			const float reversed = 1.0f - s_jkxrClearDepth;
+			glClearDepthf( reversed < 1.0e-4f ? 1.0e-4f : reversed );
+		}
+	}
+	glClear( mask );
+}
+
+/*
+** Wicklungsrichtung passend zum Ziel. Begründung in qgl_linked.h.
+*/
+void JKXR_visionOS_CullFace( GLenum mode )
+{
+	glFrontFace( JKXR_visionOS_FlatTarget() ? GL_CCW : GL_CW );
+	glCullFace( mode );
+}
+
+/*
+** Y-Umkehr fürs 2D — aber nur beim Zeichnen in die Augentextur.
+**
+** Begründung der Umkehr selbst bei den Makros in qgl_linked.h. Hier steht,
+** warum sie NICHT immer gilt.
+**
+** Die Engine zeichnet 2D auf zwei verschiedene Ziele:
+**
+**   Screen-Layer an   Menüs, Ladebild, Videosequenzen gehen in eine
+**   (Menü)            GL-Zwischentextur, die erst danach präsentiert wird.
+**                     Dort ist GL unter sich — Ursprung unten, gelesen wird
+**                     mit derselben Konvention. Eine Umkehr wäre eine zweite
+**                     und stellt das Menü auf den Kopf.
+**
+**   Screen-Layer aus  Das HUD im Spiel geht direkt in die Augentextur des
+**   (im Spiel)        Compositors. Nur hier trifft GLs Ursprung unten auf
+**                     Metals Zeile 0 oben, und nur hier muss gedreht werden.
+**
+** Ohne diese Fallunterscheidung ist immer genau eines von beidem falsch
+** herum — und es sieht nach zwei Fehlern aus, wo nur einer ist.
+*/
+void JKXR_visionOS_Ortho( GLfloat left, GLfloat right, GLfloat bottom,
+                          GLfloat top, GLfloat zNear, GLfloat zFar )
+{
+	if ( ri.TBXR_useScreenLayer && ri.TBXR_useScreenLayer() ) {
+		glOrthof( left, right, bottom, top, zNear, zFar );
+		return;
+	}
+	glOrthof( left, right, top, bottom, zNear, zFar );
+}
+#endif
+
 /*
 ** GL_SetDefaultState
 */
 void GL_SetDefaultState( void )
 {
 	qglClearDepth( 1.0f );
+
+#ifdef JKXR_VISIONOS
+	// Ausgleich für die Y-Spiegelung in R_SetupProjection.
+	//
+	// Eine gespiegelte Achse dreht die Wicklungsreihenfolge jedes Dreiecks um.
+	// Ohne diese Zeile verwirft die Flächenaussortierung genau die falsche
+	// Hälfte: man schaut durch Wände nach draußen und sieht Modelle von innen.
+	//
+	// Einmal zentral hier statt an den vier qglCullFace-Stellen in
+	// tr_backend.cpp: die Engine unterscheidet dort vorn und hinten aus
+	// inhaltlichen Gründen, und diese Unterscheidung soll unangetastet bleiben.
+	glFrontFace( GL_CW );
+#endif
 
 	qglCullFace(GL_FRONT);
 

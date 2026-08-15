@@ -1241,6 +1241,21 @@ image_t *R_CreateImage( const char *name, const byte *pic, int width, int height
 		return image;
 	}
 
+	// visionOS beendet eine App, die im Immersive Space aufhört zu rendern.
+	// Hier unten werden beim Kartenwechsel hunderte Texturen hochgeladen, ohne
+	// dass die Hauptschleife dazwischen ein Bild abgäbe — ohne diesen Aufruf
+	// endet jeder Kartenwechsel mit SIGKILL.
+	//
+	// Der Aufruf steht NACH dem Cache-Treffer oben: nur ein echter Texturupload
+	// kostet Zeit, ein Treffer kehrt sofort zurück.
+	//
+	// Ob wirklich ein Bild fällig ist, entscheidet die Plattformschicht selbst;
+	// hier bleibt der Renderer frei von Annahmen über Bildraten. Auf allen
+	// anderen Plattformen ist der Zeiger null.
+	if ( ri.TBXR_PumpLoadingFrame ) {
+		ri.TBXR_PumpLoadingFrame();
+	}
+
 	image = (image_t*) R_Malloc( sizeof( image_t ), TAG_IMAGE_T, qtrue );
 //	memset(image,0,sizeof(*image));	// qtrue above does this
 

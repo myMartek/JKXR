@@ -623,6 +623,32 @@ void R_SetupProjection( void ) {
 		xmin = -xmax;
 	}
 
+#ifdef JKXR_VISIONOS
+	// Y umkehren: GL adressiert den Framebuffer von unten, Metal zeigt
+	// Speicherzeile 0 oben. Ohne diesen Tausch steht die gesamte Welt auf dem
+	// Kopf, sobald sie in die Augentextur des Compositors gezeichnet wird.
+	//
+	// Der Tausch steht HIER und nicht in VR_GetFovTangentsForEye, damit die
+	// Plattformschicht weiter ehrliche Tangenten liefert: "tanUp" soll oben
+	// bedeuten. Ein negatives height dreht projectionMatrix[5] im Vorzeichen,
+	// und genau das ist die Y-Spiegelung.
+	//
+	// Sie kehrt die Wicklungsreihenfolge um; ausgeglichen wird das einmal
+	// zentral über glFrontFace(GL_CW) in GL_SetDefaultState.
+	//
+	// NICHT beim Screen-Layer. Menüs gehen in einen GL-Zwischenpuffer, der
+	// später erst präsentiert wird — dort ist GL unter sich und ein Flip wäre
+	// eine zweite Spiegelung. Genau dieselbe Fallunterscheidung trifft
+	// JKXR_visionOS_Ortho fürs 2D; ohne sie stand die Modellvorschau im Menü
+	// auf dem Kopf, während die Beschriftungen daneben richtig lagen.
+	if ( !( ri.TBXR_useScreenLayer && ri.TBXR_useScreenLayer() ) )
+	{
+		const float swap = ymin;
+		ymin = ymax;
+		ymax = swap;
+	}
+#endif
+
 	width = xmax - xmin;
 	height = ymax - ymin;
 	depth = zFar - zNear;
@@ -646,6 +672,38 @@ void R_SetupProjection( void ) {
 	tr.viewParms.projectionMatrix[7] = 0;
 	tr.viewParms.projectionMatrix[11] = -1;
 	tr.viewParms.projectionMatrix[15] = 0;
+
+#ifdef JKXR_VISIONOS
+	// Reversed-Z auch in DIESER Matrix.
+	//
+	// Der Tiefenvergleich läuft auf visionOS umgekehrt (GL_GEQUAL, gelöscht
+	// wird auf ~0 — siehe qgl_linked.h). Das passt zu der Projektion, die
+	// CompositorServices liefert: dort ist nah die GROSSE Tiefe.
+	//
+	// Die Matrix hier baut die Engine aber selbst aus den FOV-Tangenten, und
+	// zwar standardmäßig: nah = 0, fern = 1. Zusammen mit GL_GEQUAL gewinnt
+	// dann das FERNERE Fragment — man sieht durch Wände hindurch nach draußen,
+	// und die Welt sieht zerrissen aus, obwohl jedes Dreieck an der richtigen
+	// Stelle liegt.
+	//
+	// Beide Zeilen der Z-Reihe zu negieren spiegelt den Tiefenbereich: aus
+	// ndc_z wird -ndc_z, nah landet bei 1, fern bei 0. Damit stimmen Matrix,
+	// Vergleich und Löschwert zum ersten Mal überein.
+	//
+	// Der Rückfallweg VR_GetVRProjection braucht das nicht — dessen Matrix
+	// kommt vom Compositor und ist bereits reversed.
+	//
+	// Und wie beim Y-Tausch weiter oben: NICHT im Zwischenpuffer. Dort gilt
+	// ganz normales GL, samt Löschwert 1.0 und GL_LEQUAL (siehe die Wrapper in
+	// tr_init.cpp). Eine reversed Matrix gegen einen nicht reversed Puffer war
+	// genau der Grund, warum in der Modellvorschau Augen, Mund und Kleidung
+	// durcheinander verdeckten.
+	if ( !( ri.TBXR_useScreenLayer && ri.TBXR_useScreenLayer() ) )
+	{
+		tr.viewParms.projectionMatrix[10] = -tr.viewParms.projectionMatrix[10];
+		tr.viewParms.projectionMatrix[14] = -tr.viewParms.projectionMatrix[14];
+	}
+#endif
 }
 
 /*
