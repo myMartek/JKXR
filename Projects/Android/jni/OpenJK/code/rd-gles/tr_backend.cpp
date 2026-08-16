@@ -210,6 +210,32 @@ void GL_TexEnv( int env )
 */
 void GL_State( uint32_t stateBits )
 {
+#if defined(JKXR_VISIONOS)
+	// Im 2D-Durchgang bleibt der Tiefentest aus, egal was der Shader will.
+	//
+	// RB_SetGL2D schaltet ihn ab, aber jede Shader-Stufe ruft danach
+	// GL_State(pStage->stateBits) und überschreibt das wieder. Shader, die
+	// GLS_DEPTHTEST_DISABLE selbst mitbringen, überleben das; die anderen
+	// zeichnen mit aktivem Tiefentest gegen den Tiefenpuffer der Welt.
+	//
+	// Auf einem Monitor fällt das nicht auf: dort steht nach dem Weltbild eine
+	// Tiefe, gegen die ein 2D-Viereck bei z=0 mit GL_LEQUAL noch besteht. Bei
+	// uns ist die Tiefe umgekehrt (visionOS erwartet reversed-Z, siehe die
+	// JKXR_visionOS_Depth*-Kappen in qgl_linked.h), und dieselben Vierecke
+	// fallen durch.
+	//
+	// Gemessen am HUD: gfx/hud/hudleft und white kommen mit stateBits
+	// 0x00000065 und blieben unsichtbar, die Balken und Ziffern daneben mit
+	// 0x00010065 waren zu sehen. Ein einziges Bit Unterschied.
+	//
+	// Betrifft alles 2D, nicht nur das HUD -- Menüs, Ladebilder, Untertitel
+	// hängen an derselben Stelle.
+	if ( backEnd.projection2D )
+	{
+		stateBits |= GLS_DEPTHTEST_DISABLE;
+	}
+#endif
+
 	uint32_t diff = stateBits ^ glState.glStateBits;
 
 	if ( !diff )
@@ -1174,6 +1200,52 @@ const void *RB_StretchPic ( const void *data ) {
 	if ( !backEnd.projection2D ) {
 		RB_SetGL2D();
 	}
+
+#if defined(JKXR_VISIONOS)
+	// DIAGNOSE, wieder zu entfernen.
+	//
+	// Das Passermuster aus CG_DrawHUD ist im Headset unsichtbar, obwohl die
+	// Werte stimmen und das Ortho-Fenster die Stellen umfasst. Hier laeuft jedes
+	// 2D-Viereck durch, also sagt diese Liste beides: ob unsere Marken ueberhaupt
+	// ankommen, und woraus das sichtbare HUD tatsaechlich besteht.
+	//
+	// Stossweise alle 10 s, damit auch im Spiel etwas im Log landet und nicht
+	// nur die Menues beim Start.
+	{
+		static int naechsterStoss = 0;
+		static int uebrig = 0;
+		const int jetzt = ri.Milliseconds();
+		if ( jetzt >= naechsterStoss ) {
+			naechsterStoss = jetzt + 10000;
+			uebrig = 25;
+			ri.Printf( PRINT_ALL, "[2D] --- Stoss bei %d ms, Auge %d ---\n",
+				jetzt, VR_GetCurrentEye() );
+		}
+		if ( uebrig > 0 ) {
+			--uebrig;
+			// Sichtbar sind gemessen die Balken und Zahlen, unsichtbar
+			// gfx/hud/hudleft und white -- alle im selben Bild, durch dieselbe
+			// Funktion, mit denselben Zustandsbits. Der Unterschied muss also im
+			// Shader stecken: Zahl der Stufen, Zustandsbits der ersten Stufe,
+			// und ob ihr Bild ueberhaupt eine Texturnummer hat.
+			const jk_shader_t *sh = cmd->shader;
+			ri.Printf( PRINT_ALL, "[2D] %.0f,%.0f %.0fx%.0f  %-26s "
+				"Stufen %d · sort %.1f · stateBits0 0x%08x · rgbGen %d · texnum %d · %dx%d\n",
+				cmd->x, cmd->y, cmd->w, cmd->h,
+				sh ? sh->name : "(ohne Shader)",
+				sh ? sh->numUnfoggedPasses : -1,
+				sh ? sh->sort : -1.0f,
+				( sh && sh->stages ) ? sh->stages[0].stateBits : 0u,
+				( sh && sh->stages ) ? (int)sh->stages[0].rgbGen : -1,
+				( sh && sh->stages && sh->stages[0].bundle[0].image )
+					? (int)sh->stages[0].bundle[0].image->texnum : -1,
+				( sh && sh->stages && sh->stages[0].bundle[0].image )
+					? sh->stages[0].bundle[0].image->width : -1,
+				( sh && sh->stages && sh->stages[0].bundle[0].image )
+					? sh->stages[0].bundle[0].image->height : -1 );
+		}
+	}
+#endif
 
 	shader = cmd->shader;
 	if ( shader != tess.shader ) {
