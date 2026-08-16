@@ -405,6 +405,66 @@ void UI_SetActiveMenu( const char* menuname,const char *menuID );
 void _UI_Refresh( int realtime );
 void UI_DrawConnect( const char *servername, const char * updateInfoString );
 
+#if defined(JKXR_VISIONOS)
+/*
+================
+JKXR_Client2DVersatz
+
+Stereo-Ausgleich fuer 2D, das der CLIENT zeichnet.
+
+Das cgame bekommt ihn in CG_AdjustFrom640 (cg_syscalls.cpp) und rueckt sein HUD
+damit je Auge um off_center_fov_x*640 -- rund 84 Einheiten, gegenlaeufig. Das
+gleicht den Achsversatz der beiden Frusta aus: die Vision Pro sieht je Auge
+etwa -60..+45 statt symmetrisch, dieselbe Bildposition heisst also je Auge eine
+andere Blickrichtung.
+
+Der Client zeichnet an dieser Umrechnung vorbei. Bei ihm wirkt nur der
+Ortho-Versatz aus RB_SetGL2D (cg_hudStereo, +-35), und der allein reicht nicht:
+gemessen standen HUD-Elemente der beiden Augen 238 Einheiten auseinander,
+Client-Text dagegen nur 70. Deshalb laesst sich das HUD fusionieren und der
+Konsolentext nicht.
+
+NICHT in RB_SetGL2D erledigen: das wuerde alles 2D treffen, auch das cgame, und
+dort ein zweites Mal aufschlagen. Genau das wurde schon einmal probiert und war
+sichtbar schlechter -- die Bilder standen dann rund eine HUD-Breite auseinander.
+================
+*/
+void JKXR_Client2DVersatz( float *x, float *y )
+{
+	// vr ist hier ein Wert, kein Zeiger: der Client bindet VrCommon.h ein, das
+	// cgame dagegen VrClientInfo.h mit extern vr_client_info_t *vr.
+	*x = vr.off_center_fov_x * 640.0f;
+	*y = -vr.off_center_fov_y * 480.0f;
+
+	// Tiefe.
+	//
+	// Ein kopf-festes 2D-Bild bekommt seine Entfernung allein aus dem
+	// waagerechten Versatz der beiden Augen. Aus RB_SetGL2D kommt bereits
+	// cg_hudStereo (+-35): der Inhalt steht im linken Auge weiter rechts, im
+	// rechten weiter links. Diese gekreuzte Disparitaet liest das Gehirn als
+	// nah -- der Meldungsbereich wurde als "sehr weit vorn" beschrieben.
+	//
+	// Der Wert hier verringert die Kreuzung und schiebt den Text nach hinten.
+	// Bei etwa 35 hebt er cg_hudStereo auf, der Text steht dann rechnerisch im
+	// Unendlichen; darueber kippt die Disparitaet um und er wandert hinter die
+	// Wand.
+	//
+	// Eigene Schraube statt cg_hudStereo, weil die auch das HUD verstellt --
+	// und das sitzt inzwischen dort, wo es hingehoert.
+	{
+		// -28 auf dem Geraet ausgemessen, gegen ein Lineal aus fuenf
+		// gleichzeitig gezeichneten Entfernungen. Positive Werte waren allesamt
+		// schlechter, was den Ausgleich oben in Frage stellt: bei -84 waere er
+		// vollstaendig aufgehoben. Das Optimum liegt dazwischen, der Ausgleich
+		// ist also der Richtung nach richtig, aber zu gross angesetzt.
+		static cvar_t *tiefe = NULL;
+		if ( !tiefe ) tiefe = Cvar_Get( "vr_consoleDepth", "-28", CVAR_ARCHIVE );
+		const float d = tiefe ? tiefe->value : 0.0f;
+		*x += ( vr.eye == 0 ) ? -d : d;
+	}
+}
+#endif
+
 /*
 ==================
 SCR_DrawScreenField
@@ -465,6 +525,8 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 
 	// console draws next
 	Con_DrawConsole ();
+
+
 
 	// debug graph can be drawn on top of anything
 	if ( cl_debuggraph->integer || cl_timegraph->integer ) {

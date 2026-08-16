@@ -490,10 +490,28 @@ void Con_DrawNotify (void)
 	{
 		static cvar_t *conX = NULL;
 		static cvar_t *conY = NULL;
-		if ( !conX ) conX = Cvar_Get( "vr_consoleOffsetX", "60", CVAR_ARCHIVE );
-		if ( !conY ) conY = Cvar_Get( "vr_consoleOffsetY", "150", CVAR_ARCHIVE );
-		jkxrConX = conX ? conX->value : 60.0f;
-		v = (int)( conY ? conY->value : 150.0f );
+		if ( !conX ) conX = Cvar_Get( "vr_consoleOffsetX", "250", CVAR_ARCHIVE );
+		if ( !conY ) conY = Cvar_Get( "vr_consoleOffsetY", "180", CVAR_ARCHIVE );
+		// Dazu der Stereo-Ausgleich: das cgame bekommt ihn in CG_AdjustFrom640,
+		// der Client zeichnet daran vorbei. Ohne ihn stehen die beiden Augen
+		// verschieden weit auseinander -- gemessen 238 Einheiten beim HUD gegen
+		// 70 beim Client-Text -- und der Text laesst sich nicht fusionieren.
+		extern void JKXR_Client2DVersatz( float *x, float *y );
+		float vx, vy;
+		JKXR_Client2DVersatz( &vx, &vy );
+
+		// In 640x480 rechnen, dann in native Koordinaten umsetzen.
+		//
+		// SCR_DrawSmallChar multipliziert x und y mit con.xadjust/yadjust
+		// (640/vidWidth bzw. 480/vidHeight, hier 0,3125 und 0,242). Rohe Werte
+		// wirken deshalb nur zu einem Viertel, und der Stereo-Ausgleich kaeme
+		// von 84 auf 26 Einheiten herunter -- zu wenig, um die beiden Augen
+		// zusammenzubringen.
+		const float sx = ( con.xadjust > 0.0f ) ? 1.0f / con.xadjust : 1.0f;
+		const float sy = ( con.yadjust > 0.0f ) ? 1.0f / con.yadjust : 1.0f;
+
+		jkxrConX = ( ( conX ? conX->value : 250.0f ) + vx ) * sx;
+		v = (int)( ( ( conY ? conY->value : 180.0f ) + vy ) * sy );
 	}
 #endif
 	for (i= con.current-NUM_CON_TIMES+1 ; i<=con.current ; i++)
