@@ -109,6 +109,17 @@ if(BUILD_ENGINE)
     target_link_libraries(openjk_ja PUBLIC sigc libzip libpng libminizip)
     target_compile_definitions(openjk_ja PRIVATE JKXR_VISIONOS=1)
 
+    # Das Spielmodul braucht das Makro genauso.
+    #
+    # Es fehlte hier, und zwar folgenlos still: jeder `#ifdef JKXR_VISIONOS` in
+    # code/cgame, code/game und code/ui fiel ersatzlos weg, ohne Warnung. Betroffen
+    # waren die Ausklammerung von vmMain in ui_main.cpp (gegen die Namenskollision
+    # mit dem Spielcode) und die Rahmendicke in _UI_DrawSides/_UI_DrawTopBottom.
+    #
+    # Aufgefallen ist es erst, als ein Messpunkt in cg_draw.cpp stumm blieb und die
+    # Zeichenkette auch im übersetzten Objekt nicht auftauchte.
+    target_compile_definitions(jagamearm PRIVATE JKXR_VISIONOS=1)
+
     # Die visionOS-XR-Schicht: Gegenstück zu android/TBXR_Common.cpp.
     # Objective-C++, weil CompositorServices, Metal und ARKit angesprochen
     # werden — deren C-API macht Swift-Interop entbehrlich.
