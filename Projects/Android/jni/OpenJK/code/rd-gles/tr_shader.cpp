@@ -3261,6 +3261,7 @@ static jk_shader_t *FinishShader( void ) {
 		shader.sort = SS_FOG;
 	}
 
+
 	return GeneratePermanentShader();
 }
 

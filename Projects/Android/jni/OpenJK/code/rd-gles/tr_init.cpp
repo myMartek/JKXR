@@ -1316,8 +1316,27 @@ void JKXR_visionOS_Clear( GLbitfield mask )
 /*
 ** Wicklungsrichtung passend zum Ziel. Begründung in qgl_linked.h.
 */
+qboolean JKXR_visionOS_EigeneBildgeometrie( void )
+{
+	return ( ( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) && backEnd.refdef.override_fov )
+		? qtrue : qfalse;
+}
+
 void JKXR_visionOS_CullFace( GLenum mode )
 {
+	// Die Wicklung folgt der Y-Achse, nicht dem Zufall.
+	//
+	// GL_CW gilt, weil R_SetupProjection die Y-Achse umkehrt: eine gespiegelte
+	// Achse dreht die Wicklungsreihenfolge jedes Dreiecks um. Wo diese Umkehr
+	// NICHT stattfindet, muss auch die Wicklung unverändert bleiben -- sonst
+	// zeigen alle Dreiecke nach hinten und werden verworfen.
+	//
+	// Ohne Umkehr ist allein der Flachbild-Pfad.
+	//
+	// Kurzzeitig standen hier auch Ansichten mit eigener Bildgeometrie, solange
+	// die fuer sie vom Y-Tausch ausgenommen waren. Das ist zurueckgenommen: der
+	// Tausch gilt wieder fuer alle, angepasst wurde stattdessen ihr Ausschnitt
+	// (tr_scene.cpp). Damit stimmt die Wicklung hier von selbst.
 	glFrontFace( JKXR_visionOS_FlatTarget() ? GL_CCW : GL_CW );
 	glCullFace( mode );
 }

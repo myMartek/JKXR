@@ -1752,6 +1752,10 @@ void TBXR_finishEyeBuffer(int eye)
     } else {
         // Der klassische 2D-Renderer schreibt keine Tiefe. Für HUD-Inhalte im
         // normalen 3D-Pfad bleibt vorerst der bisherige Tiefenpass bestehen.
+        //
+        // Nicht die Ursache des fehlenden Vorspanntextes -- geprueft, indem sie
+        // testweise wegblieb. Der Text kam trotzdem nicht; es lag am Verwerfen
+        // der Rueckseiten und am Ausschnitt (tr_scene.cpp).
         drawScreenWallDepth(eye);
     }
 

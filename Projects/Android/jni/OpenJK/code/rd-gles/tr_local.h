@@ -1270,6 +1270,7 @@ void R_SetupProjection( void );
 // Entscheidet über Y-Richtung, Tiefenkonvention und Wicklung. Definiert in
 // tr_init.cpp, dort steht auch die Begründung.
 qboolean JKXR_visionOS_FlatTarget( void );
+qboolean JKXR_visionOS_EigeneBildgeometrie( void );
 #endif
 void R_RotateForEntity( const trRefEntity_t *ent, const viewParms_t *viewParms, orientationr_t *ori );
 void R_RebuildViewParmsWorld( viewParms_t *parms );

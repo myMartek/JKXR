@@ -396,6 +396,31 @@ void RE_RenderScene( const refdef_t *fd ) {
 	//
 	parms.viewportX = tr.refdef.x;
 	parms.viewportY = glConfig.vidHeight - ( tr.refdef.y + tr.refdef.height );
+#ifdef JKXR_VISIONOS
+	// Ansichten mit eigener Bildgeometrie: Ausschnitt ohne diese Umrechnung.
+	//
+	// Die Umrechnung dreht 0-oben in GLs 0-unten. R_SetupProjection kehrt für
+	// visionOS aber ZUSÄTZLICH die Y-Achse um -- beides zusammen hebt sich für
+	// eine Ansicht auf, die den Bildschirm genau ausfüllt, und fällt dort nicht
+	// auf.
+	//
+	// Bei einem Ausschnitt, der absichtlich darüber hinausreicht, sehr wohl. Die
+	// Story-Einblendung (CIN_AddTextCrawl) rendert in 0,-50 bei Höhe 3968 auf
+	// einen 1984 hohen Bildschirm; sichtbar ist davon nur ein Teil, und WELCHER
+	// hängt genau an dieser Zeile. Gemessen:
+	//
+	//     umgerechnet (y = -1934)   sichtbar NDC-y  -0,03 … +0,98
+	//     unverändert (y =   -50)   sichtbar NDC-y  -0,98 … +0,03
+	//
+	// Der Inhalt liegt mit der Y-Umkehr bei 0 … -0,72, passt also nur in den
+	// zweiten Fall. Ohne das stand er unsichtbar unterhalb des Fensters -- und
+	// die Y-Umkehr stattdessen abzuschalten brachte ihn zwar ins Bild, aber
+	// gespiegelt, weil sie die Zeilenordnung der Augentextur ausgleicht.
+	if ( ( tr.refdef.rdflags & RDF_NOWORLDMODEL ) && tr.refdef.override_fov )
+	{
+		parms.viewportY = tr.refdef.y;
+	}
+#endif
 	parms.viewportWidth = tr.refdef.width;
 	parms.viewportHeight = tr.refdef.height;
 	parms.isPortal = qfalse;

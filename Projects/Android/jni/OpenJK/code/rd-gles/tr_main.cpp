@@ -608,7 +608,36 @@ void R_SetupProjection( void ) {
 		}
 	}
 
-	if (!gotVRTangents &&
+#ifdef JKXR_VISIONOS
+	// Eine Ansicht mit eigenem Sichtfeld und ohne Weltmodell behaelt ihres.
+	//
+	// VR_GetVRProjection ersetzt die Projektion vollstaendig durch das
+	// Augenfrustum. Fuer einen Blick in die Welt ist das richtig. Eine Ansicht,
+	// die RDF_NOWORLDMODEL und override_fov zugleich setzt, ist aber keine
+	// Weltansicht, sondern eine Darstellungsflaeche mit eigener Bildgeometrie.
+	//
+	// Die Story-Einblendung (CIN_AddTextCrawl, cl_cin.cpp) ist genau das. Auf
+	// dem Geraet gemessen, mit ihren echten Eckpunkten im Hinterbau:
+	//
+	//     Ecke 0  ndc  2.15, -0.09       Ecke 2  ndc  0.03, 0.94
+	//     Ecke 1  ndc -1.61, -0.09       Ecke 3  ndc  0.50, 0.94
+	//
+	// Die vordere Kante liegt weit ausserhalb von +-1 und die Mitte um 0,27
+	// nach rechts verschoben -- das Augenfrustum ist unsymmetrisch. Aus der
+	// Spanne zurueckgerechnet wirken rund 111 Grad statt der deklarierten 130.
+	//
+	// Der Unterstuetzer-Abspann (UI_PatreonCredits) hat dasselbe Problem nicht:
+	// er laeuft im Menue, dort ist der Flachbild-Pfad aktiv, und
+	// VR_GetVRProjection steigt von selbst aus. Gemessen sauber symmetrisch bei
+	// +-0,74.
+	const qboolean eigeneBildgeometrie =
+		( ( tr.refdef.rdflags & RDF_NOWORLDMODEL ) && tr.refdef.override_fov )
+			? qtrue : qfalse;
+#else
+	const qboolean eigeneBildgeometrie = qfalse;
+#endif
+
+	if (!gotVRTangents && !eigeneBildgeometrie &&
 		ri.TBXR_GetVRProjection(projectionEye, zNear, zFar, zZoomX, zZoomY, tr.viewParms.projectionMatrix))
 	{
 		return;
@@ -641,6 +670,13 @@ void R_SetupProjection( void ) {
 	// eine zweite Spiegelung. Genau dieselbe Fallunterscheidung trifft
 	// JKXR_visionOS_Ortho fürs 2D; ohne sie stand die Modellvorschau im Menü
 	// auf dem Kopf, während die Beschriftungen daneben richtig lagen.
+	// Gilt auch fuer Ansichten mit eigener Bildgeometrie.
+	//
+	// Sie hier auszunehmen war ein Umweg: es brachte die Story-Einblendung zwar
+	// ins Fenster, aber gespiegelt und mit gedrehter Wicklung -- die Umkehr
+	// gleicht die Zeilenordnung der Augentextur aus, sie ist keine Geschmacks-
+	// frage. Der Ausschnitt gehoerte angepasst, nicht die Achse; das steht jetzt
+	// in tr_scene.cpp.
 	if ( !JKXR_visionOS_FlatTarget() )
 	{
 		const float swap = ymin;
@@ -1530,6 +1566,7 @@ void R_GenerateDrawSurfs( void ) {
 	// matrix for lod calculation
 	R_SetupProjection ();
 
+
 	R_AddEntitySurfaces ();
 }
 
@@ -1691,6 +1728,7 @@ void R_RenderView (viewParms_t *parms) {
 	R_RotateForViewer ();
 
 	R_SetupFrustum ();
+
 
 	if (!(tr.refdef.rdflags & RDF_NOWORLDMODEL))
 	{	// Trying to do this with no world is not good.
