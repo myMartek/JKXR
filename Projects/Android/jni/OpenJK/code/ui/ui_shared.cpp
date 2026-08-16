@@ -8203,6 +8203,7 @@ static qboolean Item_Paint(itemDef_t *item, qboolean bDraw)
 		}
 	}
 
+
 	if (item->disabled && item->disabledHidden)
 	{
 		return qfalse;

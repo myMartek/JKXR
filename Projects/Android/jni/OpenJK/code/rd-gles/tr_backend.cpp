@@ -1201,51 +1201,6 @@ const void *RB_StretchPic ( const void *data ) {
 		RB_SetGL2D();
 	}
 
-#if defined(JKXR_VISIONOS)
-	// DIAGNOSE, wieder zu entfernen.
-	//
-	// Das Passermuster aus CG_DrawHUD ist im Headset unsichtbar, obwohl die
-	// Werte stimmen und das Ortho-Fenster die Stellen umfasst. Hier laeuft jedes
-	// 2D-Viereck durch, also sagt diese Liste beides: ob unsere Marken ueberhaupt
-	// ankommen, und woraus das sichtbare HUD tatsaechlich besteht.
-	//
-	// Stossweise alle 10 s, damit auch im Spiel etwas im Log landet und nicht
-	// nur die Menues beim Start.
-	{
-		static int naechsterStoss = 0;
-		static int uebrig = 0;
-		const int jetzt = ri.Milliseconds();
-		if ( jetzt >= naechsterStoss ) {
-			naechsterStoss = jetzt + 10000;
-			uebrig = 25;
-			ri.Printf( PRINT_ALL, "[2D] --- Stoss bei %d ms, Auge %d ---\n",
-				jetzt, VR_GetCurrentEye() );
-		}
-		if ( uebrig > 0 ) {
-			--uebrig;
-			// Sichtbar sind gemessen die Balken und Zahlen, unsichtbar
-			// gfx/hud/hudleft und white -- alle im selben Bild, durch dieselbe
-			// Funktion, mit denselben Zustandsbits. Der Unterschied muss also im
-			// Shader stecken: Zahl der Stufen, Zustandsbits der ersten Stufe,
-			// und ob ihr Bild ueberhaupt eine Texturnummer hat.
-			const jk_shader_t *sh = cmd->shader;
-			ri.Printf( PRINT_ALL, "[2D] %.0f,%.0f %.0fx%.0f  %-26s "
-				"Stufen %d · sort %.1f · stateBits0 0x%08x · rgbGen %d · texnum %d · %dx%d\n",
-				cmd->x, cmd->y, cmd->w, cmd->h,
-				sh ? sh->name : "(ohne Shader)",
-				sh ? sh->numUnfoggedPasses : -1,
-				sh ? sh->sort : -1.0f,
-				( sh && sh->stages ) ? sh->stages[0].stateBits : 0u,
-				( sh && sh->stages ) ? (int)sh->stages[0].rgbGen : -1,
-				( sh && sh->stages && sh->stages[0].bundle[0].image )
-					? (int)sh->stages[0].bundle[0].image->texnum : -1,
-				( sh && sh->stages && sh->stages[0].bundle[0].image )
-					? sh->stages[0].bundle[0].image->width : -1,
-				( sh && sh->stages && sh->stages[0].bundle[0].image )
-					? sh->stages[0].bundle[0].image->height : -1 );
-		}
-	}
-#endif
 
 	shader = cmd->shader;
 	if ( shader != tess.shader ) {
