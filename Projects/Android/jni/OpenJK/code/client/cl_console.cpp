@@ -451,6 +451,11 @@ Draws the last few lines of output transparently over the game top
 void Con_DrawNotify (void)
 {
 	int		x, v;
+#if defined(JKXR_VISIONOS)
+	float	jkxrConX = 0.0f;
+#else
+	const float jkxrConX = 0.0f;
+#endif
 	short	*text;
 	int		i;
 	int		time;
@@ -460,6 +465,37 @@ void Con_DrawNotify (void)
 	re.SetColor( g_color_table[currentColor] );
 
 	v = 0;
+
+#if defined(JKXR_VISIONOS)
+	// Meldungsbereich ins bequeme Blickfeld rücken.
+	//
+	// Hier stehen im Spiel die echten Hinweise -- aufgesammelte Gegenstände,
+	// Ziele, Systemmeldungen. Gezeichnet werden sie ab v = 0, also am oberen
+	// Rand des 640x480-Bandes. Auf einem Monitor ist das die obere Bildkante;
+	// bei uns deckt dasselbe Band rund 105 Grad ab, und v = 0 liegt damit rund
+	// 26 Grad über der Blickachse. Lesbar ist das nicht mehr.
+	//
+	// Das HUD hat dieses Problem nicht: es läuft durch CG_AdjustFrom640
+	// (cg_syscalls.cpp) und wird dabei um 1/cg_hudScale verkleinert und nach
+	// innen gerückt. Diese Umrechnung sitzt aber im cgame-Weg -- der Client
+	// zeichnet daran vorbei, und deshalb braucht der Bereich hier seine eigene.
+	//
+	// Kein Verkleinern, nur Verschieben: die Schrift ist im Verhältnis zum Band
+	// bereits richtig bemessen, sie stand nur an der falschen Stelle.
+	//
+	// Die cvars EINMAL holen. Cvar_Get setzt cvar_modifiedFlags |= flags auch
+	// auf einer vorhandenen cvar (cvar.cpp:418); mit CVAR_ARCHIVE je Bild gilt
+	// die Konfiguration damit dauernd als geändert und wird dauernd geschrieben.
+	// Genau daran ist die App schon einmal stehengeblieben.
+	{
+		static cvar_t *conX = NULL;
+		static cvar_t *conY = NULL;
+		if ( !conX ) conX = Cvar_Get( "vr_consoleOffsetX", "60", CVAR_ARCHIVE );
+		if ( !conY ) conY = Cvar_Get( "vr_consoleOffsetY", "150", CVAR_ARCHIVE );
+		jkxrConX = conX ? conX->value : 60.0f;
+		v = (int)( conY ? conY->value : 150.0f );
+	}
+#endif
 	for (i= con.current-NUM_CON_TIMES+1 ; i<=con.current ; i++)
 	{
 		if (i < 0)
@@ -496,7 +532,7 @@ void Con_DrawNotify (void)
 			//
 			// and print...
 			//
-			re.Font_DrawString(con.xadjust*(con.xadjust + (1*SMALLCHAR_WIDTH/*aesthetics*/)), con.yadjust*(v), sTemp, g_color_table[currentColor], iFontIndex, -1, fFontScale);
+			re.Font_DrawString(con.xadjust*(con.xadjust + jkxrConX + (1*SMALLCHAR_WIDTH/*aesthetics*/)), con.yadjust*(v), sTemp, g_color_table[currentColor], iFontIndex, -1, fFontScale);
 
 			v +=  iPixelHeightToAdvance;
 		}
@@ -510,7 +546,7 @@ void Con_DrawNotify (void)
 					currentColor = (text[x]>>8)&Q_COLOR_BITS;
 					re.SetColor( g_color_table[currentColor] );
 				}
-				SCR_DrawSmallChar( con.xadjust + (x+1)*SMALLCHAR_WIDTH, v, text[x] & 0xff );
+				SCR_DrawSmallChar( con.xadjust + jkxrConX + (x+1)*SMALLCHAR_WIDTH, v, text[x] & 0xff );
 			}
 			v += SMALLCHAR_HEIGHT;
 		}
