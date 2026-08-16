@@ -37,14 +37,14 @@ Used for cinematics.
 */
 
 // param 'bDirty' should be true 99% of the time
+#if defined(JKXR_VISIONOS)
+extern qboolean JKXR_visionOS_FlatTarget( void );
+extern "C" int VR_GetCurrentEye( void );
+extern "C" bool VR_GetScreenWall( int eye, float *projection16, float *modelview16 );
+#endif
+
 void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, const byte *data, int iClient, qboolean bDirty )
 {
-	#if defined(JKXR_VISIONOS)
-	static int cinematicDrawDiagnostics = 0;
-	const qboolean diagnose = cinematicDrawDiagnostics < 12 ? qtrue : qfalse;
-	while (diagnose && qglGetError() != GL_NO_ERROR) {}
-	#endif
-
 	if ( !tr.registered ) {
 		return;
 	}
@@ -57,9 +57,6 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, const byte *
 
 	// we definately want to sync every frame for the cinematics
 	qglFinish();
-	#if defined(JKXR_VISIONOS)
-	GLenum finishError = diagnose ? qglGetError() : GL_NO_ERROR;
-	#endif
 
 #ifdef TIMEBIND
 	int start, end;
@@ -72,9 +69,6 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, const byte *
 	}
 
 	GL_Bind( tr.scratchImage[iClient] );
-	#if defined(JKXR_VISIONOS)
-	GLenum bindError = diagnose ? qglGetError() : GL_NO_ERROR;
-	#endif
 
 	// if the scratchImage isn't in the format we want, specify it as a new texture...
 	//
@@ -135,9 +129,6 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, const byte *
 	#endif
 		}
 	}
-	#if defined(JKXR_VISIONOS)
-	GLenum uploadError = diagnose ? qglGetError() : GL_NO_ERROR;
-	#endif
 
 
 	extern void	RB_SetGL2D (void);
@@ -151,6 +142,43 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, const byte *
 	// gesetzt, bekommt das zweite Auge die Matrix des ersten, und beim nächsten
 	// Bild steht noch die vom vorigen — die Wand klebt dann am Blick.
 	RB_SetGL2D();
+
+	// Das Video auf eine weltverankerte Flaeche, nicht ans Ortho.
+	//
+	// RB_SetGL2D baut ausserhalb des Flachbild-Pfads das kopf-feste HUD-Ortho.
+	// Fuer ein Anzeigeelement ist das richtig, fuer ein Video nicht: es haengt
+	// dann am Blick, und der Versatz von +-cg_hudStereo legt zusaetzlich eine
+	// Disparitaet auf eine Flaeche, die flach sein soll -- die beiden Augen
+	// zeigen sie nicht mehr uebereinander.
+	//
+	// VR_GetScreenWall liefert genau das Richtige und lag ungenutzt herum: eine
+	// Flaeche in 2 m Entfernung, 2,4 m breit im Verhaeltnis 640:480, mit der
+	// echten Projektion des jeweiligen Auges und der inversen Kopfpose. Die
+	// Disparitaet entsteht damit aus der Geometrie statt aus einem Stellwert,
+	// und die Flaeche bleibt stehen, wenn man den Kopf dreht.
+	//
+	// Sie steigt selbst aus, sobald der Flachbild-Pfad laeuft -- also beim Intro
+	// (gemessen flach 1). Dort bleibt es beim gewoehnlichen Ortho, und das steht
+	// seit der Korrektur des V-Satzes richtig.
+	{
+		float wallProjection[16], wallModelview[16];
+		if ( !JKXR_visionOS_FlatTarget() &&
+		     VR_GetScreenWall( VR_GetCurrentEye(), wallProjection, wallModelview ) )
+		{
+			qglMatrixMode( GL_PROJECTION );
+			qglLoadMatrixf( wallProjection );
+			qglMatrixMode( GL_MODELVIEW );
+			qglLoadMatrixf( wallModelview );
+		}
+		else
+		{
+			qglMatrixMode( GL_PROJECTION );
+			qglLoadIdentity();
+			qglOrtho( 0, 640, 480, 0, 0, 1 );
+			qglMatrixMode( GL_MODELVIEW );
+			qglLoadIdentity();
+		}
+	}
 #else
 	if (!backEnd.projection2D)
 	{
@@ -162,22 +190,40 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, const byte *
 #ifdef HAVE_GLES
 	qglColor4f( tr.identityLight, tr.identityLight, tr.identityLight, 1.0f );
 #if defined(JKXR_VISIONOS)
-	// V-Koordinaten getauscht: das Video stand sonst auf dem Kopf.
+	// V-Koordinaten drehen -- aber nur, wenn das Ortho es NICHT schon tut.
 	//
-	// RoQ liefert die Bilddaten zeilenweise von oben nach unten, OpenGL legt
-	// den Texturursprung aber unten links. Auf den anderen Plattformen gleicht
-	// sich das an anderer Stelle aus; in unserem Pfad — Immediate Mode über
-	// gl4es, dann ANGLE, dann Metal — nicht.
+	// RoQ liefert die Bilddaten zeilenweise von oben nach unten, OpenGL legt den
+	// Texturursprung aber unten links. Auf den anderen Plattformen gleicht sich
+	// das an anderer Stelle aus; in unserem Pfad -- Immediate Mode ueber gl4es,
+	// dann ANGLE, dann Metal -- nicht.
 	//
-	// Nur der Videopfad, nicht die gesamte Oberfläche: die steht richtig herum.
-	// Ein globaler Y-Flip (etwa über glClipControlEXT, das ANGLE exportiert)
-	// würde sie mitdrehen und wäre deshalb falsch.
-	GLfloat tex[] = {
-	 0.5 / cols, ( rows - 0.5 ) / rows,
-	 ( cols - 0.5 ) / cols, ( rows - 0.5 ) / rows,
-	 ( cols - 0.5 ) / cols, 0.5 / rows,
-	 0.5 / cols, 0.5 / rows
+	// Die Drehung darf aber nur einmal passieren, und JKXR_visionOS_Ortho dreht
+	// Oben/Unten bereits selbst -- allerdings NUR, wenn kein Flachbild-Ziel
+	// aktiv ist (tr_init.cpp). Waehrend eines Videos ist es aber genau das:
+	// gemessen "flach 1". Beide Drehungen zusammen ergaben ein Bild, das erst
+	// richtig stand und dann doch wieder auf dem Kopf.
+	//
+	// Nur der Videopfad, nicht die gesamte Oberflaeche. Ein globaler Y-Flip
+	// (etwa ueber glClipControlEXT, das ANGLE exportiert) wuerde sie mitdrehen
+	// und waere deshalb falsch.
+	GLfloat texGedreht[] = {
+	 0.5f / cols, ( rows - 0.5f ) / rows,
+	 ( cols - 0.5f ) / cols, ( rows - 0.5f ) / rows,
+	 ( cols - 0.5f ) / cols, 0.5f / rows,
+	 0.5f / cols, 0.5f / rows
 	};
+	GLfloat texGerade[] = {
+	 0.5f / cols, 0.5f / rows,
+	 ( cols - 0.5f ) / cols, 0.5f / rows,
+	 ( cols - 0.5f ) / cols, ( rows - 0.5f ) / rows,
+	 0.5f / cols, ( rows - 0.5f ) / rows
+	};
+	// Genau EINE Drehung, egal auf welchem Weg.
+	//
+	// Auf dem Geraet gemessen: das Intro laeuft mit flach 1, die Videos im Spiel
+	// mit flach 0. JKXR_visionOS_Ortho dreht nur bei flach 0. Also muss der
+	// V-Satz genau dann drehen, wenn das Ortho es nicht tut -- bei flach 1.
+	GLfloat *tex = JKXR_visionOS_FlatTarget() ? texGedreht : texGerade;
 #else
 	GLfloat tex[] = {
 	 0.5 / cols,  0.5 / rows,
@@ -202,20 +248,10 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, const byte *
 		qglDisableClientState(GL_COLOR_ARRAY);
 	if (!text)
 		qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
+
 	qglTexCoordPointer( 2, GL_FLOAT, 0, tex );
 	qglVertexPointer  ( 2, GL_FLOAT, 0, vtx );
 	qglDrawArrays( GL_TRIANGLE_FAN, 0, 4 );
-#if defined(JKXR_VISIONOS)
-	if (diagnose) {
-		GLint framebuffer = -1;
-		qglGetIntegerv(0x8CA6 /* GL_FRAMEBUFFER_BINDING */, &framebuffer);
-		GLenum drawError = qglGetError();
-		ri.Printf(PRINT_ALL,
-			"[Cinematic GL] dirty=%d fbo=%d finish=0x%04x bind=0x%04x upload=0x%04x draw=0x%04x\n",
-			bDirty, framebuffer, finishError, bindError, uploadError, drawError);
-		cinematicDrawDiagnostics++;
-	}
-#endif
 	if (glcol)
 		qglEnableClientState(GL_COLOR_ARRAY);
 	if (!text)

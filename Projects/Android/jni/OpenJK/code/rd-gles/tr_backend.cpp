@@ -1047,6 +1047,37 @@ void	RB_SetGL2D (void) {
 	// Verschoben wird das FENSTER, nicht der Inhalt: ein nach links gerücktes
 	// Ortho-Fenster schiebt das Bild nach rechts. Deshalb bekommt das linke
 	// Auge -dx und das rechte +dx.
+	if ( JKXR_visionOS_FlatTarget() )
+	{
+		// Flachbild-Pfad: gewoehnliches Ortho, wie auf dem Monitor.
+		//
+		// Aktiv im Menue und bei Videos -- VR_UseScreenLayer schaltet ihn ein,
+		// sobald _UI_IsFullscreen() gilt oder cls.state CA_CINEMATIC ist
+		// (cl_scrn.cpp). Dann zeichnet die Engine ein flaches Bild, und das
+		// kopf-feste Ortho darunter richtet drei Dinge gleichzeitig an:
+		//
+		//   - der Versatz von +-cg_hudStereo je Auge legt eine Disparitaet auf
+		//     ein Bild, das flach sein soll: Video und Menue stehen dann in den
+		//     beiden Augen 70 Einheiten auseinander
+		//   - vr_hudSize schrumpft die 640x480 auf einen Teil des Sichtfelds.
+		//     Die Charaktervorschau folgt dem nicht, denn ihr Ausschnitt wird in
+		//     NATIVEN Pixeln gesetzt (ui_shared.cpp: rect * DC->xscale, gemessen
+		//     355*3,2 = 1136 bei 2048 Breite). Menue und Modell zeigen damit auf
+		//     verschiedene Bildbereiche, und das Modell steht neben seinem Rahmen
+		//   - JKXR_visionOS_Ortho dreht Oben/Unten bei Flachbild-Zielen NICHT,
+		//     waehrend der Videopfad seine V-Koordinaten von Hand dreht. Uebrig
+		//     bleibt genau eine Spiegelung
+		//
+		// Mit dem gewoehnlichen Ortho decken die 640x480 wieder den ganzen
+		// Augenpuffer ab -- dieselbe Abbildung, die der native Ausschnitt der
+		// Vorschau annimmt -- und es gibt keinen Versatz je Auge mehr.
+		qglMatrixMode( GL_PROJECTION );
+		qglLoadIdentity();
+		qglOrtho( 0, 640, 480, 0, 0, 1 );
+		qglMatrixMode( GL_MODELVIEW );
+		qglLoadIdentity();
+	}
+	else
 	{
 		// Vorgabe 35, deutlich mehr als die 20 der anderen Plattformen.
 		//

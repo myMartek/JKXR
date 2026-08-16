@@ -7288,6 +7288,7 @@ void Item_Model_Paint(itemDef_t *item)
 	refdef.width = w * DC->xscale;
 	refdef.height = h * DC->yscale;
 
+
 	if (item->flags&ITF_G2VALID)
 	{ //ghoul2 models don't have bounds, so we have to parse them.
 		VectorCopy(modelPtr->g2mins, mins);

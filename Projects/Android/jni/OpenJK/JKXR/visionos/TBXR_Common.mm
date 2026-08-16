@@ -298,19 +298,39 @@ bool gWallSnapped = false;
 /// keine scheinbare Neigung in eine Yaw-Drehung.
 simd_float4x4 screenWallOriginFromDevice()
 {
-    // Die Y-Spiegelung der Kopfdrehung BLEIBT — sie ist geprüft, nicht geraten.
+    // Die Y-Konjugation der Kopfdrehung BLEIBT. Zweimal geprüft, zweimal
+    // bestätigt, das zweite Mal mit Zahlen.
     //
-    // Der Versuch, sie zu entfernen (Verdacht: doppelte Korrektur, seit die
-    // Achsenkonvention der Projektion auf right_down_back steht), hat die
-    // Disparität NICHT verändert — gemessen weiterhin 0,025 m statt der
-    // 0,064 m Augenabstand — und stattdessen das HUD beim Hoch- und
-    // Runterschauen wandern lassen. Sie gleicht hier also etwas Echtes aus.
+    // Sie umzurechnen sieht nach doppelter Korrektur aus:
     //
-    // Die zu kleine Disparität bleibt damit ungeklärt und ist der nächste
-    // Ansatzpunkt: rechnerisch MUSS ein fester Weltpunkt in den beiden
-    // Augenräumen um genau den Augenabstand auseinanderliegen, egal wie die
-    // Kopfpose aussieht. Dass dabei nur 40 % ankommen, lässt sich mit einer
-    // Rotation allein nicht erklären — eine Rotation ändert keine Längen.
+    //     flipY = diag(1, -1, 1)
+    //     adjusted = flipY * headRotation * flipY
+    //
+    // Eine Konjugation erhält die Determinante, ist also keine Spiegelung. Die
+    // Drehachse transformiert sich dabei aber als Pseudovektor:
+    //
+    //     n -> det(flipY) * flipY * n = (-n_x, n_y, -n_z)
+    //
+    // Gieren bleibt, Nicken und Rollen kehren sich um. Das klingt nach Fehler --
+    // und ist die notwendige Umrechnung: gHeadTransform kommt in der Konvention
+    // des Compositors, die Wand wird in der des Renderers gezeichnet, und die
+    // beiden unterscheiden sich genau um diese Y-Umkehr.
+    //
+    // Ohne sie auf dem Gerät gemessen:
+    //
+    //     Kopf 30 Grad nach oben   ->  Bild wandert 60 Grad
+    //     Kopf nach links geneigt  ->  Bild neigt sich nach rechts
+    //     nach links/rechts sehen  ->  Bild bleibt stehen (richtig)
+    //
+    // Also doppelter Fehler bei Nicken und Rollen, Gieren unauffällig -- exakt
+    // die Signatur (-n_x, n_y, -n_z), nur eben andersherum als vermutet: nicht
+    // die Konjugation erzeugt sie, sie hebt sie auf.
+    //
+    // Die damals gemessene zu kleine Disparität (0,025 m statt 0,064 m Augen-
+    // abstand) bleibt davon unberührt und ungeklärt. Eine Rotation ändert keine
+    // Längen, die Ursache liegt also anderswo -- der nächste Ansatzpunkt ist die
+    // Achsenkonvention in VR_GetScreenWall, wo der Kommentar right_down_back
+    // begründet und der Code right_up_back benutzt.
     simd_float4x4 headRotation = gHeadTransform;
     headRotation.columns[3] = (simd_float4){0.0f, 0.0f, 0.0f, 1.0f};
 
@@ -499,7 +519,15 @@ void drawScreenWallDepth(int eye)
     // andere falsche Verschiebung — das HUD wandert beim Drehen, erscheint in
     // einem Auge früher als im anderen und lässt sich nicht fusionieren.
     simd_float4x4 projection = cp_drawable_compute_projection(
-        gDrawable, cp_axis_direction_convention_right_up_back, eye);
+        // Auf right_DOWN_back umgestellt: dieselbe Konvention, mit der die
+        // Welt-Szene gezeichnet wird (VR_GetVRProjection). Die Wand lief als
+        // einzige auf right_up_back, und der Kommentar hier nennt genau das
+        // gemessene Symptom -- beim Neigen dreht sich das Bild nicht mit,
+        // sondern verformt sich.
+        // ERWARTET: das Bild steht damit zunaechst auf dem Kopf. Das ist der
+        // Preis dafuer, nur EINEN Faktor zu aendern; die Orientierung kommt im
+        // naechsten Schritt ueber das Vorzeichen in der scale-Matrix.
+        gDrawable, cp_axis_direction_convention_right_down_back, eye);
     simd_float4x4 deviceFromView =
         cp_view_get_transform(cp_drawable_get_view(gDrawable, eye));
     // Vollständige ARKit-Gerätepose. Die inverse View-Matrix verschiebt die
@@ -2596,7 +2624,15 @@ extern "C" bool VR_GetScreenWall(int eye, float *projection16, float *modelview1
     // eine Spiegelung und eine Drehung vertauschen sich nicht: sobald der Kopf
     // geneigt wird, dreht sich das Bild nicht mit, sondern verformt sich.
     simd_float4x4 proj = cp_drawable_compute_projection(
-        gDrawable, cp_axis_direction_convention_right_up_back, eye);
+        // Auf right_DOWN_back umgestellt: dieselbe Konvention, mit der die
+        // Welt-Szene gezeichnet wird (VR_GetVRProjection). Die Wand lief als
+        // einzige auf right_up_back, und der Kommentar hier nennt genau das
+        // gemessene Symptom -- beim Neigen dreht sich das Bild nicht mit,
+        // sondern verformt sich.
+        // ERWARTET: das Bild steht damit zunaechst auf dem Kopf. Das ist der
+        // Preis dafuer, nur EINEN Faktor zu aendern; die Orientierung kommt im
+        // naechsten Schritt ueber das Vorzeichen in der scale-Matrix.
+        gDrawable, cp_axis_direction_convention_right_down_back, eye);
     memcpy(projection16, &proj, sizeof(float) * 16);
 
     // Wand einmal einrasten, dann im Raum stehen lassen.
