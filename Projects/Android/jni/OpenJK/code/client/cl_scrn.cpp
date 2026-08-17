@@ -540,7 +540,11 @@ bool VR_UseScreenLayer()
 	const bool inGameCinematic =
 		CL_IsRunningInGameCinematic() || CL_InGameCinematicOnStandBy();
 
-	vr.using_screen_layer = _UI_IsFullscreen() ||
+	// Der Vorspanntext gehoert ebenfalls auf den Flachbild-Pfad, Begruendung bei
+	// CL_TextCrawlActive in cl_cin.cpp.
+	extern qboolean CL_TextCrawlActive( void );
+
+	vr.using_screen_layer = _UI_IsFullscreen() || CL_TextCrawlActive() ||
 		(bool)((vr.cin_camera && !vr.immersive_cinematics) ||
 			vr.misc_camera ||
 			(inGameCinematic && !vr.immersive_cinematics) ||

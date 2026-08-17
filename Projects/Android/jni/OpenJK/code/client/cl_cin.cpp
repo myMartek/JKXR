@@ -142,7 +142,26 @@ static cinematics_t		cin;
 static cin_cache		cinTable[MAX_VIDEO_HANDLES];
 static int				currentHandle = -1;
 static int				CL_handle = -1;
-static int				CL_iPlaybackStartTime;	// so I can stop users quitting playback <1 second after it starts
+static int				CL_iPlaybackStartTime;
+
+#if defined(JKXR_VISIONOS)
+// Laeuft gerade ein Vorspanntext?
+//
+// VR_UseScreenLayer (cl_scrn.cpp) fragt das ab und schickt ihn damit ueber den
+// Flachbild-Pfad: er wird als flaches BILD in gFlatScreenTexture gezeichnet und
+// von dort als weltverankerte Flaeche gezeigt -- wie das Intro-Video.
+//
+// Der Grund: der Vorspann ist eine schraege Flaeche, deren Fluchtform davon
+// lebt, vom Entwurfspunkt aus gesehen zu werden. Als Geometrie weltfest
+// verankert kippt sie mit dem Blickwinkel, physikalisch richtig und trotzdem
+// falsch aussehend -- fuenf Versuche daran gescheitert. Fluchtform und
+// Verankerung sind zwei getrennte Dinge: die Form entsteht beim Rendern ins
+// Bild, die Verankerung beim Anzeigen des Bildes.
+qboolean CL_TextCrawlActive( void )
+{
+	return ( CL_handle >= 0 && cinTable[CL_handle].hCRAWLTEXT ) ? qtrue : qfalse;
+}
+#endif	// so I can stop users quitting playback <1 second after it starts
 
 extern int				s_soundtime;		// sample PAIRS
 extern int   			s_paintedtime; 		// sample PAIRS
@@ -1665,6 +1684,42 @@ static void CIN_AddTextCrawl()
 	VectorSet( verts[3].xyz, TC_PLANE_FAR, -TC_PLANE_WIDTH, TC_PLANE_BOTTOM );
 	verts[3].st[0] = 1;
 	verts[3].st[1] = 0 TIMEOFFSET;
+
+#if defined(JKXR_VISIONOS)
+	// Die Flaeche vorab in ihrer eigenen Hochachse spiegeln.
+	//
+	// Auf dem Panel landet das Bild senkrecht gespiegelt -- der Text lief von
+	// oben nach unten und war nicht zu lesen. Das liegt an der Zeilenordnung
+	// dieses Weges, nicht an der Szene.
+	//
+	// Ausgeglichen wird HIER und nur hier. Der naheliegende Weg -- der Y-Tausch
+	// in R_SetupProjection -- greift ueber ein Merkmal, das auch die
+	// Menuevorschauen trifft (RDF_NOWORLDMODEL und override_fov), und drehte
+	// Charakter und Lichtschwert mit. Diese Spiegelung betrifft ausschliesslich
+	// die vier Eckpunkte des Vorspanns.
+	//
+	// Gespiegelt wird die Hochachse z (TC_PLANE_TOP..TC_PLANE_BOTTOM), nicht die
+	// Texturkoordinate: so kehrt sich mit der Flaeche auch die Schrift um, und
+	// die Spiegelung des Panels hebt beides gemeinsam wieder auf.
+	for ( int e = 0; e < 4; ++e ) {
+		verts[e].xyz[2] = -verts[e].xyz[2];
+	}
+
+	// Und die Reihenfolge umdrehen.
+	//
+	// Eine Spiegelung kehrt die Wicklungsreihenfolge jedes Dreiecks um, damit
+	// zeigt das Viereck nach hinten und wird verworfen -- gemessen: der Text war
+	// nach der Spiegelung ganz weg. Dieselbe Sache hat heute schon einmal
+	// aufgehalten, damals im Zusammenspiel mit dem Y-Tausch.
+	//
+	// Ausgetauscht werden ganze Eckpunkte, Texturkoordinate und Farbe wandern
+	// also mit ihrer Position -- auch die Abdunklung der hinteren beiden.
+	{
+		polyVert_t tausch;
+		tausch = verts[0]; verts[0] = verts[3]; verts[3] = tausch;
+		tausch = verts[1]; verts[1] = verts[2]; verts[2] = tausch;
+	}
+#endif
 
 	// render it out
 	re.ClearScene();
