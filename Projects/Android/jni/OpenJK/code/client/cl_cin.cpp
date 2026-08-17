@@ -1689,24 +1689,30 @@ static void CIN_AddTextCrawl()
 	verts[3].st[1] = 0 TIMEOFFSET;
 
 #if defined(JKXR_VISIONOS)
-	// KEINE Spiegelung mehr -- die stand hier und war eine Doppelkorrektur.
+	// Nur die TEXTURKOORDINATE spiegeln, nicht die Flaeche.
 	//
-	// Sie glich aus, dass der Vorspann senkrecht gespiegelt und in der falschen
-	// Bildhaelfte landete. Beides kam aber nicht von dieser Flaeche, sondern von
-	// einer zu weit gefassten Ausnahme in RE_RenderScene: dort unterblieb die
-	// Umrechnung des Ausschnitts von 0-oben nach GLs 0-unten auch fuer
-	// Flachbild-Ziele, obwohl die Y-Umkehr in R_SetupProjection dort gar nicht
-	// greift (tr_scene.cpp, inzwischen richtiggestellt).
+	// Auf diesem Weg landet das Bild senkrecht gespiegelt -- der Text lief von
+	// oben nach unten und war nicht zu lesen. Das liegt an der Zeilenordnung des
+	// Flachbild-Pfads, nicht an der Szene.
 	//
-	// Der Gegenbeweis ist der Abspann im Outcast-Menue: UI_PatreonCredits baut
-	// dieselbe Flaeche mit denselben TC_PLANE_-Ecken und denselben
-	// Texturkoordinaten, ganz ohne Spiegelung -- und sitzt seit der
-	// Richtigstellung korrekt. Zwei gleiche Flaechen koennen nicht
-	// entgegengesetzte Korrekturen brauchen.
+	// Hier stand dafuer eine Spiegelung der Hochachse (z = -z). Die tat aber
+	// ZWEI Dinge: die Nahkante liegt bei z = 0, die Fernkante bei z = 1100, also
+	// warf sie die Fernkante auf -1100 und kippte damit die ganze Flaeche in die
+	// andere Richtung. Solange RE_RenderScene den Ausschnitt auch fuer
+	// Flachbild-Ziele unumgerechnet liess, hob sich das gegenseitig auf. Seit
+	// das richtiggestellt ist (tr_scene.cpp), lag der Vorspann ausserhalb des
+	// Bildschirms -- sichtbar blieb ein Streifen oben.
 	//
-	// Mit der Spiegelung landete der Vorspann nach der Richtigstellung in der
-	// unteren Haelfte des doppelt hohen Ausschnitts, also ausserhalb des
-	// Bildschirms; sichtbar blieb ein Streifen am oberen Rand.
+	// Der Tausch der t-Koordinate zwischen Nah- und Fernkante dreht das Bild
+	// genauso, laesst die Flaeche aber, wo sie ist. Der Gegenbeweis, dass die
+	// Geometrie stimmt, ist UI_PatreonCredits: dieselbe Flaeche, dieselben
+	// Ecken, und im Outcast-Menue seit der Richtigstellung korrekt.
+	{
+		const float nah  = verts[0].st[1];   // Nahkante, 1 + Zeitversatz
+		const float fern = verts[2].st[1];   // Fernkante, 0 + Zeitversatz
+		verts[0].st[1] = verts[1].st[1] = fern;
+		verts[2].st[1] = verts[3].st[1] = nah;
+	}
 #endif
 
 	// render it out
