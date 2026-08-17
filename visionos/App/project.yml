@@ -20,13 +20,7 @@ settings:
     SWIFT_VERSION: "5.0"
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: 9VSUPJ942Y
-    # Eigene Bundle-ID auf dem Foveation-Zweig.
-    #
-    # Damit stehen beide Apps nebeneinander auf der Brille: de.martek.jkxr aus
-    # main als funktionierender Stand, de.martek.jkxr.fov zum Ausprobieren. Eine
-    # neue ID bekommt einen LEEREN Container -- Spieldateien und Spielstaende
-    # muessen einmal hinueberkopiert werden.
-    PRODUCT_BUNDLE_IDENTIFIER: de.martek.jkxr.fov
+    PRODUCT_BUNDLE_IDENTIFIER: de.martek.jkxr
     GENERATE_INFOPLIST_FILE: "YES"
 
 targets:
@@ -48,15 +42,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: JKXR
-        INFOPLIST_KEY_CFBundleDisplayName: JKXR Foveation
-
-        # DIAGNOSE, wieder zu entfernen.
-        #
-        # Ohne diesen Schluessel verweigert Metal jede Aufzeichnung -- auch die
-        # programmgesteuerte ueber MTLCaptureManager. Gebraucht wird sie fuer
-        # genau eine Frage: stehen in renderTargetWidth/Height die Screen-Masse
-        # (5087x4081) oder die physischen (2048x1984)? Nur der Trace zeigt das.
-        INFOPLIST_KEY_MetalCaptureEnabled: "YES"
+        INFOPLIST_KEY_CFBundleDisplayName: Jedi Knight XR
 
         # Ohne Zweckangabe verweigert visionOS den ARKit-Provider, und zwar
         # wortlos — die Anfrage erreicht den Nutzer gar nicht erst.

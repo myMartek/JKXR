@@ -214,18 +214,10 @@ namespace {
 /// Von der SwiftUI-Hülle gesetzt, sobald der Immersive Space offen ist.
 cp_layer_renderer_t gLayerRenderer = nullptr;
 
-bool           gCaptureRunning = false;   // DIAGNOSE
 cp_frame_t     gFrame    = nullptr;
 cp_drawable_t  gDrawable = nullptr;
 id<MTLCommandQueue>  gQueue = nil;
 id<MTLCommandBuffer> gCommandBuffer = nil;
-
-// Sichtsonde über Metal (siehe TBXR_submitFrame). Der Blit läuft in einem
-// Bild, gelesen wird im nächsten — so muss nirgends auf die GPU gewartet
-// werden.
-static id<MTLTexture> gProbeStaging = nil;
-static id<MTLCommandBuffer> gProbeCommands = nil;
-static bool gProbePending = false;
 
 /// Pro Auge die aus der Drawable importierten GL-Objekte. Sie gelten nur für
 /// den laufenden Frame und werden in TBXR_finishEyeBuffer wieder abgeräumt.
@@ -1228,63 +1220,23 @@ void TBXR_FrameSetup()
         return;
     }
 
-    // DIAGNOSE, wieder zu entfernen.
+    // AUFRÄUMEN, darf nach einem Start wieder heraus.
     //
-    // Ein Bild aufzeichnen, sobald wir IM SPIEL sind -- nicht im Menue. Die
-    // Frage, die nur der Trace beantwortet: stehen in renderTargetWidth/Height
-    // des Renderpasses die Screen-Masse (5087x4081) oder die physischen
-    // (2048x1984)?
-    //
-    // Alles andere ist gemessen und stimmt: Zielpuffer, Viewport, Reihenfolge,
-    // Zahlen der Drawable, und der Aufruf wirkt nachweislich. Bleibt diese eine
-    // Groesse, und sie ist die einzige, die der Patch NICHT anfasst.
-    //
-    // Ausgeloest ueber den Wechsel des Flachbild-Pfads plus Vorlauf, nicht ueber
-    // eine feste Bildnummer: der Uebergang ins Spiel liegt je nach Spielverlauf
-    // irgendwo zwischen Bild 150 und 250.
+    // Die GPU-Aufzeichnung, die den Clear-Fehler gefunden hat, ist entfernt —
+    // ihr Ergebnis liegt aber noch als knapp 1 GB im Dokumentenordner, und
+    // devicectl kann Dateien nur schreiben, nicht löschen. Also einmal von
+    // innen.
     {
-        // Zaehler zuruecksetzen, sobald irgendein Menuebild dazwischenkommt.
-        //
-        // Der erste Versuch hat nur 60 Bilder Vorlauf abgewartet und danach nicht
-        // mehr geprueft -- und prompt den Missionsbericht erwischt (26 Draw
-        // Calls, im Trace deutlich als Menue zu sehen). Jetzt braucht es 300
-        // Bilder OHNE Unterbrechung, also rund vier Sekunden ununterbrochene
-        // 3D-Welt.
-        static int ununterbrochen = 0;
-        static bool aufgezeichnet = false;
-        if (gRenderingFlatScreen[0] || gFrameCounter < 30) {
-            ununterbrochen = 0;
-        } else {
-            ununterbrochen++;
-        }
-        if (!aufgezeichnet && ununterbrochen >= 300) {
-            aufgezeichnet = true;
-            MTLCaptureManager *cm = [MTLCaptureManager sharedCaptureManager];
-            if ([cm supportsDestination:MTLCaptureDestinationGPUTraceDocument]) {
-                NSArray *dirs = NSSearchPathForDirectoriesInDomains(
-                    NSDocumentDirectory, NSUserDomainMask, YES);
-                NSString *pfad = [dirs.firstObject
-                    stringByAppendingPathComponent:@"jkxr-foveation.gputrace"];
+        static bool geraeumt = false;
+        if (!geraeumt) {
+            geraeumt = true;
+            NSArray *dirs = NSSearchPathForDirectoriesInDomains(
+                NSDocumentDirectory, NSUserDomainMask, YES);
+            NSString *pfad = [dirs.firstObject
+                stringByAppendingPathComponent:@"jkxr-foveation.gputrace"];
+            if ([[NSFileManager defaultManager] fileExistsAtPath:pfad]) {
                 [[NSFileManager defaultManager] removeItemAtPath:pfad error:nil];
-
-                MTLCaptureDescriptor *d = [[MTLCaptureDescriptor alloc] init];
-                // Das Geraet des Layer-Renderers, nicht das Standardgeraet:
-                // ANGLE und CompositorServices muessen dasselbe benutzen, sonst
-                // scheitert schon der Texturimport (siehe EngineHost).
-                d.captureObject = cp_layer_renderer_get_device(gLayerRenderer);
-                d.destination = MTLCaptureDestinationGPUTraceDocument;
-                d.outputURL = [NSURL fileURLWithPath:pfad];
-
-                NSError *err = nil;
-                if ([cm startCaptureWithDescriptor:d error:&err]) {
-                    gCaptureRunning = true;
-                    Com_Printf("[Trace] Aufzeichnung gestartet, Bild %d\n", gFrameCounter);
-                } else {
-                    Com_Printf("[Trace] Start fehlgeschlagen: %s\n",
-                               err.localizedDescription.UTF8String);
-                }
-            } else {
-                Com_Printf("[Trace] Ziel GPUTraceDocument nicht unterstuetzt\n");
+                Com_Printf("Diagnose-Ueberrest entfernt: jkxr-foveation.gputrace\n");
             }
         }
     }
@@ -1917,37 +1869,6 @@ void TBXR_finishEyeBuffer(int eye)
         // Bild danach verzerrt.
     }
 
-    // gl4es reports its logical default framebuffer as 0.  Query ANGLE
-    // directly here, after the engine rendered, to verify that the physical
-    // binding still points at the imported compositor framebuffer.
-    // Bei jedem ZUSTANDSWECHSEL melden, nicht in den ersten acht Bildern.
-    //
-    // Die Begrenzung auf acht Bilder hat dreimal hintereinander nur Menue und
-    // Ladephase erwischt und nie das Spiel -- genau die Frage, um die es geht.
-    static int framebufferDiagnostics = 0;
-    static GLint letzterFbo = -2;
-    static bool letzterFlach = false;
-    if (eye == 0 && framebufferDiagnostics < 40) {
-        GLint actualFramebuffer = -1;
-        angle::GetIntegerv(GL_FRAMEBUFFER_BINDING, &actualFramebuffer);
-        const GLenum error = angle::GetError();
-        ALOGV("[ANGLE FBO] frame=%d actual=%d compositor=%u flat=%u error=0x%04x",
-              gFrameCounter, actualFramebuffer, gFramebuffer,
-              gFlatScreenFramebuffer, error);
-        // Zusaetzlich ueber die Konsole der Engine: ALOGV geht nach stderr und
-        // ist ohne "devicectl --console" nicht auslesbar. Entscheidend fuer die
-        // Foveation-Frage -- rendert die Welt ueberhaupt in die Augentextur?
-        if (actualFramebuffer != letzterFbo || gRenderingFlatScreen[eye] != letzterFlach) {
-            letzterFbo = actualFramebuffer;
-            letzterFlach = gRenderingFlatScreen[eye];
-            framebufferDiagnostics++;
-            Com_Printf("[ANGLE FBO] Bild %d · tatsaechlich %d · Auge-FBO %u · "
-                       "Flach-FBO %u · Flachbild-Pfad %d\n",
-                       gFrameCounter, actualFramebuffer, gFramebuffer,
-                       gFlatScreenFramebuffer, gRenderingFlatScreen[eye] ? 1 : 0);
-        }
-    }
-
     // glFinish, nicht glFlush.
     //
     // ANGLE rendert auf seiner EIGENEN Metal-Warteschlange; cp_drawable_encode_present
@@ -2099,103 +2020,6 @@ void TBXR_submitFrame()
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Sichtsonde über METAL statt über glReadPixels.
-    //
-    // glReadPixels liefert auf der importierten Drawable-Textur durchgehend
-    // Nullen — es meldet nicht einmal den Clear, der auf dem Gerät sichtbar
-    // ist. Damit war jede Messung darüber wertlos, und zwar unauffällig
-    // wertlos: sie sagt immer "schwarz".
-    //
-    // Metal kommt an dieselbe Textur heran. Sie liegt in MTLStorageModePrivate,
-    // also erst per Blit in einen sichtbaren Puffer kopieren.
-    //
-    // Gelesen wird das Ergebnis absichtlich ERST im nächsten Durchgang: sonst
-    // müsste hier auf die GPU gewartet werden, und das verfälscht genau die
-    // Zeitmessung, an der der Compositor die App beurteilt.
-    if ((gFrameCounter % 90) == 0 || gProbePending) {
-        id<MTLTexture> src = cp_drawable_get_color_texture(gDrawable, 0);
-
-        if (gProbePending && gProbeStaging && gProbeCommands &&
-            gProbeCommands.status == MTLCommandBufferStatusCompleted) {
-            const int grid = 8;
-            const NSUInteger w = gProbeStaging.width, h = gProbeStaging.height;
-            char map[8 * 9 + 1];
-            int at = 0, filled = 0, brightest = 0;
-            // Das Format der Drawable ist NICHT 8-Bit.
-            //
-            // cp_drawable_get_color_texture liefert hier MTLPixelFormatRGBA16Float
-            // (115) — acht Byte je Bildpunkt als Halbfloats. Vier Byte zu lesen
-            // und als 0..255 zu deuten ergibt Unsinn, und zwar unauffälligen:
-            // es kommt einfach "schwarz" heraus. Genau daran ist die vorherige
-            // Fassung gescheitert, obwohl der Clear sichtbar auf dem Gerät war.
-            const bool halfFloat =
-                (gProbeStaging.pixelFormat == MTLPixelFormatRGBA16Float);
-            const NSUInteger stride = halfFloat ? 8 : 4;
-            for (int gy = 0; gy < grid; ++gy) {          // Zeile 0 = oben
-                for (int gx = 0; gx < grid; ++gx) {
-                    unsigned char raw[8] = {0};
-                    MTLRegion r = MTLRegionMake2D(
-                        gx * (w / grid) + (w / grid) / 2,
-                        gy * (h / grid) + (h / grid) / 2, 1, 1);
-                    [gProbeStaging getBytes:raw bytesPerRow:stride
-                                 fromRegion:r mipmapLevel:0];
-                    unsigned char px[4];
-                    if (halfFloat) {
-                        const __fp16 *f = (const __fp16 *)raw;
-                        for (int c = 0; c < 4; ++c) {
-                            float v = (float)f[c];
-                            v = v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
-                            px[c] = (unsigned char)(v * 255.0f + 0.5f);
-                        }
-                    } else {
-                        memcpy(px, raw, 4);
-                    }
-                    const int sum = px[0] + px[1] + px[2];
-                    if (sum > brightest) brightest = sum;
-                    // Der Diagnose-Clear ist (0.25, 0, 0.45).
-                    const bool isClear = (px[0] > 45 && px[0] < 85 &&
-                                          px[1] < 25 && px[2] > 95 && px[2] < 135);
-                    const bool content = (sum > 12 && !isClear);
-                    map[at++] = content ? '#' : (isClear ? '.' : ' ');
-                    if (content) ++filled;
-                }
-                map[at++] = '\n';
-            }
-            map[at] = 0;
-            ALOGV("[Metal-Sicht] Bild %d, %lux%lu: %d/64 belegt, hellster %d\n%s",
-                  gFrameCounter, (unsigned long)w, (unsigned long)h,
-                  filled, brightest, map);
-            gProbePending = false;
-        }
-
-        if (!gProbePending && src && (gFrameCounter % 90) == 0) {
-            if (!gProbeStaging || gProbeStaging.width != src.width ||
-                gProbeStaging.height != src.height) {
-                MTLTextureDescriptor *d = [MTLTextureDescriptor
-                    texture2DDescriptorWithPixelFormat:src.pixelFormat
-                                                 width:src.width
-                                                height:src.height
-                                             mipmapped:NO];
-                d.storageMode = MTLStorageModeShared;
-                d.usage = MTLTextureUsageShaderRead;
-                gProbeStaging = [cp_layer_renderer_get_device(gLayerRenderer)
-                                    newTextureWithDescriptor:d];
-            }
-            if (gProbeStaging) {
-                id<MTLBlitCommandEncoder> blit = [gCommandBuffer blitCommandEncoder];
-                [blit copyFromTexture:src sourceSlice:0 sourceLevel:0
-                         sourceOrigin:MTLOriginMake(0, 0, 0)
-                           sourceSize:MTLSizeMake(src.width, src.height, 1)
-                            toTexture:gProbeStaging destinationSlice:0
-                     destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
-                [blit endEncoding];
-                gProbeCommands = gCommandBuffer;
-                gProbePending = true;
-            }
-        }
-    }
-
     cp_drawable_encode_present(gDrawable, gCommandBuffer);
 
     if (gFrameCounter < 3) {
@@ -2232,13 +2056,6 @@ void TBXR_submitFrame()
         ALOGV("[Bild %d] GPU %.2f ms vor Deadline fertig",
               gFrameCounter, completedSlackMs);
     }
-    // DIAGNOSE, wieder zu entfernen.
-    if (gCaptureRunning) {
-        gCaptureRunning = false;
-        [[MTLCaptureManager sharedCaptureManager] stopCapture];
-        Com_Printf("[Trace] Aufzeichnung beendet, Bild %d\n", gFrameCounter);
-    }
-
     cp_frame_end_submission(gFrame);
 
     gDrawable = nullptr;
