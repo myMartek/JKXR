@@ -416,7 +416,21 @@ void RE_RenderScene( const refdef_t *fd ) {
 	// zweiten Fall. Ohne das stand er unsichtbar unterhalb des Fensters -- und
 	// die Y-Umkehr stattdessen abzuschalten brachte ihn zwar ins Bild, aber
 	// gespiegelt, weil sie die Zeilenordnung der Augentextur ausgleicht.
-	if ( ( tr.refdef.rdflags & RDF_NOWORLDMODEL ) && tr.refdef.override_fov )
+	//
+	// NUR beim Augenpuffer, und das ist der Kern: die Ausnahme hier existiert
+	// allein wegen der Y-Umkehr in R_SetupProjection, und die ist dort auf
+	// `!JKXR_visionOS_FlatTarget()` beschränkt (tr_main.cpp:680). Beim
+	// Flachbild-Ziel gibt es keine Umkehr, also muss auch die gewöhnliche
+	// Umrechnung stehen bleiben -- sonst hebt sich nichts mehr auf.
+	//
+	// Aufgefallen ist das erst mit Jedi Outcast. Sein Hauptmenü zeigt einen
+	// laufenden Abspann (UI_PatreonCredits, ownerdraw 300), der genauso über
+	// RDF_NOWORLDMODEL mit eigenem Sichtfeld rendert und absichtlich über den
+	// unteren Rand hinausreicht. Er landete am oberen Rand und war
+	// abgeschnitten. Academys Menü enthält diesen Eintrag nicht, deshalb blieb
+	// die Ausnahme dort ohne Wirkung und der Fehler unentdeckt.
+	if ( !JKXR_visionOS_FlatTarget() &&
+		( tr.refdef.rdflags & RDF_NOWORLDMODEL ) && tr.refdef.override_fov )
 	{
 		parms.viewportY = tr.refdef.y;
 	}
