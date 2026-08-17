@@ -523,7 +523,32 @@ static void RB_BeginDrawingView (void) {
 	}
 	else
 	{
-		if ((!hasskybox || r_fastsky->integer) &&
+#if defined(JKXR_VISIONOS)
+		// hasskybox wird hier NICHT ausgewertet.
+		//
+		// Die Abkürzung dahinter: enthält die Karte eine Himmelsbox, deckt sie
+		// das ganze Bild ab, und der Farbpuffer braucht kein Löschen. Auf einem
+		// Monitor stimmt das — dort schreibt man Bild für Bild in denselben
+		// Puffer, und was der Himmel nicht überschreibt, überschreibt die Welt.
+		//
+		// Auf visionOS stimmt es nicht. CompositorServices gibt je Bild eine
+		// ANDERE Textur heraus (cp_drawable_get_color_texture), deren Inhalt
+		// nichts mit dem Vorbild zu tun hat. Ungelöschte Flächen bleiben damit
+		// schwarz statt "wie vorher".
+		//
+		// Sichtbar war das nur bei Jedi Outcast: hasskybox wird ausschliesslich
+		// dort gesetzt (tr_sky.cpp, `#ifdef JK2_MODE`), Academy lässt es auf 0
+		// und löscht deshalb ohnehin. Der Himmel war in Outcast schwarz,
+		// während das Protokoll bestätigte, dass Shader und Aussenbox geladen
+		// sind und kein Rücksprung greift.
+		//
+		// Das Löschen kostet hier nichts Zusätzliches: die Tiefe muss ohnehin
+		// jedes Bild gelöscht werden, es ist derselbe Aufruf.
+		const qboolean himmelDecktAb = qfalse;
+#else
+		const qboolean himmelDecktAb = hasskybox ? qtrue : qfalse;
+#endif
+		if ((!himmelDecktAb || r_fastsky->integer) &&
 			!( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) && !g_bRenderGlowingObjects )
 		{
 			if (tr.world && tr.world->globalFog != -1)

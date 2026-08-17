@@ -429,6 +429,11 @@ static void DrawSkySide( struct image_s *image, const int mins[2], const int max
 #endif
 }
 
+#if defined(JKXR_VISIONOS)
+// Zaehler fuer den Messpunkt am Ende von DrawSkyBox.
+static int s_jkxrSkySeiten = 0;
+#endif
+
 static void DrawSkyBox( jk_shader_t *shader )
 {
 	int		i;
@@ -495,8 +500,29 @@ static void DrawSkyBox( jk_shader_t *shader )
 		DrawSkySide( shader->sky->outerbox[i],
 			         sky_mins_subd,
 					 sky_maxs_subd );
+#if defined(JKXR_VISIONOS)
+		++s_jkxrSkySeiten;
+#endif
 	}
 
+#if defined(JKXR_VISIONOS)
+	// MESSPUNKT, wieder zu entfernen.
+	//
+	// Deckt die Himmelsbox das Bild ab, oder verwirft die Sichtbarkeitsprüfung
+	// oben (sky_mins >= sky_maxs) alle sechs Seiten? Davon hängt ab, ob das
+	// unbedingte Löschen in RB_BeginDrawingView die Ursache behebt oder nur
+	// verdeckt: null Seiten heisst, der Himmel wird gar nicht gezeichnet und
+	// man sieht die Löschfarbe.
+	{
+		static int letzteSeiten = -1;
+		if ( s_jkxrSkySeiten != letzteSeiten ) {
+			letzteSeiten = s_jkxrSkySeiten;
+			ri.Printf( PRINT_ALL, "[Himmelsbox] %d von 6 Seiten gezeichnet\n",
+				s_jkxrSkySeiten );
+		}
+		s_jkxrSkySeiten = 0;
+	}
+#endif
 }
 
 static void FillCloudySkySide( const int mins[2], const int maxs[2], qboolean addIndexes )
