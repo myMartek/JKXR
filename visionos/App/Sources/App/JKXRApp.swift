@@ -29,25 +29,27 @@ struct JKXRLayerConfiguration: CompositorLayerConfiguration {
         //     Metal-Backend (spikes/s4-angle/patch-angle-foveation.py), der die
         //     Map über ANGLESetDrawFramebufferRateMapMTL entgegennimmt
         //
-        // WAS HIER FRÜHER STAND und nicht haltbar war: der ANGLE-Patch greife
-        // "für den GL-Pfad nachweislich nicht". Belegt ist das Gegenteil --
-        // spikes/s4-angle/README.md hält fest, dass alle vier Klemmglieder auf
-        // dem Gerät gemessen wurden und die Kette danach mit 5087x4081 über den
-        // vollen ANGLE-Pfad lief. Das Symbol ist im mitgelieferten Framework
-        // vorhanden (nm -gU zeigt _ANGLESetDrawFramebufferRateMapMTL).
+        // Es hat drei Anläufe gebraucht, und alle drei Fehler lagen darin, dass
+        // Screen- und physische Koordinaten verwechselt wurden. Wer hier etwas
+        // ändert, sollte sie kennen:
         //
-        // Offen war nicht der Patch, sondern seine BENUTZUNG: JKXR setzte den
-        // Viewport vor der Rate-Map, die Referenz macht es umgekehrt. Behoben in
-        // TBXR_prepareEyeBuffer, Begründung dort.
+        //   1. Die Rate-Map muss VOR dem glViewport gesetzt werden. ANGLE
+        //      rechnet den Viewport beim Setzen um, und setRasterizationRateMap
+        //      setzt kein Dirty-Bit -- danach rechnet nichts mehr nach.
+        //      (TBXR_prepareEyeBuffer)
+        //   2. ANGLE spiegelte den Viewport gegen die physische Höhe statt
+        //      gegen screenSize der Map. (Hunk 10 des Patches)
+        //   3. ANGLEs Clear-Quad zog seine Fläche aus den physischen Maßen und
+        //      ließ damit 60 % des Bildes ungeleert -- Farbe UND Tiefe.
+        //      (Hunk 11)
         //
-        // Der alte Text hat den nächsten Leser in die falsche Richtung geschickt
-        // -- deshalb steht das hier und nicht nur im Commit.
-        // BLEIBT AN, bis es steht.
+        // Frühere Fassungen dieses Kommentars behaupteten, der ANGLE-Patch
+        // greife "für den GL-Pfad nachweislich nicht". Das war falsch und hat
+        // Zeit gekostet; der Patch trug von Anfang an, benutzt wurde er falsch.
         //
-        // Der Zustand ist bekannt und eingegrenzt (siehe Commit): Menue, Videos
-        // und HUD sind korrekt, die 3D-Welt klemmt auf einen Bereich oben links.
-        // Ausgeschaltet waere der Fehler nicht mehr sichtbar und jede weitere
-        // Messung daran unmoeglich.
+        // Nachgemessen auf dem Gerät, steht in der [Foveation]-Bestandsaufnahme
+        // beim Start: 2 Rate-Maps, Layout dedicated, screen 5087x4081, Textur
+        // 2048x1984, Granularität 32x32, Engine deckungsgleich mit screen.
         let useFoveation = true
         configuration.isFoveationEnabled = useFoveation && capabilities.supportsFoveation
         if useFoveation && !capabilities.supportsFoveation {
