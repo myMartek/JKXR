@@ -2307,6 +2307,25 @@ qboolean CL_IsRunningInGameCinematic(void)
 }
 
 #if defined(JKXR_VISIONOS)
+/*
+=================
+VR_CinematicRunning
+
+Laeuft gerade eine Filmsequenz, gleich welcher Art?
+
+Die VR-Eingabeschicht hatte dafuer nur vr.cin_camera, und das genuegt nicht: es
+meldet die Kamerafahrten des Spielcodes, nicht die abgespielten Sequenzen. Bei
+der Szene nach dem Levelladen steht es auf 0, obwohl CL_IsRunningInGameCinematic
+wahr ist -- gemessen. Sperren, die daran hingen, griffen dort ins Leere.
+=================
+*/
+qboolean VR_CinematicRunning( void )
+{
+	return (qboolean)( cls.state == CA_CINEMATIC
+		|| qbPlayingInGameCinematic
+		|| qbInGameCinematicOnStandBy );
+}
+
 // MESSPUNKT-Hilfe, wieder zu entfernen. Wie lange laeuft die Sequenz schon?
 int CL_SequenzLaufzeit( void )
 {
