@@ -26,6 +26,12 @@
 // Von TBXR_Common.mm bereitgestellt.
 extern "C" void TBXR_visionOS_Vibrate(int hand, float amplitude, float seconds);
 
+// Vom App-Ziel bereitgestellt (Sources/Bridge/WorldTracking.m). Liefert das
+// GCDevice einer Hand, dessen Händigkeit ARKit über
+// ar_accessory_get_inherent_chirality bestimmt hat — dieselbe Quelle, aus der
+// auch die Posen stammen. Vor dem Anlaufen der Zubehörverfolgung nil.
+extern "C" void *TBXR_visionOS_GetSpatialDevice(int hand);
+
 /// XrTime ist in Nanosekunden, CFTimeInterval in Sekunden.
 static inline CFTimeInterval XrTimeToSeconds(XrTime time)
 {
@@ -258,6 +264,31 @@ extern "C" void TBXR_visionOS_RefreshControllers(void)
     gControllers[0] = gControllers[1] = nil;
     gCombinedDevice = false;
 
+    // Die Händigkeit von ARKit übernehmen, nicht raten.
+    //
+    // Hier stand vorher eine Suche nach "(L)" und "(R)" im Gerätenamen, mit der
+    // Verbindungsreihenfolge als Rückfall. Das ging schief, sobald die Namen
+    // diese Kennzeichnung nicht tragen: der zuerst verbundene Controller wurde
+    // dann die linke Hand. Und weil die POSEN aus derselben ARKit-Quelle kommen
+    // wie sSpatialDevices, während die TASTEN aus dieser Ratung kamen, konnten
+    // beide auseinanderlaufen — im Menü zeigte die eine Hand und die andere
+    // musste klicken.
+    //
+    // WorldTracking.m löst die Frage längst richtig: es lädt jedes Zubehör über
+    // ar_accessory_load_from_device und liest ar_accessory_get_inherent_chirality.
+    // Dasselbe Gerät, dieselbe Händigkeit, EINE Quelle für Pose und Taste.
+    //
+    // Der Namenspfad bleibt als Rückfall stehen: die Zubehörverfolgung läuft
+    // asynchron an, und bis sie steht, ist eine geratene Zuordnung besser als
+    // gar keine Eingabe.
+    GCController *ausArkit[2] = { nil, nil };
+    for (int hand = 0; hand < 2; ++hand) {
+        id geraet = (__bridge id)TBXR_visionOS_GetSpatialDevice(hand);
+        if ([geraet isKindOfClass:[GCController class]]) {
+            ausArkit[hand] = (GCController *)geraet;
+        }
+    }
+
     for (GCController *controller in [GCController controllers]) {
         GCPhysicalInputProfile *profile = controller.physicalInputProfile;
 
@@ -269,13 +300,38 @@ extern "C" void TBXR_visionOS_RefreshControllers(void)
             break;
         }
 
-        // Getrennte Spatial Controller: Händigkeit steckt im Gerätenamen.
-        // playerIndex taugt nicht, beide melden -1.
-        NSString *name = controller.vendorName ?: @"";
-        if ([name containsString:@"(L)"])      gControllers[0] = controller;
-        else if ([name containsString:@"(R)"]) gControllers[1] = controller;
-        else if (!gControllers[0])             gControllers[0] = controller;
-        else if (!gControllers[1])             gControllers[1] = controller;
+        if (controller == ausArkit[0])      gControllers[0] = controller;
+        else if (controller == ausArkit[1]) gControllers[1] = controller;
+    }
+
+    // Nur was ARKit offen lässt, wird geraten — und getrennt vom Durchgang
+    // oben, damit ein von ARKit bestätigter Controller nicht von einem
+    // geratenen verdrängt wird.
+    if (!gCombinedDevice && (!gControllers[0] || !gControllers[1])) {
+        for (GCController *controller in [GCController controllers]) {
+            if (controller == gControllers[0] || controller == gControllers[1]) continue;
+            NSString *name = controller.vendorName ?: @"";
+            if ([name containsString:@"(L)"] && !gControllers[0])      gControllers[0] = controller;
+            else if ([name containsString:@"(R)"] && !gControllers[1]) gControllers[1] = controller;
+            else if (!gControllers[0])                                 gControllers[0] = controller;
+            else if (!gControllers[1])                                 gControllers[1] = controller;
+        }
+    }
+
+    // Einmal melden, auf welchem Weg die Zuordnung zustande kam. Ohne das bleibt
+    // eine vertauschte Steuerung eine Vermutung — so steht sie im Protokoll.
+    {
+        static GCController *gemeldet[2] = { nil, nil };
+        if (gControllers[0] != gemeldet[0] || gControllers[1] != gemeldet[1]) {
+            gemeldet[0] = gControllers[0];
+            gemeldet[1] = gControllers[1];
+            fprintf(stderr, "[TBXR] Haende: links %s (ARKit %s) · rechts %s (ARKit %s)%s\n",
+                    gControllers[0].vendorName.UTF8String ?: "-",
+                    ausArkit[0] ? "ja" : "nein",
+                    gControllers[1].vendorName.UTF8String ?: "-",
+                    ausArkit[1] ? "ja" : "nein",
+                    gCombinedDevice ? " · kombiniertes Geraet" : "");
+        }
     }
 }
 
