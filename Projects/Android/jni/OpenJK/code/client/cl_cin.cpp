@@ -1689,29 +1689,32 @@ static void CIN_AddTextCrawl()
 	verts[3].st[1] = 0 TIMEOFFSET;
 
 #if defined(JKXR_VISIONOS)
-	// Nur die TEXTURKOORDINATE spiegeln, nicht die Flaeche.
+	// Die Textur spiegeln, nicht die Flaeche und nicht die Reihenfolge.
 	//
-	// Auf diesem Weg landet das Bild senkrecht gespiegelt -- der Text lief von
-	// oben nach unten und war nicht zu lesen. Das liegt an der Zeilenordnung des
-	// Flachbild-Pfads, nicht an der Szene.
+	// Auf diesem Weg landet das Bild senkrecht gespiegelt -- der Text stand
+	// kopf. Das liegt an der Zeilenordnung des Flachbild-Pfads, nicht an der
+	// Szene. Zwei naheliegende Wege dorthin sind beide falsch, und beide wurden
+	// auf dem Geraet ausprobiert:
 	//
-	// Hier stand dafuer eine Spiegelung der Hochachse (z = -z). Die tat aber
-	// ZWEI Dinge: die Nahkante liegt bei z = 0, die Fernkante bei z = 1100, also
-	// warf sie die Fernkante auf -1100 und kippte damit die ganze Flaeche in die
-	// andere Richtung. Solange RE_RenderScene den Ausschnitt auch fuer
-	// Flachbild-Ziele unumgerechnet liess, hob sich das gegenseitig auf. Seit
-	// das richtiggestellt ist (tr_scene.cpp), lag der Vorspann ausserhalb des
-	// Bildschirms -- sichtbar blieb ein Streifen oben.
+	//   z = -z          spiegelt die HOCHACHSE. Die Nahkante liegt bei z = 0,
+	//                   die Fernkante bei z = 1100 -- das wirft die Fernkante auf
+	//                   -1100 und kippt die ganze Flaeche. Solange RE_RenderScene
+	//                   den Ausschnitt auch fuer Flachbild-Ziele unumgerechnet
+	//                   liess, hob sich das auf; seit der Richtigstellung in
+	//                   tr_scene.cpp lag der Vorspann ausserhalb des Bildschirms.
 	//
-	// Der Tausch der t-Koordinate zwischen Nah- und Fernkante dreht das Bild
-	// genauso, laesst die Flaeche aber, wo sie ist. Der Gegenbeweis, dass die
-	// Geometrie stimmt, ist UI_PatreonCredits: dieselbe Flaeche, dieselben
-	// Ecken, und im Outcast-Menue seit der Richtigstellung korrekt.
-	{
-		const float nah  = verts[0].st[1];   // Nahkante, 1 + Zeitversatz
-		const float fern = verts[2].st[1];   // Fernkante, 0 + Zeitversatz
-		verts[0].st[1] = verts[1].st[1] = fern;
-		verts[2].st[1] = verts[3].st[1] = nah;
+	//   t tauschen      vertauscht Nah- und Fernkante. Damit laeuft der Text
+	//                   RUECKWAERTS: er soll nah beginnen und sich entfernen,
+	//                   kam aber winzig von hinten heran. Der Zeitversatz
+	//                   verschiebt beide Kanten gleichsinnig, ein Tausch dreht
+	//                   also die Laufrichtung mit.
+	//
+	// Richtig ist die Spiegelung der Koordinate selbst. Der Abstand zwischen
+	// Nah- und Fernkante kehrt sein Vorzeichen um -- das Bild steht damit
+	// richtig herum --, waehrend der Zeitversatz weiter in dieselbe Richtung
+	// laeuft.
+	for ( int e = 0; e < 4; ++e ) {
+		verts[e].st[1] = 1.0f - verts[e].st[1];
 	}
 #endif
 
