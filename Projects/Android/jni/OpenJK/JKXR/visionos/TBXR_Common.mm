@@ -1358,6 +1358,50 @@ void TBXR_FrameSetup()
         const size_t views = cp_drawable_get_view_count(gDrawable);
         const size_t textures = cp_drawable_get_texture_count(gDrawable);
         ALOGV("[Drawable] %zu View(s), %zu Textur(en)", views, textures);
+
+        // Laut werden, wenn das zweite Auge nirgends landet.
+        //
+        // Bisher stand hier nur die Beschreibung. Weniger Texturen als Views
+        // heisst aber, dass cp_drawable_get_color_texture fuer das rechte Auge
+        // ins Leere greift — das Bild bleibt dort schwarz, ohne dass irgendetwas
+        // fehlschlaegt. Kein harter Abbruch: eine App, die nicht startet, laesst
+        // sich nicht diagnostizieren.
+        if (textures < views) {
+            ALOGE("[Drawable] NUR %zu Textur(en) fuer %zu View(s) — das Layout ist "
+                  "vermutlich shared statt dedicated. Das zweite Auge landet "
+                  "nirgends und bleibt schwarz. Siehe JKXRLayerConfiguration.",
+                  textures, views);
+        }
+
+        // Und die Zahlen, die fuer Foveation entscheiden.
+        //
+        // Sie wurden bisher durchgehend ANGENOMMEN: physische Texturgroesse,
+        // screenSize der Rate-Map, der Viewport je Auge und die Aufloesung, mit
+        // der die Engine rechnet. Bei aktiver Foveation muessen screenSize und
+        // glConfig.vidWidth/vidHeight uebereinstimmen, sonst laufen Viewport und
+        // Map auseinander.
+        const size_t rateMaps = cp_drawable_get_rasterization_rate_map_count(gDrawable);
+        ALOGV("[Foveation] %zu Rate-Map(s), Engine rechnet mit %dx%d",
+              rateMaps, gAppState.Width, gAppState.Height);
+        for (size_t i = 0; i < rateMaps; ++i) {
+            id<MTLRasterizationRateMap> rm =
+                cp_drawable_get_rasterization_rate_map(gDrawable, i);
+            if (!rm) continue;
+            const MTLSize screen = rm.screenSize;
+            const MTLSize phys = rm.physicalGranularity;
+            id<MTLTexture> t = cp_drawable_get_color_texture(gDrawable, i);
+            ALOGV("[Foveation]  %zu: screen %lux%lu, Textur %lux%lu, "
+                  "Granularitaet %lux%lu",
+                  i, (unsigned long)screen.width, (unsigned long)screen.height,
+                  (unsigned long)t.width, (unsigned long)t.height,
+                  (unsigned long)phys.width, (unsigned long)phys.height);
+        }
+        for (size_t i = 0; i < views; ++i) {
+            MTLViewport vp = cp_view_texture_map_get_viewport(
+                cp_view_get_view_texture_map(cp_drawable_get_view(gDrawable, i)));
+            ALOGV("[Foveation]  Viewport Auge %zu: Ursprung %.0f,%.0f, %.0fx%.0f",
+                  i, vp.originX, vp.originY, vp.width, vp.height);
+        }
         for (size_t i = 0; i < textures; ++i) {
             id<MTLTexture> t = cp_drawable_get_color_texture(gDrawable, i);
             id<MTLTexture> d = cp_drawable_get_depth_texture(gDrawable, i);
