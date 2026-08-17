@@ -1243,12 +1243,21 @@ void TBXR_FrameSetup()
     // eine feste Bildnummer: der Uebergang ins Spiel liegt je nach Spielverlauf
     // irgendwo zwischen Bild 150 und 250.
     {
-        static int spielSeit = -1;
+        // Zaehler zuruecksetzen, sobald irgendein Menuebild dazwischenkommt.
+        //
+        // Der erste Versuch hat nur 60 Bilder Vorlauf abgewartet und danach nicht
+        // mehr geprueft -- und prompt den Missionsbericht erwischt (26 Draw
+        // Calls, im Trace deutlich als Menue zu sehen). Jetzt braucht es 300
+        // Bilder OHNE Unterbrechung, also rund vier Sekunden ununterbrochene
+        // 3D-Welt.
+        static int ununterbrochen = 0;
         static bool aufgezeichnet = false;
-        if (!gRenderingFlatScreen[0] && spielSeit < 0 && gFrameCounter > 30) {
-            spielSeit = gFrameCounter;
+        if (gRenderingFlatScreen[0] || gFrameCounter < 30) {
+            ununterbrochen = 0;
+        } else {
+            ununterbrochen++;
         }
-        if (!aufgezeichnet && spielSeit >= 0 && gFrameCounter >= spielSeit + 60) {
+        if (!aufgezeichnet && ununterbrochen >= 300) {
             aufgezeichnet = true;
             MTLCaptureManager *cm = [MTLCaptureManager sharedCaptureManager];
             if ([cm supportsDestination:MTLCaptureDestinationGPUTraceDocument]) {
