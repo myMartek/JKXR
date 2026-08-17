@@ -79,6 +79,26 @@ static char binaryPath[MAX_OSPATH];
 extern "C" void *GetGameAPI(void *import);
 extern "C" void *GetRefAPI(int apiVersion, void *refimp);
 
+// Der Clientteil des Spielcodes steckt in derselben Bibliothek und hat zwei
+// eigene Einsprungpunkte, die CL_InitCGameVM (cl_cgame.cpp:68-75) auf demselben
+// Weg holt — dlsym über eine Zeichenkette. Für den Linker sind sie damit
+// genauso unsichtbar wie GetGameAPI und gehören genauso hierher.
+//
+// Sie fehlten, und der Fehler war lange verdeckt: -dead_strip behält im
+// Hauptprogramm nur, was von einer Wurzel aus erreichbar ist. GetGameAPI und
+// GetRefAPI hielt der Anker, vmMain und dllEntry hielt nichts. Sichtbar wurde
+// es erst bei einem Release-Build ("Failed to load client game functions" im
+// Hauptmenü, dlsym(RTLD_DEFAULT, vmMain): symbol not found); vorher wurde
+// ausschließlich Debug gebaut, wo genug übrig blieb. Ein Anker, der nur einen
+// Teil der nachgeschlagenen Symbole nennt, ist kein Anker.
+//
+// Die Signaturen sind die aus cg_main.cpp:106 und cg_syscalls.cpp:33. Hier wird
+// nur die Adresse genommen, aufgerufen wird über die Engine.
+extern "C" intptr_t vmMain(intptr_t command, intptr_t arg0, intptr_t arg1,
+                           intptr_t arg2, intptr_t arg3, intptr_t arg4,
+                           intptr_t arg5, intptr_t arg6, intptr_t arg7);
+extern "C" void dllEntry(intptr_t (*syscallptr)(intptr_t arg, ...));
+
 // Ohne diesen Anker fänden die Symbole nie den Weg ins Programm: referenziert
 // werden sie ausschließlich über Zeichenketten in dlsym, und ein Archivmitglied,
 // das niemand referenziert, bindet der Linker gar nicht erst ein. Was er
@@ -89,6 +109,8 @@ __attribute__((used))
 static void *const s_moduleAnchors[] = {
     (void *)&GetGameAPI,
     (void *)&GetRefAPI,
+    (void *)&vmMain,
+    (void *)&dllEntry,
 };
 
 /*

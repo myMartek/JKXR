@@ -6,8 +6,24 @@ nichts. Es ist aber bereits über iOS hinaus verallgemeinert: neben "iphoneos"
 existiert "tvos" als `target_platform`. visionOS lässt sich deshalb als weiterer
 Zweig derselben Struktur ergänzen, statt einen Sonderweg zu bauen.
 
-Betroffen sind fünf Dateien, jeweils an der Stelle, an der schon zwischen
-iphoneos und tvos unterschieden wird. Aufruf:
+Betroffen sind neun Dateien, jeweils an der Stelle, an der schon zwischen
+iphoneos und tvos unterschieden wird. Die neunte — known-target-triples.txt —
+fällt aus der Reihe: ANGLE baut ohne Rust, aber gn wertet den zugehörigen
+assert schon beim Importieren aus und verlangt das Tripel in der Allowlist.
+
+Der Baum wird als iOS-Variante gebaut, nicht als eigenes Betriebssystem:
+
+    gn gen out/xros --args='target_os="ios" target_platform="xros"
+                            target_environment="device" target_cpu="arm64"
+                            is_debug=false ios_enable_code_signing=false
+                            ios_deployment_target="2.0"'
+
+`target_os="xros"` scheitert dagegen an //build/config/BUILDCONFIG.gn, das die
+Toolchain nur für die eingebauten Betriebssysteme kennt. Und
+`ios_deployment_target` landet unverändert im Clang-Triple (`arm64-apple-xros`
+plus Version), weshalb dort eine visionOS-Zahl stehen muss: Clang nimmt 1.0,
+2.0 und 26.0, weist die iOS-Vorgabe 18.0 aber als ungültige Versionsnummer ab.
+Aufruf:
 
     python3 patch-angle-visionos.py angle/
 
@@ -162,6 +178,16 @@ PATCHES = [
       return 'ios'
     raise ValueError""",
         "Bundle-Typ für xros in codesign.py bestimmen",
+    ),
+    (
+        "build/rust/known-target-triples.txt",
+        """aarch64-apple-tvos-sim
+""",
+        """aarch64-apple-tvos-sim
+aarch64-apple-visionos
+aarch64-apple-visionos-sim
+""",
+        "visionOS-Tripel in die Allowlist von known-target-triples.txt",
     ),
 ]
 

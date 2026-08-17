@@ -219,13 +219,6 @@ cp_drawable_t  gDrawable = nullptr;
 id<MTLCommandQueue>  gQueue = nil;
 id<MTLCommandBuffer> gCommandBuffer = nil;
 
-// Sichtsonde über Metal (siehe TBXR_submitFrame). Der Blit läuft in einem
-// Bild, gelesen wird im nächsten — so muss nirgends auf die GPU gewartet
-// werden.
-static id<MTLTexture> gProbeStaging = nil;
-static id<MTLCommandBuffer> gProbeCommands = nil;
-static bool gProbePending = false;
-
 /// Pro Auge die aus der Drawable importierten GL-Objekte. Sie gelten nur für
 /// den laufenden Frame und werden in TBXR_finishEyeBuffer wieder abgeräumt.
 struct EyeImport {
@@ -1227,6 +1220,27 @@ void TBXR_FrameSetup()
         return;
     }
 
+    // AUFRÄUMEN, darf nach einem Start wieder heraus.
+    //
+    // Die GPU-Aufzeichnung, die den Clear-Fehler gefunden hat, ist entfernt —
+    // ihr Ergebnis liegt aber noch als knapp 1 GB im Dokumentenordner, und
+    // devicectl kann Dateien nur schreiben, nicht löschen. Also einmal von
+    // innen.
+    {
+        static bool geraeumt = false;
+        if (!geraeumt) {
+            geraeumt = true;
+            NSArray *dirs = NSSearchPathForDirectoriesInDomains(
+                NSDocumentDirectory, NSUserDomainMask, YES);
+            NSString *pfad = [dirs.firstObject
+                stringByAppendingPathComponent:@"jkxr-foveation.gputrace"];
+            if ([[NSFileManager defaultManager] fileExistsAtPath:pfad]) {
+                [[NSFileManager defaultManager] removeItemAtPath:pfad error:nil];
+                Com_Printf("Diagnose-Ueberrest entfernt: jkxr-foveation.gputrace\n");
+            }
+        }
+    }
+
     gFrame = cp_layer_renderer_query_next_frame(gLayerRenderer);
     if (!gFrame) return;
 
@@ -1358,6 +1372,74 @@ void TBXR_FrameSetup()
         const size_t views = cp_drawable_get_view_count(gDrawable);
         const size_t textures = cp_drawable_get_texture_count(gDrawable);
         ALOGV("[Drawable] %zu View(s), %zu Textur(en)", views, textures);
+
+        // Laut werden, wenn das zweite Auge nirgends landet.
+        //
+        // Bisher stand hier nur die Beschreibung. Weniger Texturen als Views
+        // heisst aber, dass cp_drawable_get_color_texture fuer das rechte Auge
+        // ins Leere greift — das Bild bleibt dort schwarz, ohne dass irgendetwas
+        // fehlschlaegt. Kein harter Abbruch: eine App, die nicht startet, laesst
+        // sich nicht diagnostizieren.
+        if (textures < views) {
+            ALOGE("[Drawable] NUR %zu Textur(en) fuer %zu View(s) — das Layout ist "
+                  "vermutlich shared statt dedicated. Das zweite Auge landet "
+                  "nirgends und bleibt schwarz. Siehe JKXRLayerConfiguration.",
+                  textures, views);
+        }
+
+        // Und die Zahlen, die fuer Foveation entscheiden.
+        //
+        // Sie wurden bisher durchgehend ANGENOMMEN: physische Texturgroesse,
+        // screenSize der Rate-Map, der Viewport je Auge und die Aufloesung, mit
+        // der die Engine rechnet. Bei aktiver Foveation muessen screenSize und
+        // glConfig.vidWidth/vidHeight uebereinstimmen, sonst laufen Viewport und
+        // Map auseinander.
+        //
+        // Ueber Com_Printf, nicht nur ALOGV: ALOGV schreibt nach stderr
+        // (TBXR_Common.h:63) und landet damit NICHT in qconsole.log. Der Weg
+        // ueber die Konsole der Engine ist der einzige, der ohne
+        // "devicectl --console" auslesbar ist -- und dessen Start stellt den
+        // Immersive Space wieder her, was den Geraetezustand schon einmal
+        // verdorben hat.
+        const size_t rateMaps = cp_drawable_get_rasterization_rate_map_count(gDrawable);
+        ALOGV("[Foveation] %zu Rate-Map(s), Engine rechnet mit %dx%d",
+              rateMaps, gAppState.Width, gAppState.Height);
+        // %.0f, nicht %d: ovrApp.Width ist ein float (TBXR_Common.h:268). Mit
+        // %d gelesen ergibt es durch Varargs Unsinn -- meine erste Fassung
+        // meldete deshalb "0x0", waehrend TBXR_GetScreenRes voellig korrekt
+        // 2048x1984 lieferte. Eine halbe Stunde Suche an der falschen Stelle.
+        int engineW = 0, engineH = 0;
+        TBXR_GetScreenRes(&engineW, &engineH);
+        Com_Printf("[Foveation] %zu Rate-Map(s) · Layout %zu View(s)/%zu Textur(en) · "
+                   "gAppState %.0fx%.0f · Engine %dx%d\n",
+                   rateMaps, views, textures,
+                   gAppState.Width, gAppState.Height, engineW, engineH);
+        for (size_t i = 0; i < rateMaps; ++i) {
+            id<MTLRasterizationRateMap> rm =
+                cp_drawable_get_rasterization_rate_map(gDrawable, i);
+            if (!rm) continue;
+            const MTLSize screen = rm.screenSize;
+            const MTLSize phys = rm.physicalGranularity;
+            id<MTLTexture> t = cp_drawable_get_color_texture(gDrawable, i);
+            ALOGV("[Foveation]  %zu: screen %lux%lu, Textur %lux%lu, "
+                  "Granularitaet %lux%lu",
+                  i, (unsigned long)screen.width, (unsigned long)screen.height,
+                  (unsigned long)t.width, (unsigned long)t.height,
+                  (unsigned long)phys.width, (unsigned long)phys.height);
+            Com_Printf("[Foveation]  %zu: screen %lux%lu · Textur %lux%lu · "
+                       "Granularitaet %lux%lu\n",
+                       i, (unsigned long)screen.width, (unsigned long)screen.height,
+                       (unsigned long)t.width, (unsigned long)t.height,
+                       (unsigned long)phys.width, (unsigned long)phys.height);
+        }
+        for (size_t i = 0; i < views; ++i) {
+            MTLViewport vp = cp_view_texture_map_get_viewport(
+                cp_view_get_view_texture_map(cp_drawable_get_view(gDrawable, i)));
+            ALOGV("[Foveation]  Viewport Auge %zu: Ursprung %.0f,%.0f, %.0fx%.0f",
+                  i, vp.originX, vp.originY, vp.width, vp.height);
+            Com_Printf("[Foveation]  Viewport Auge %zu: Ursprung %.0f,%.0f · %.0fx%.0f\n",
+                       i, vp.originX, vp.originY, vp.width, vp.height);
+        }
         for (size_t i = 0; i < textures; ++i) {
             id<MTLTexture> t = cp_drawable_get_color_texture(gDrawable, i);
             id<MTLTexture> d = cp_drawable_get_depth_texture(gDrawable, i);
@@ -1599,42 +1681,47 @@ void TBXR_prepareEyeBuffer(int eye)
         return;
     }
 
+    // Rate Map VOR dem Viewport. Die Reihenfolge ist nicht beliebig.
+    //
+    // ANGLE rechnet Viewport und Scissor BEIM SETZEN aus, nicht beim Zeichnen
+    // (ContextMtl::syncState -> updateScissor; genau dort greift der Patch aus
+    // spikes/s4-angle und stellt die renderArea auf die screenSize der Map um).
+    // setRasterizationRateMap schreibt dagegen nur Felder und setzt KEIN
+    // Dirty-Bit. Wer den Viewport vorher setzt, lässt updateScissor mit der
+    // PHYSISCHEN renderArea laufen — und nichts rechnet das später nach.
+    //
+    // Die funktionierende Referenz macht es genau so herum, und ihr Kommentar
+    // sagt es wörtlich: "muss nach dem Binden und vor dem Zeichnen passieren"
+    // (spikes/s4-angle/visionOS/Sources/Angle/AngleBridge.c:426-441 — Map bei
+    // :428, glViewport erst bei :441). Hier stand es bis b4cbb01 vertauscht.
+    //
+    // Verschärft durch gl4es: gl4es_glViewport leitet nur bei GEÄNDERTEM Wert
+    // weiter (SupportLibs/gl4es/src/gl/raster.c:57-68). Die XR-Schicht setzt
+    // per angle::Viewport an gl4es vorbei, ein späteres qglViewport der Engine
+    // mit denselben Werten wird also verworfen — es gibt kein zweites
+    // Dirty-Bit, das den falsch gerechneten Scissor noch korrigieren könnte.
+    //
+    // Hinter der Vollständigkeitsprüfung, nicht davor wie in der Referenz: so
+    // bleibt auf den Früh-Rücksprüngen oben keine Map an einem unvollständigen
+    // FBO hängen.
+    //
+    // nil ist ein gültiger Wert und muss durchgereicht werden — der Patch
+    // verlangt "immer zuweisen, auch nil", weil die Descriptors wiederverwendet
+    // werden und sonst eine Map aus einem früheren Auge stehenbliebe. Bei
+    // abgeschalteter Foveation ist die Anzahl 0 und es gibt nichts zu holen.
+    const size_t rateMapCount = cp_drawable_get_rasterization_rate_map_count(gDrawable);
+    ANGLESetDrawFramebufferRateMapMTL(
+        ((size_t)eye < rateMapCount)
+            ? (__bridge const void *)cp_drawable_get_rasterization_rate_map(gDrawable, eye)
+            : nullptr);
+
     // Der Viewport steht bei aktiver Foveation in Screen-Koordinaten, die
-    // Textur ist physisch kleiner. Die Rate Map bildet dazwischen ab; ohne den
-    // ANGLE-Patch aus spikes/s4-angle bliebe nur eine Ecke des Bildes übrig.
+    // Textur ist physisch kleiner. Die Rate Map bildet dazwischen ab.
     cp_view_t view = cp_drawable_get_view(gDrawable, eye);
     cp_view_texture_map_t map = cp_view_get_view_texture_map(view);
     MTLViewport viewport = cp_view_texture_map_get_viewport(map);
     angle::Viewport((GLint)viewport.originX, (GLint)viewport.originY,
                (GLsizei)viewport.width, (GLsizei)viewport.height);
-
-    // DIAGNOSE: Rate-Map abschaltbar, Vorgabe AUS.
-    //
-    // Sie ist der letzte ungeprüfte Unterschied zwischen den beiden Zielen.
-    // Der Zwischenpuffer, in den die Welt nachweislich rendert, hat keine; die
-    // Augentextur, in der nur Clear und 2D ankommen, hat eine — und sie kommt
-    // aus einem eigenen ANGLE-Patch, ist also der am wenigsten erprobte Teil
-    // der Kette.
-    //
-    // Ohne Rate-Map muss auch die Ansicht auf die physische Texturgröße
-    // zurück: der Compositor gibt sie in Screen-Koordinaten (5087x4081), die
-    // Textur ist 2048x1984. Sonst läge nur eine Ecke des Bildes im Puffer.
-    // Getestet: OHNE Rate-Map bleibt die Welt ebenfalls aus. Sie ist damit
-    // nicht die Ursache, und der Normalzustand gilt wieder — sonst verfälscht
-    // die abgeschaltete Foveation samt geänderter Bildschirmauflösung jede
-    // weitere Messung (das HUD verlor dabei seine Weltstabilität).
-    static const int useRateMap = 1;
-    if (useRateMap) {
-        ANGLESetDrawFramebufferRateMapMTL(
-            (__bridge const void *)cp_drawable_get_rasterization_rate_map(gDrawable, eye));
-    } else {
-        ANGLESetDrawFramebufferRateMapMTL(nullptr);
-        id<MTLTexture> phys = cp_drawable_get_color_texture(gDrawable, eye);
-        if (phys) {
-            TBXR_visionOS_SetScreenRes((int)phys.width, (int)phys.height);
-            angle::Viewport(0, 0, (GLsizei)phys.width, (GLsizei)phys.height);
-        }
-    }
 
 
     // Reversed-Z wie vom Compositor erwartet. visionOS behandelt Pixel, deren
@@ -1689,8 +1776,22 @@ void TBXR_prepareEyeBuffer(int eye)
     // mit der unveränderten ARKit-Kamera als Quad in die Welt.
     if (VR_UseScreenLayer() && ensureFlatScreenTarget()) {
         restoreTextureBinding();
-        ANGLESetDrawFramebufferRateMapMTL(nullptr);
+        // Erst binden, dann abmelden. Die Reihenfolge war vertauscht.
+        //
+        // ANGLESetDrawFramebufferRateMapMTL wirkt auf den GERADE GEBUNDENEN
+        // Draw-Framebuffer (der Patch holt sich
+        // context->getState().getDrawFramebuffer()). Vor dem Binden landete das
+        // nil also auf dem Augen-FBO und löschte dort die eben gesetzte Map,
+        // während der Flachbild-FBO nie eine abgemeldet bekam.
+        //
+        // Bei abgeschalteter Foveation folgenlos, weil nil dann beidesmal ein
+        // No-op ist. Mit Foveation verliert die Augentextur sonst ihre Map.
+        //
+        // In TBXR_finishEyeBuffer ist die Reihenfolge RICHTIG: dort gilt das nil
+        // absichtlich dem Augen-FBO, und erst danach wird auf 0 gebunden. Die
+        // Asymmetrie ist gewollt, nicht ein zweiter Fehler.
         angle::BindFramebuffer(GL_FRAMEBUFFER, gFlatScreenFramebuffer);
+ANGLESetDrawFramebufferRateMapMTL(nullptr);
         angle::Viewport(0, 0, gFlatScreenWidth, gFlatScreenHeight);
 
         const GLboolean flatScissorWasEnabled = angle::IsEnabled(GL_SCISSOR_TEST);
@@ -1766,20 +1867,6 @@ void TBXR_finishEyeBuffer(int eye)
         //
         // Der Compositor nahm die 2 m also fuer echte Geometrie und hat sein
         // Bild danach verzerrt.
-    }
-
-    // gl4es reports its logical default framebuffer as 0.  Query ANGLE
-    // directly here, after the engine rendered, to verify that the physical
-    // binding still points at the imported compositor framebuffer.
-    static int framebufferDiagnostics = 0;
-    if (eye == 0 && framebufferDiagnostics < 8) {
-        GLint actualFramebuffer = -1;
-        angle::GetIntegerv(GL_FRAMEBUFFER_BINDING, &actualFramebuffer);
-        const GLenum error = angle::GetError();
-        ALOGV("[ANGLE FBO] frame=%d actual=%d compositor=%u flat=%u error=0x%04x",
-              gFrameCounter, actualFramebuffer, gFramebuffer,
-              gFlatScreenFramebuffer, error);
-        framebufferDiagnostics++;
     }
 
     // glFinish, nicht glFlush.
@@ -1930,103 +2017,6 @@ void TBXR_submitFrame()
             id<MTLRenderCommandEncoder> enc =
                 [gCommandBuffer renderCommandEncoderWithDescriptor:pass];
             [enc endEncoding];
-        }
-    }
-
-    // ---------------------------------------------------------------------
-    // Sichtsonde über METAL statt über glReadPixels.
-    //
-    // glReadPixels liefert auf der importierten Drawable-Textur durchgehend
-    // Nullen — es meldet nicht einmal den Clear, der auf dem Gerät sichtbar
-    // ist. Damit war jede Messung darüber wertlos, und zwar unauffällig
-    // wertlos: sie sagt immer "schwarz".
-    //
-    // Metal kommt an dieselbe Textur heran. Sie liegt in MTLStorageModePrivate,
-    // also erst per Blit in einen sichtbaren Puffer kopieren.
-    //
-    // Gelesen wird das Ergebnis absichtlich ERST im nächsten Durchgang: sonst
-    // müsste hier auf die GPU gewartet werden, und das verfälscht genau die
-    // Zeitmessung, an der der Compositor die App beurteilt.
-    if ((gFrameCounter % 90) == 0 || gProbePending) {
-        id<MTLTexture> src = cp_drawable_get_color_texture(gDrawable, 0);
-
-        if (gProbePending && gProbeStaging && gProbeCommands &&
-            gProbeCommands.status == MTLCommandBufferStatusCompleted) {
-            const int grid = 8;
-            const NSUInteger w = gProbeStaging.width, h = gProbeStaging.height;
-            char map[8 * 9 + 1];
-            int at = 0, filled = 0, brightest = 0;
-            // Das Format der Drawable ist NICHT 8-Bit.
-            //
-            // cp_drawable_get_color_texture liefert hier MTLPixelFormatRGBA16Float
-            // (115) — acht Byte je Bildpunkt als Halbfloats. Vier Byte zu lesen
-            // und als 0..255 zu deuten ergibt Unsinn, und zwar unauffälligen:
-            // es kommt einfach "schwarz" heraus. Genau daran ist die vorherige
-            // Fassung gescheitert, obwohl der Clear sichtbar auf dem Gerät war.
-            const bool halfFloat =
-                (gProbeStaging.pixelFormat == MTLPixelFormatRGBA16Float);
-            const NSUInteger stride = halfFloat ? 8 : 4;
-            for (int gy = 0; gy < grid; ++gy) {          // Zeile 0 = oben
-                for (int gx = 0; gx < grid; ++gx) {
-                    unsigned char raw[8] = {0};
-                    MTLRegion r = MTLRegionMake2D(
-                        gx * (w / grid) + (w / grid) / 2,
-                        gy * (h / grid) + (h / grid) / 2, 1, 1);
-                    [gProbeStaging getBytes:raw bytesPerRow:stride
-                                 fromRegion:r mipmapLevel:0];
-                    unsigned char px[4];
-                    if (halfFloat) {
-                        const __fp16 *f = (const __fp16 *)raw;
-                        for (int c = 0; c < 4; ++c) {
-                            float v = (float)f[c];
-                            v = v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
-                            px[c] = (unsigned char)(v * 255.0f + 0.5f);
-                        }
-                    } else {
-                        memcpy(px, raw, 4);
-                    }
-                    const int sum = px[0] + px[1] + px[2];
-                    if (sum > brightest) brightest = sum;
-                    // Der Diagnose-Clear ist (0.25, 0, 0.45).
-                    const bool isClear = (px[0] > 45 && px[0] < 85 &&
-                                          px[1] < 25 && px[2] > 95 && px[2] < 135);
-                    const bool content = (sum > 12 && !isClear);
-                    map[at++] = content ? '#' : (isClear ? '.' : ' ');
-                    if (content) ++filled;
-                }
-                map[at++] = '\n';
-            }
-            map[at] = 0;
-            ALOGV("[Metal-Sicht] Bild %d, %lux%lu: %d/64 belegt, hellster %d\n%s",
-                  gFrameCounter, (unsigned long)w, (unsigned long)h,
-                  filled, brightest, map);
-            gProbePending = false;
-        }
-
-        if (!gProbePending && src && (gFrameCounter % 90) == 0) {
-            if (!gProbeStaging || gProbeStaging.width != src.width ||
-                gProbeStaging.height != src.height) {
-                MTLTextureDescriptor *d = [MTLTextureDescriptor
-                    texture2DDescriptorWithPixelFormat:src.pixelFormat
-                                                 width:src.width
-                                                height:src.height
-                                             mipmapped:NO];
-                d.storageMode = MTLStorageModeShared;
-                d.usage = MTLTextureUsageShaderRead;
-                gProbeStaging = [cp_layer_renderer_get_device(gLayerRenderer)
-                                    newTextureWithDescriptor:d];
-            }
-            if (gProbeStaging) {
-                id<MTLBlitCommandEncoder> blit = [gCommandBuffer blitCommandEncoder];
-                [blit copyFromTexture:src sourceSlice:0 sourceLevel:0
-                         sourceOrigin:MTLOriginMake(0, 0, 0)
-                           sourceSize:MTLSizeMake(src.width, src.height, 1)
-                            toTexture:gProbeStaging destinationSlice:0
-                     destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
-                [blit endEncoding];
-                gProbeCommands = gCommandBuffer;
-                gProbePending = true;
-            }
         }
     }
 

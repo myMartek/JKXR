@@ -15,41 +15,49 @@ struct JKXRLayerConfiguration: CompositorLayerConfiguration {
         // Werte, die dann als linear gelesen werden — das Bild kippt ins Weiße.
         configuration.colorFormat = .rgba16Float
 
-        // Foveation an.
+        // Foveation.
         //
-        // Ohne sie deckelt CompositorServices die Drawable-Auflösung: die
-        // Textur bleibt bei 2048x1984 statt der 5087x4081 Screen-Koordinaten,
-        // auf die mit Rate-Map gerendert wird. Die Vision Pro käme dann nicht
-        // über das hinaus, was günstigere Headsets liefern.
+        // Ohne sie deckelt CompositorServices die Drawable-Auflösung: die Textur
+        // bleibt bei 2048x1984 statt der 5087x4081 Screen-Koordinaten, auf die
+        // mit Rate-Map gerendert wird. Die Vision Pro kommt dann nicht über das
+        // hinaus, was günstigere Headsets liefern.
         //
         // Zwei Pfade nutzen sie unterschiedlich:
         //   - das native Metal-Quad für 2D setzt pass.rasterizationRateMap
-        //     direkt aus der Drawable
-        //   - die 3D-Szene rendert über ANGLE und braucht dafür unseren Patch
-        //     im Metal-Backend (patch-angle-foveation.py), der die Rate-Map
-        //     über ANGLESetDrawFramebufferRateMapMTL entgegennimmt
-        // Vorerst AUS.
+        //     direkt aus der Drawable (drawMetalScreenPanel in TBXR_Common.mm)
+        //   - die 3D-Szene rendert über ANGLE und braucht dafür unseren Patch im
+        //     Metal-Backend (spikes/s4-angle/patch-angle-foveation.py), der die
+        //     Map über ANGLESetDrawFramebufferRateMapMTL entgegennimmt
         //
-        // Der ANGLE-Patch, der die Rate-Map entgegennimmt, greift für den
-        // GL-Pfad nachweislich nicht: die Engine rendert mit einer Ansicht von
-        // 5087x4081 (Screen-Koordinaten) in eine 2048x1984 große Textur. Ohne
-        // wirksame Rate-Map landet das Bild in einer Ecke, und der Compositor
-        // zieht die Textur anschließend auf die volle Fläche auseinander, weil
-        // er ein foveiertes Bild erwartet — sichtbar als kleiner Ausschnitt
-        // oben links mit stark verzerrten Rändern.
+        // WAS HIER FRÜHER STAND und nicht haltbar war: der ANGLE-Patch greife
+        // "für den GL-Pfad nachweislich nicht". Belegt ist das Gegenteil --
+        // spikes/s4-angle/README.md hält fest, dass alle vier Klemmglieder auf
+        // dem Gerät gemessen wurden und die Kette danach mit 5087x4081 über den
+        // vollen ANGLE-Pfad lief. Das Symbol ist im mitgelieferten Framework
+        // vorhanden (nm -gU zeigt _ANGLESetDrawFramebufferRateMapMTL).
         //
-        // Ohne Foveation sind Ansicht und Textur wieder identisch (beide
-        // 2048x1984, siehe EngineHost: ohne Rate-Map wird die Texturgröße
-        // gemeldet). Das kostet Auflösung, ist aber in sich stimmig.
+        // Offen war nicht der Patch, sondern seine BENUTZUNG: JKXR setzte den
+        // Viewport vor der Rate-Map, die Referenz macht es umgekehrt. Behoben in
+        // TBXR_prepareEyeBuffer, Begründung dort.
         //
-        // Wieder einschalten, sobald patch-angle-foveation.py für den GL-Pfad
-        // trägt; die Prüfung dafür ist genau dieses Bild.
-        configuration.isFoveationEnabled = false
-        if !configuration.isFoveationEnabled {
-            print("[JKXR] WARNUNG: Foveation nicht verfügbar. Ohne sie deckelt "
-                + "CompositorServices die Drawable-Auflösung, und die Vision Pro "
-                + "kommt nicht über das hinaus, was günstigere Headsets liefern.")
+        // Der alte Text hat den nächsten Leser in die falsche Richtung geschickt
+        // -- deshalb steht das hier und nicht nur im Commit.
+        // BLEIBT AN, bis es steht.
+        //
+        // Der Zustand ist bekannt und eingegrenzt (siehe Commit): Menue, Videos
+        // und HUD sind korrekt, die 3D-Welt klemmt auf einen Bereich oben links.
+        // Ausgeschaltet waere der Fehler nicht mehr sichtbar und jede weitere
+        // Messung daran unmoeglich.
+        let useFoveation = true
+        configuration.isFoveationEnabled = useFoveation && capabilities.supportsFoveation
+        if useFoveation && !capabilities.supportsFoveation {
+            print("[JKXR] WARNUNG: Foveation gewünscht, aber das Gerät meldet "
+                + "supportsFoveation = false. Die Drawable-Auflösung bleibt "
+                + "gedeckelt.")
         }
+        print("[JKXR] Foveation: gewünscht \(useFoveation), "
+            + "unterstützt \(capabilities.supportsFoveation), "
+            + "aktiv \(configuration.isFoveationEnabled)")
 
         let options: LayerRenderer.Capabilities.SupportedLayoutsOptions =
             configuration.isFoveationEnabled ? [.foveationEnabled] : []
@@ -65,7 +73,21 @@ struct JKXRLayerConfiguration: CompositorLayerConfiguration {
         // Blickrichtung, was in S4 genau so gemessen wurde.
         //
         // Der zweite Renderpass kostet hier nichts: JKXR rendert ohnehin pro Auge.
-        configuration.layout = layouts.contains(.dedicated) ? .dedicated : .shared
+        //
+        // Der Rückfall auf shared ist KEIN gleichwertiger Ersatz, sondern ein
+        // schwarzes Bild: shared liefert nur EINE Textur, und
+        // cp_drawable_get_color_texture(.., 1) für das rechte Auge greift dann
+        // ins Leere (siehe die Bestandsaufnahme in TBXR_FrameSetup). Deshalb die
+        // Warnung mit der Folge, nicht bloß mit dem Namen.
+        if layouts.contains(.dedicated) {
+            configuration.layout = .dedicated
+        } else {
+            configuration.layout = .shared
+            print("[JKXR] WARNUNG: Layout dedicated nicht verfügbar, shared "
+                + "gewählt. Damit gibt es nur EINE Augentextur — das rechte Auge "
+                + "bleibt schwarz. Verfügbar: \(layouts)")
+        }
+        print("[JKXR] Layout: \(configuration.layout)")
     }
 }
 

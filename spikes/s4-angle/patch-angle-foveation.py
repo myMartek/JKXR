@@ -168,6 +168,44 @@ PATCHES = [
         "Scissor bei aktiver Rate Map in Screen-Koordinaten rechnen",
     ),
     # ------------------------------------------------------------------
+    # 4b-2. Der Viewport — die Stelle, die bis 8034773 gefehlt hat
+    #
+    # GetViewport spiegelt Y gegen die uebergebene Hoehe, weil GL von unten links
+    # rechnet und Metal von oben links. Uebergeben wird die PHYSISCHE Hoehe des
+    # Anhangs; der Viewport steht bei aktiver Rate Map aber in SCREEN-Koordinaten.
+    #
+    # Auf dem Geraet gemessen: physisch 1984, Viewport 0,1 5086x4080. Die
+    # Spiegelung ergibt 1984 - (1 + 4080) = -2097 statt 0. Der Viewport landet
+    # weit im Negativen, und uebrig bleibt der obere linke Ausschnitt -- genau das
+    # Bild, das JKXR mit eingeschalteter Foveation zeigte.
+    #
+    # Der Patch korrigierte bisher nur den Scissor (4b) und dessen Obergrenze
+    # (4c). Ohne diese dritte Stelle traegt die Rate Map im GL-Pfad nicht.
+    # ------------------------------------------------------------------
+    (
+        METAL + "ContextMtl.mm",
+        """    mViewport = mtl::GetViewport(viewport, framebufferMtl->getState().getDimensions().height,
+                                 framebufferMtl->getFlipY(), nearPlane, farPlane);""",
+        """    // Fork-Ergänzung: Bei aktiver Rasterization Rate Map ist der Viewport in
+    // Screen-Koordinaten angegeben, die Anhänge sind physisch und kleiner.
+    // GetViewport spiegelt Y gegen die übergebene Höhe — mit der physischen
+    // landet der Viewport im Negativen, und sichtbar bleibt eine Ecke.
+    int flipHeight = framebufferMtl->getState().getDimensions().height;
+    if (const void *rateMap = framebufferMtl->getRasterizationRateMap())
+    {
+        if (@available(iOS 13.0, macOS 10.15.4, *))
+        {
+            MTLSize screen = [(__bridge id<MTLRasterizationRateMap>)const_cast<void *>(rateMap)
+                screenSize];
+            flipHeight = static_cast<int>(screen.height);
+        }
+    }
+
+    mViewport = mtl::GetViewport(viewport, flipHeight,
+                                 framebufferMtl->getFlipY(), nearPlane, farPlane);""",
+        "Viewport bei aktiver Rate Map gegen die Screen-Höhe spiegeln",
+    ),
+    # ------------------------------------------------------------------
     # 4c. Die Scissor-Obergrenze anheben
     #
     # Letztes Glied der Kette. mRenderPassMaxScissorRect startet bei "unendlich"
@@ -251,6 +289,54 @@ void SetDrawFramebufferRateMap(gl::Context *context, const void *rateMap)
 
 }  // namespace rx""",
         "Implementierung SetDrawFramebufferRateMap in FrameBufferMtl.mm",
+    ),
+    # ------------------------------------------------------------------
+    # 5c. Clear in Screen-Koordinaten
+    #
+    # Kann ANGLE einen Clear nicht über die Load-Action des Render-Passes
+    # erledigen, zeichnet es ihn als Vollbild-Quad. Dessen Viewport kommt aus
+    # den Maßen des Anhangs — physisch und kleiner als die Screen-Koordinaten,
+    # in denen der Pass mit Rate Map rastert. Der Clear deckt dann nur die
+    # linke obere Ecke ab, und außerhalb bleiben Farb- UND Tiefenwerte des
+    # Vorbilds stehen. Sichtbar wurde das als Kasten oben links, in dem
+    # einzelne Flächen erscheinen, die außerhalb am veralteten Tiefenpuffer
+    # scheitern.
+    # ------------------------------------------------------------------
+    (
+        "src/libANGLE/renderer/metal/FrameBufferMtl.mm",
+        """    ContextMtl *contextMtl = mtl::GetImpl(context);
+    const gl::Rectangle renderArea(0, 0, mState.getDimensions().width,
+                                   mState.getDimensions().height);
+
+    clearOpts.colorFormat    = mRenderPassFirstColorAttachmentFormat;
+    clearOpts.dstTextureSize = mState.getExtents();
+    clearOpts.clearArea      = ClipRectToScissor(contextMtl->getState(), renderArea, false);""",
+        """    ContextMtl *contextMtl = mtl::GetImpl(context);
+    gl::Rectangle renderArea(0, 0, mState.getDimensions().width,
+                             mState.getDimensions().height);
+    gl::Extents dstTextureSize = mState.getExtents();
+
+    // Fork-Ergänzung: Bei aktiver Rate Map rastert dieser Pass in
+    // Screen-Koordinaten. Mit den physischen Maßen träfe der Clear nur die
+    // linke obere Ecke; der Scissor der Engine steht ohnehin schon in
+    // Screen-Koordinaten, die Schnittmenge unten bleibt also stimmig.
+    if (const void *rateMap = getRasterizationRateMap())
+    {
+        if (@available(iOS 13.0, macOS 10.15.4, *))
+        {
+            MTLSize screen = [(__bridge id<MTLRasterizationRateMap>)const_cast<void *>(rateMap)
+                screenSize];
+            renderArea = gl::Rectangle(0, 0, static_cast<int>(screen.width),
+                                       static_cast<int>(screen.height));
+            dstTextureSize.width  = static_cast<int>(screen.width);
+            dstTextureSize.height = static_cast<int>(screen.height);
+        }
+    }
+
+    clearOpts.colorFormat    = mRenderPassFirstColorAttachmentFormat;
+    clearOpts.dstTextureSize = dstTextureSize;
+    clearOpts.clearArea      = ClipRectToScissor(contextMtl->getState(), renderArea, false);""",
+        "Clear-Quad bei aktiver Rate Map in Screen-Koordinaten aufziehen",
     ),
     # ------------------------------------------------------------------
     # 5b. Exportierte C-Hülle

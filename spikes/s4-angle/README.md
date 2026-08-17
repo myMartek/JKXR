@@ -302,15 +302,36 @@ Reproduzieren:
 # depot_tools holen, dann
 git clone https://chromium.googlesource.com/angle/angle
 git -C angle checkout $(cat ANGLE-COMMIT)
-python3 angle/scripts/bootstrap.py && gclient sync
+cd angle && python3 scripts/bootstrap.py && gclient sync --no-history && cd ..
 
-python3 patch-angle-visionos.py angle     # 8 Stellen: //build lernt visionOS
-python3 patch-angle-foveation.py angle    # 9 Stellen: Rasterization Rate Maps
+python3 patch-angle-visionos.py angle     #  9 Stellen: //build lernt visionOS
+python3 patch-angle-foveation.py angle    # 10 Stellen: Rasterization Rate Maps
 
-gn gen angle/out/xros --args='target_os="xros" target_cpu="arm64" is_debug=false'
+gn gen angle/out/xros --args='target_os="ios" target_platform="xros"
+    target_environment="device" target_cpu="arm64" is_debug=false
+    ios_enable_code_signing=false ios_deployment_target="2.0"'
+                                            # eine Zeile, ohne Umbrüche
 ninja -C angle/out/xros libEGL libGLESv2
 ```
 
-Die beiden Skripte ändern zusammen **acht Dateien** im Baum; mehr steckt nicht
-in unserer ANGLE-Fassung. Deshalb genügen Commit-Stand und Skripte, um sie
-jederzeit wiederherzustellen.
+Vier Fallen, jede einmal hineingetreten:
+
+- **`bootstrap.py` gehört ins `angle/`-Verzeichnis**, nicht daneben. Von außen
+  legt es `.gclient` in den Elternordner, und `gclient sync` schüttet den
+  ANGLE-Baum dann über das aktuelle Verzeichnis aus. Kein `-D`: das löscht
+  „nicht verwaltete" Dateien und damit fremde Nachbarordner gleich mit.
+- **`target_os="xros"` gibt es nicht.** visionOS ist hier eine iOS-Variante
+  (`target_platform`), wie tvos. Mit `target_os="xros"` bricht
+  `//build/config/BUILDCONFIG.gn` bei der Toolchain-Wahl ab.
+- **`ios_deployment_target` wandert ins Clang-Triple.** Der Ausdruck lautet
+  `$triplet_cpu-$triplet_os$ios_deployment_target` — die iOS-Vorgabe ergibt
+  `arm64-apple-xros18.0`, und diese Versionsnummer weist Clang ab. visionOS
+  zählt eigene Fassungen; 1.0, 2.0 und 26.0 werden angenommen.
+- **Der Baum wächst.** Der Rust-Hunk setzt `aarch64-apple-visionos`, und
+  inzwischen prüft `//build/rust/known-target-triples.txt` diesen Namen gegen
+  eine Allowlist — obwohl ANGLE gar kein Rust baut. Deshalb die neunte Stelle
+  im visionOS-Skript.
+
+Die beiden Skripte ändern zusammen **fünfzehn Dateien** im Baum; mehr steckt
+nicht in unserer ANGLE-Fassung. Deshalb genügen Commit-Stand und Skripte, um
+sie jederzeit wiederherzustellen.
