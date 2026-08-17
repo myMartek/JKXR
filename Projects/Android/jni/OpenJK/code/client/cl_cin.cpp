@@ -1643,6 +1643,25 @@ static void CIN_AddTextCrawl()
 	refdef.width = cls.glconfig.vidWidth;
 	refdef.height = cls.glconfig.vidHeight * 2; // deliberately extend off the bottom of the screen
 
+#if defined(JKXR_VISIONOS)
+	// Den Ausschnitt um eine Bildschirmhoehe nach oben ziehen.
+	//
+	// Der Ausschnitt ist doppelt so hoch wie der Bildschirm, sichtbar ist also
+	// nur eine Haelfte davon -- und WELCHE, das entscheidet RE_RenderScene mit
+	// der Umrechnung von 0-oben nach GLs 0-unten. Sichtbar ist die obere.
+	//
+	// Die gespiegelte Flaeche liegt aber in der unteren. Deshalb wandert hier der
+	// Ausschnitt, nicht die Umrechnung: die galt fuer JEDE Ansicht mit eigener
+	// Bildgeometrie und verschob damit auch den Abspann im Outcast-Menue
+	// (UI_PatreonCredits), der dieselbe Flaeche UNGESPIEGELT zeichnet und
+	// deshalb in der oberen Haelfte richtig sitzt.
+	//
+	// Zwei gleiche Flaechen, eine gespiegelt und eine nicht -- die Verschiebung
+	// gehoert also zu der, die gespiegelt wird, und nicht in die gemeinsame
+	// Umrechnung.
+	refdef.y -= cls.glconfig.vidHeight;
+#endif
+
 	// use to set shaderTime for scrolling shaders
 	refdef.time = 0;
 
@@ -1689,32 +1708,37 @@ static void CIN_AddTextCrawl()
 	verts[3].st[1] = 0 TIMEOFFSET;
 
 #if defined(JKXR_VISIONOS)
-	// Die Textur spiegeln, nicht die Flaeche und nicht die Reihenfolge.
+	// Die Flaeche in ihrer Hochachse spiegeln.
 	//
-	// Auf diesem Weg landet das Bild senkrecht gespiegelt -- der Text stand
-	// kopf. Das liegt an der Zeilenordnung des Flachbild-Pfads, nicht an der
-	// Szene. Zwei naheliegende Wege dorthin sind beide falsch, und beide wurden
-	// auf dem Geraet ausprobiert:
+	// Auf diesem Weg landet das Bild senkrecht gespiegelt -- der Text stand kopf
+	// und lief in die falsche Richtung. Das liegt an der Zeilenordnung des
+	// Flachbild-Pfads, nicht an der Szene.
 	//
-	//   z = -z          spiegelt die HOCHACHSE. Die Nahkante liegt bei z = 0,
-	//                   die Fernkante bei z = 1100 -- das wirft die Fernkante auf
-	//                   -1100 und kippt die ganze Flaeche. Solange RE_RenderScene
-	//                   den Ausschnitt auch fuer Flachbild-Ziele unumgerechnet
-	//                   liess, hob sich das auf; seit der Richtigstellung in
-	//                   tr_scene.cpp lag der Vorspann ausserhalb des Bildschirms.
+	// Nur die Flaeche tut hier das Richtige. Zwei Umwege ueber die
+	// Texturkoordinate wurden auf dem Geraet ausprobiert und sind beide falsch,
+	// weil sie am INHALT drehen statt an der Darstellung:
 	//
-	//   t tauschen      vertauscht Nah- und Fernkante. Damit laeuft der Text
-	//                   RUECKWAERTS: er soll nah beginnen und sich entfernen,
-	//                   kam aber winzig von hinten heran. Der Zeitversatz
-	//                   verschiebt beide Kanten gleichsinnig, ein Tausch dreht
-	//                   also die Laufrichtung mit.
+	//   t tauschen    dreht das Bild und die Laufrichtung mit. Der Text soll nah
+	//                 beginnen und sich entfernen, kam aber winzig von hinten.
+	//   t -> 1 - t    dreht die Reihenfolge des Textes: er lief von oben nach
+	//                 unten und begann mit der letzten Zeile.
 	//
-	// Richtig ist die Spiegelung der Koordinate selbst. Der Abstand zwischen
-	// Nah- und Fernkante kehrt sein Vorzeichen um -- das Bild steht damit
-	// richtig herum --, waehrend der Zeitversatz weiter in dieselbe Richtung
-	// laeuft.
+	// Der Zeitversatz verschiebt beide Kanten gleichsinnig; jeder Eingriff an t
+	// verschiebt ihn mit. Die Darstellung gehoert also in die Geometrie.
 	for ( int e = 0; e < 4; ++e ) {
-		verts[e].st[1] = 1.0f - verts[e].st[1];
+		verts[e].xyz[2] = -verts[e].xyz[2];
+	}
+
+	// Und die Reihenfolge umdrehen.
+	//
+	// Eine Spiegelung kehrt die Wicklung jedes Dreiecks um, damit zeigt das
+	// Viereck nach hinten und wird verworfen -- gemessen: der Text war danach
+	// ganz weg. Ausgetauscht werden ganze Eckpunkte, Texturkoordinate und Farbe
+	// wandern also mit ihrer Position.
+	{
+		polyVert_t tausch;
+		tausch = verts[0]; verts[0] = verts[3]; verts[3] = tausch;
+		tausch = verts[1]; verts[1] = verts[2]; verts[2] = tausch;
 	}
 #endif
 
