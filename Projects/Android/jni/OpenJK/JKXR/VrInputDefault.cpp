@@ -266,6 +266,27 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
             }
         }
 
+#if defined(JKXR_VISIONOS)
+        // Waehrend einer Filmsequenz KEINE Menuebedienung.
+        //
+        // Der Block darueber ist der gewollte Weg zum Ueberspringen: er schickt
+        // "+use" als Kommando und wartet dafuer eine Sekunde ab, damit ein
+        // Druck aus dem Menue oder von einem uebersprungenen Video nicht gleich
+        // die naechste Sequenz mitnimmt.
+        //
+        // Der Block hier schickt dagegen eine TASTE (A_MOUSE1 ueber
+        // Sys_QueEvent), und CL_KeyDownEvent beendet eine Sequenz bei jeder
+        // Taste (cl_keys.cpp:1244) -- ohne Schonfrist. Beide laufen, weil Menue
+        // und Filmsequenz denselben Flachbild-Pfad benutzen; die Schonfrist
+        // schuetzte also genau einen der beiden Wege.
+        //
+        // Genau das war der Fehler: Sequenzen brachen von selbst ab, ohne dass
+        // jemand etwas gedrueckt hatte. Waehrend einer Sequenz gibt es ohnehin
+        // kein Menue zu bedienen -- weder ein Zeiger noch A_ESCAPE oder A_TAB
+        // haetten dort einen Sinn, alle drei wuerden sie nur abbrechen.
+        if (!vr.cin_camera)
+        {
+#endif
         bool controlsLeftHanded = vr_control_scheme->integer >= 10;
         if (controlsLeftHanded == vr.menu_right_handed) {
             interactWithTouchScreen(menuYaw, vr.offhandangles[ANGLES_DEFAULT]);
@@ -294,6 +315,9 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
         if (secondaryButton1New && !secondaryButton1Old) {
                 Sys_QueEvent(0, SE_KEY, A_ESCAPE, true, 0, NULL);
         }
+#if defined(JKXR_VISIONOS)
+        }
+#endif
 
     }
     else

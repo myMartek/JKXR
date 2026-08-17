@@ -1244,6 +1244,16 @@ void CL_KeyDownEvent( int key, unsigned time )
 	// keys can still be used for bound actions
 	if ( ( cls.state == CA_CINEMATIC || CL_IsRunningInGameCinematic()) && !Key_GetCatcher() )
 	{
+#if defined(JKXR_VISIONOS)
+		// MESSPUNKT, wieder zu entfernen.
+		//
+		// Hier bricht JEDE Taste eine Filmsequenz ab, ohne Schonfrist und ohne
+		// Filter. Auf der Brille geschah das wiederholt, ohne dass jemand etwas
+		// gedrueckt hatte -- und welche Taste es war, liess sich nicht sagen.
+		// Diese Zeile sagt es.
+		Com_Printf( "[Sequenz] abgebrochen durch Taste %d (%s), Zustand %d\n",
+			key, Key_KeynumToString( key ), cls.state );
+#endif
 		SCR_StopCinematic(qtrue);
 		return;
 //		key = A_ESCAPE;
