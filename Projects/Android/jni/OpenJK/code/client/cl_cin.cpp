@@ -143,6 +143,9 @@ static cin_cache		cinTable[MAX_VIDEO_HANDLES];
 static int				currentHandle = -1;
 static int				CL_handle = -1;
 static int				CL_iPlaybackStartTime;
+#if defined(JKXR_VISIONOS)
+static int				CL_iInGameCinematicStartTime = -100000;
+#endif
 
 #if defined(JKXR_VISIONOS)
 // Laeuft gerade ein Vorspanntext?
@@ -1686,39 +1689,24 @@ static void CIN_AddTextCrawl()
 	verts[3].st[1] = 0 TIMEOFFSET;
 
 #if defined(JKXR_VISIONOS)
-	// Die Flaeche vorab in ihrer eigenen Hochachse spiegeln.
+	// KEINE Spiegelung mehr -- die stand hier und war eine Doppelkorrektur.
 	//
-	// Auf dem Panel landet das Bild senkrecht gespiegelt -- der Text lief von
-	// oben nach unten und war nicht zu lesen. Das liegt an der Zeilenordnung
-	// dieses Weges, nicht an der Szene.
+	// Sie glich aus, dass der Vorspann senkrecht gespiegelt und in der falschen
+	// Bildhaelfte landete. Beides kam aber nicht von dieser Flaeche, sondern von
+	// einer zu weit gefassten Ausnahme in RE_RenderScene: dort unterblieb die
+	// Umrechnung des Ausschnitts von 0-oben nach GLs 0-unten auch fuer
+	// Flachbild-Ziele, obwohl die Y-Umkehr in R_SetupProjection dort gar nicht
+	// greift (tr_scene.cpp, inzwischen richtiggestellt).
 	//
-	// Ausgeglichen wird HIER und nur hier. Der naheliegende Weg -- der Y-Tausch
-	// in R_SetupProjection -- greift ueber ein Merkmal, das auch die
-	// Menuevorschauen trifft (RDF_NOWORLDMODEL und override_fov), und drehte
-	// Charakter und Lichtschwert mit. Diese Spiegelung betrifft ausschliesslich
-	// die vier Eckpunkte des Vorspanns.
+	// Der Gegenbeweis ist der Abspann im Outcast-Menue: UI_PatreonCredits baut
+	// dieselbe Flaeche mit denselben TC_PLANE_-Ecken und denselben
+	// Texturkoordinaten, ganz ohne Spiegelung -- und sitzt seit der
+	// Richtigstellung korrekt. Zwei gleiche Flaechen koennen nicht
+	// entgegengesetzte Korrekturen brauchen.
 	//
-	// Gespiegelt wird die Hochachse z (TC_PLANE_TOP..TC_PLANE_BOTTOM), nicht die
-	// Texturkoordinate: so kehrt sich mit der Flaeche auch die Schrift um, und
-	// die Spiegelung des Panels hebt beides gemeinsam wieder auf.
-	for ( int e = 0; e < 4; ++e ) {
-		verts[e].xyz[2] = -verts[e].xyz[2];
-	}
-
-	// Und die Reihenfolge umdrehen.
-	//
-	// Eine Spiegelung kehrt die Wicklungsreihenfolge jedes Dreiecks um, damit
-	// zeigt das Viereck nach hinten und wird verworfen -- gemessen: der Text war
-	// nach der Spiegelung ganz weg. Dieselbe Sache hat heute schon einmal
-	// aufgehalten, damals im Zusammenspiel mit dem Y-Tausch.
-	//
-	// Ausgetauscht werden ganze Eckpunkte, Texturkoordinate und Farbe wandern
-	// also mit ihrer Position -- auch die Abdunklung der hinteren beiden.
-	{
-		polyVert_t tausch;
-		tausch = verts[0]; verts[0] = verts[3]; verts[3] = tausch;
-		tausch = verts[1]; verts[1] = verts[2]; verts[2] = tausch;
-	}
+	// Mit der Spiegelung landete der Vorspann nach der Richtigstellung in der
+	// unteren Haelfte des doppelt hohen Ausschnitts, also ausserhalb des
+	// Bildschirms; sichtbar blieb ein Streifen am oberen Rand.
 #endif
 
 	// render it out
@@ -1945,6 +1933,19 @@ static void PlayCinematic(const char *arg, const char *s, qboolean qbInGame)
 		}
 
 		qbPlayingInGameCinematic = qbInGame;
+#if defined(JKXR_VISIONOS)
+		// Beginn merken, fuer die Verweigerung in SCR_StopCinematic.
+		//
+		// CL_iPlaybackStartTime taugt dafuer nicht: es wird erst weiter unten
+		// gesetzt, und NUR wenn sich ein Video oeffnen liess (CL_handle >= 0).
+		// Genau deshalb lief die Verweigerung bei spielinternen Sequenzen ins
+		// Leere -- gemessen: eine Szene endete nach rund hundert Millisekunden
+		// durch A_ESCAPE, waehrend dieselbe Verweigerung beim Intro-Video
+		// einwandfrei griff.
+		if ( qbInGame ) {
+			CL_iInGameCinematicStartTime = cls.realtime;
+		}
+#endif
 
 		if ((s && s[0] == '1') || Q_stricmp(arg,"video/end.roq")==0) {
 			bits |= CIN_hold;
@@ -2146,6 +2147,26 @@ void SCR_StopCinematic( qboolean bAllowRefusal /* = qfalse */ )
 		{
 			return;
 		}
+#if defined(JKXR_VISIONOS)
+		// Dieselbe Schonfrist fuer spielinterne Sequenzen.
+		//
+		// Die Bedingung oben verlangt ein gueltiges VIDEO-Handle. Eine Szene,
+		// bei der sich keines oeffnen liess -- im Protokoll stehen mehrere
+		// "playCinematic: ... not found!" -- laeuft trotzdem als
+		// spielinterne Sequenz weiter, faellt aber aus der Verweigerung heraus
+		// und stirbt an der ersten Taste.
+		//
+		// Auf der Brille ist das keine Randerscheinung: die Menuetaste des
+		// rechten Controllers meldet Flanken von selbst, und eine davon genuegt.
+		// Die Entprellung in OpenXrActions.mm faengt das an der Quelle; diese
+		// Zeile ist die zweite Sicherung, unabhaengig davon, woher eine Taste
+		// kommt.
+		if ( qbPlayingInGameCinematic
+			&& cls.realtime < CL_iInGameCinematicStartTime + 1200 )
+		{
+			return;
+		}
+#endif
 	}
 
 	if ( CL_IsRunningInGameCinematic())

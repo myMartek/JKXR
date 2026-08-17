@@ -516,6 +516,39 @@ extern "C" XrResult xrSyncActions(XrSession, const XrActionsSyncInfo *)
     return XR_SUCCESS;
 }
 
+/// Meldet einen Tastenzustand erst, wenn er sich eine Weile gehalten hat.
+///
+/// Ein Flackern von wenigen Bildern faellt damit weg, ein echter Druck kommt
+/// verzoegert, aber vollstaendig durch -- man haelt ihn ohnehin laenger.
+static bool entprellt(const void *action, int hand, bool roh)
+{
+    // Vier Eintraege genuegen: die Entprellung gilt nur der Menuetaste, und die
+    // gibt es je Hand einmal.
+    struct Eintrag { const void *action; int hand; bool roh; bool stabil; CFTimeInterval seit; };
+    static Eintrag eintraege[4] = {};
+
+    Eintrag *e = nullptr;
+    for (Eintrag &kandidat : eintraege) {
+        if (kandidat.action == action && kandidat.hand == hand) { e = &kandidat; break; }
+        if (kandidat.action == nullptr && !e) { e = &kandidat; }
+    }
+    if (!e) return roh;
+
+    const CFTimeInterval jetzt = CACurrentMediaTime();
+    if (e->action != action || e->hand != hand) {
+        *e = { action, hand, roh, roh, jetzt };
+        return e->stabil;
+    }
+
+    if (roh != e->roh) {
+        e->roh = roh;
+        e->seit = jetzt;
+    } else if (roh != e->stabil && (jetzt - e->seit) >= 0.08) {
+        e->stabil = roh;
+    }
+    return e->stabil;
+}
+
 extern "C" XrResult xrGetActionStateBoolean(XrSession, const XrActionStateGetInfo *info,
                                             XrActionStateBoolean *state)
 {
@@ -535,7 +568,27 @@ extern "C" XrResult xrGetActionStateBoolean(XrSession, const XrActionStateGetInf
         return XR_SUCCESS;
     }
 
-    state->currentState = button.pressed ? XR_TRUE : XR_FALSE;
+    bool gedrueckt = button.pressed;
+
+    // Die Menuetaste entprellen.
+    //
+    // GEMESSEN auf dem Geraet: das Element "Button Menu" des RECHTEN
+    // Sense-Controllers meldet von sich aus Flanken, ohne dass es beruehrt wird
+    // -- im Protokoll als Wechsel 0 -> 2 -> 0 -> 2 binnen weniger Bilder. Diese
+    // Taste liegt auf A_ESCAPE, und eine einzige Flanke beendet eine laufende
+    // Filmsequenz (cl_keys.cpp:1244). Genau daran starben die Szenen nach
+    // hundert Millisekunden.
+    //
+    // Nur diese eine Taste, nicht alle: eine Entprellung kostet Reaktionszeit,
+    // und beim Trigger waere das im Kampf zu spueren. Beim Menue faellt sie
+    // nicht auf.
+    const std::string *bindung = bindingForHand(action, handForSubaction(action, info->subactionPath));
+    if (bindung && bindung->size() >= 12 &&
+        bindung->compare(bindung->size() - 12, 12, "/menu/click") == 0) {
+        gedrueckt = entprellt(action, handForSubaction(action, info->subactionPath), gedrueckt);
+    }
+
+    state->currentState = gedrueckt ? XR_TRUE : XR_FALSE;
     state->isActive = XR_TRUE;
     return XR_SUCCESS;
 }
