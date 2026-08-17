@@ -238,8 +238,43 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
     }
 
     //Menu button
+#if defined(JKXR_VISIONOS)
+	// Waehrend einer Filmsequenz nicht.
+	//
+	// Gemessen: die Szene nach dem Levelladen brach zweimal hintereinander durch
+	// A_ESCAPE ab, links und rechts im selben Bild, ohne dass jemand die
+	// Menuetaste beruehrt hatte. Der Abbruch steht in cl_keys.cpp:1244 und
+	// nimmt JEDE Taste; ESCAPE haette in einer Sequenz ohnehin keine andere
+	// Wirkung als abzubrechen.
+	//
+	// Das behebt die WIRKUNG, nicht die Ursache: dass beide Menuetasten
+	// gleichzeitig eine Flanke melden, bleibt offen. Der Messpunkt unten sagt
+	// beim naechsten Mal, ob sie tatsaechlich als gedrueckt gelesen werden.
+	if (!vr.cin_camera)
+	{
 	handleTrackedControllerButton(&leftTrackedRemoteState_new, &leftTrackedRemoteState_old, xrButton_Enter, A_ESCAPE);
 	handleTrackedControllerButton(&rightTrackedRemoteState_new, &rightTrackedRemoteState_old, xrButton_Enter, A_ESCAPE);
+	}
+
+	// MESSPUNKT, wieder zu entfernen.
+	{
+		static int letzterEnter = -1;
+		const int jetzt =
+			((leftTrackedRemoteState_new.Buttons & xrButton_Enter) ? 1 : 0) |
+			((rightTrackedRemoteState_new.Buttons & xrButton_Enter) ? 2 : 0);
+		const int vorher =
+			((leftTrackedRemoteState_old.Buttons & xrButton_Enter) ? 1 : 0) |
+			((rightTrackedRemoteState_old.Buttons & xrButton_Enter) ? 2 : 0);
+		if (jetzt != letzterEnter) {
+			letzterEnter = jetzt;
+			Com_Printf("[Menuetaste] links/rechts jetzt %d, vorher %d, Sequenz %d\n",
+				jetzt, vorher, vr.cin_camera ? 1 : 0);
+		}
+	}
+#else
+	handleTrackedControllerButton(&leftTrackedRemoteState_new, &leftTrackedRemoteState_old, xrButton_Enter, A_ESCAPE);
+	handleTrackedControllerButton(&rightTrackedRemoteState_new, &rightTrackedRemoteState_old, xrButton_Enter, A_ESCAPE);
+#endif
 
     static float menuYaw = 0;
     if (VR_UseScreenLayer() && !vr.misc_camera)
