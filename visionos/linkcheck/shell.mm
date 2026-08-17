@@ -13,8 +13,23 @@
 
 #import <ARKit/ARKit.h>
 
+#include "visionos/JKXR_visionOS_Spiel.h"
+
+// Was sonst im App-Ziel liegt (Sources/Bridge). Hier als Attrappe, damit der
+// Prüflink nicht das ganze App-Ziel braucht.
 extern "C" void *TBXR_visionOS_GetWorldTracking(void) { return nullptr; }
+extern "C" void *TBXR_visionOS_GetAccessoryTracking(void) { return nullptr; }
+extern "C" void *TBXR_visionOS_GetSpatialDevice(int hand) { (void)hand; return nullptr; }
+extern "C" void TBXR_visionOS_StartWorldTracking(void) {}
+extern "C" void TBXR_visionOS_StartAccessoryTracking(void) {}
 
-extern "C" int JKXR_visionOS_Main(int argc, char *argv[]);
-
-int main(int argc, char *argv[]) { return JKXR_visionOS_Main(argc, argv); }
+// BEIDE Tabellen anfassen, sonst prüft der Link nur einen Spielsatz. Genau das
+// soll er ja beantworten: ob Outcast und Academy zusammen ein Programm ergeben.
+int main(int argc, char *argv[])
+{
+    const JKXR_visionOS_Spiel *spiele[] = {
+        &JKXR_visionOS_Spiel_ja,
+        &JKXR_visionOS_Spiel_jo,
+    };
+    return spiele[0]->Main(argc, argv) + (spiele[1] != nullptr ? 0 : 1);
+}

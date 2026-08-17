@@ -21,7 +21,34 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 
 #pragma once
 
-#ifdef DEDICATED
+#if defined(JKXR_VISIONOS)
+// Auf visionOS gibt es keine nachladbaren Module. Renderer und Spielcode sind
+// statisch gelinkt, und seit BEIDE Spiele in einem Programm stecken, sind ihre
+// Symbole nach dem Teil-Link (link-visionos.sh) lokal — dlsym findet sie nicht.
+//
+// Der frühere Weg über dlsym(RTLD_DEFAULT) wäre hier nicht bloß unbequem,
+// sondern falsch: Outcast und Academy bringen GetRefAPI, GetGameAPI und vmMain
+// je einmal mit, und welche Fassung RTLD_DEFAULT liefert, ist nicht bestimmt.
+// Nachgeschlagen wird deshalb in einer Tabelle, die jeder Satz für sich führt
+// (visionos_main.mm).
+#	ifdef __cplusplus
+extern "C" {
+#	endif
+void *JKXR_visionOS_ModuleHandle(void);
+void *JKXR_visionOS_LoadFunction(void *handle, const char *name);
+const char *JKXR_visionOS_LibraryError(void);
+#	ifdef __cplusplus
+}
+#	endif
+// Sys_LoadLibrary hat keinen Sinn und keinen Aufrufer: die Engine kommt über
+// Sys_LoadDll und Sys_LoadSPGameDll an ihre Module. Bewusst 0 statt eines
+// Fehlers — so scheitert ein künftiger Aufrufer an der Prüfung, die er ohnehin
+// hat, statt am Übersetzen.
+#	define Sys_LoadLibrary(f) ((void *)0)
+#	define Sys_UnloadLibrary(h) ((void)(h))
+#	define Sys_LoadFunction(h, fn) JKXR_visionOS_LoadFunction((h), (fn))
+#	define Sys_LibraryError() JKXR_visionOS_LibraryError()
+#elif defined(DEDICATED)
 #	ifdef _WIN32
 #		include <windows.h>
 #		define Sys_LoadLibrary(f) (void*)LoadLibrary(f)

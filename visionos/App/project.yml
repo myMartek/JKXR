@@ -72,33 +72,38 @@ targets:
         ENABLE_DEBUG_DYLIB: "NO"
 
         SWIFT_OBJC_BRIDGING_HEADER: Sources/Bridge/JKXR-Bridging-Header.h
-        HEADER_SEARCH_PATHS: $(SRCROOT)/../../spikes/s4-angle/angle-include
+        # Der zweite Pfad wegen JKXR_visionOS_Spiel.h: die Spieltabelle ist
+        # die Schnittstelle zwischen Hülle und Engine und liegt deshalb im
+        # Engine-Baum, nicht in Sources/Bridge.
+        HEADER_SEARCH_PATHS: >-
+          $(SRCROOT)/../../spikes/s4-angle/angle-include
+          $(SRCROOT)/../../Projects/Android/jni/OpenJK/code/visionos
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
 
         # Die Engine. Erklärung zu jedem Teil in link-visionos.sh:
         #
-        #   *-merged.o    Teil-Link von Renderer und Spielcode. Beide Module
-        #                 bringen eigene Fassungen der gemeinsamen Funktionen
-        #                 mit (Com_Printf gibt es dreimal); der Teil-Link macht
-        #                 alles außer dem Einsprungpunkt lokal.
+        #   spiel-ja.o    Jedi Academy, spiel-jo.o Jedi Outcast — je ein
+        #   spiel-jo.o    vollständiger Satz aus Client, Renderer, Spielcode,
+        #                 XR-Schicht und Hilfsbibliotheken, zweistufig
+        #                 teil-gelinkt. Jedes Objekt trägt nach außen genau ein
+        #                 Symbol: seine Spieltabelle. Nur so lassen sich zwei
+        #                 Engines in einem Programm halten, die beide Com_Printf,
+        #                 GetRefAPI und vmMain mitbringen.
         #   -force_load   ein Alias braucht sein Ziel im Link, und referenziert
         #                 wird nur der Aliasname.
         #   -alias_list   Mach-O kennt keine Compiler-Aliase (793 Stück).
         #   -lc++         Xcode linkt eine Swift-App mit clang, nicht clang++,
         #                 und zieht die C++-Standardbibliothek daher nicht von
         #                 selbst hinzu. Die Engine ist C++.
+        #
+        # libpng, libjpeg, libzip, libminizip und sigc stehen hier NICHT mehr:
+        # sie rufen die Engine zurück (etwa openjk_minizip_malloc) und stecken
+        # deshalb in den Spielsätzen selbst.
         OTHER_LDFLAGS: >-
           -Wl,-force_load,$(SRCROOT)/../../build-visionos/gl4es/lib/libGL.a
           -Wl,-alias_list,$(SRCROOT)/../../build-visionos/gl4es-aliases.txt
-          $(SRCROOT)/../../build-visionos/link/rd-gles-merged.o
-          $(SRCROOT)/../../build-visionos/link/jagame-merged.o
-          $(SRCROOT)/../build/libopenjk_ja.a
-          $(SRCROOT)/../build/libtbxr_visionos.a
-          $(SRCROOT)/../build/liblibpng.a
-          $(SRCROOT)/../build/liblibjpeg.a
-          $(SRCROOT)/../build/liblibzip.a
-          $(SRCROOT)/../build/liblibminizip.a
-          $(SRCROOT)/../build/libsigc.a
+          $(SRCROOT)/../../build-visionos/link/spiel-ja.o
+          $(SRCROOT)/../../build-visionos/link/spiel-jo.o
           -lz
           -lc++
           -framework AudioToolbox

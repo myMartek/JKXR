@@ -9,30 +9,15 @@
 
 #include <CompositorServices/CompositorServices.h>
 
+// Alles, was in einem der beiden Spielsätze liegt, geht über die Tabelle dort:
+// Outcast und Academy bringen jede dieser Funktionen je einmal mit, und nach dem
+// Teil-Link ist keine davon global. Frühere Fassungen dieser Datei deklarierten
+// sie einzeln — das ging nur, solange es genau eine Engine gab.
+#include "JKXR_visionOS_Spiel.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-// --- XR-Schicht (JKXR/visionos/TBXR_Common.mm) ----------------------------
-
-/// Übergibt den LayerRenderer. Danach kann die XR-Schicht Frames holen.
-///
-/// Voraussetzung: ANGLE ist initialisiert und sein Kontext auf *diesem* Thread
-/// aktiv — die Funktion holt sich den EGLDisplay über eglGetCurrentDisplay().
-void TBXR_visionOS_SetLayerRenderer(cp_layer_renderer_t renderer);
-
-/// Hinterlegt die Renderauflösung je Auge, in Screen-Koordinaten.
-///
-/// Muss vor JKXR_visionOS_Main aufgerufen werden: WIN_Init fragt die Auflösung
-/// beim Start ab, CompositorServices gibt sie aber erst mit der ersten Drawable
-/// heraus (die C-API hat überhaupt keinen Zugriff auf Breite oder Höhe).
-void TBXR_visionOS_SetScreenRes(int width, int height);
-
-/// Gibt die tatsächlichen Namen aller Elemente verbundener Controller aus.
-///
-/// Einmal auf echter Hardware aufrufen und die geratene Tastenzuordnung in
-/// OpenXrActions.mm gegen die gemessenen Namen tauschen.
-void TBXR_visionOS_DumpInputs(void);
 
 // --- ARKit (Sources/Bridge/WorldTracking.m) -------------------------------
 
@@ -46,21 +31,6 @@ void TBXR_visionOS_StartAccessoryTracking(void);
 
 /// Das GCDevice einer Hand (0 = links, 1 = rechts), Händigkeit von ARKit.
 void *TBXR_visionOS_GetSpatialDevice(int hand);
-
-/// Übergibt ihn an das Action-System (OpenXrActions.mm).
-void TBXR_visionOS_SetAccessoryTracking(void *provider);
-
-// --- Engine (code/visionos/visionos_main.mm) ------------------------------
-
-/// Die Hauptschleife der Engine. Blockiert bis zum Ende.
-///
-/// Auf einem eigenen Thread aufzurufen, niemals auf einer Warteschlange von
-/// Swift Concurrency: die Schleife gibt nie ab und würde den Pool aushungern.
-/// Genau dieser Fehler war in S4 die Ursache, dass ARKit keine Posen lieferte.
-int JKXR_visionOS_Main(int argc, char *argv[]);
-
-/// Beendet die Schleife nach dem laufenden Bild.
-void JKXR_visionOS_RequestShutdown(void);
 
 #ifdef __cplusplus
 }

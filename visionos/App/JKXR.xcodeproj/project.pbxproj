@@ -15,6 +15,7 @@
 		78CA5C5899D378FF4C88CE1D /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47635BCC2BCC1CC1C5751D4 /* ContentView.swift */; };
 		78D555D5C95FDB660899D176 /* libEGL.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 63D4B8E4A26A48D82F8DCE60 /* libEGL.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		BCEEB8B7CE0E2A32AC9FF1E8 /* EngineHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06BB71B3A0F665691FF899FB /* EngineHost.swift */; };
+		D7D7EF00F6C052A3F2BCC96C /* SpielWahl.c in Sources */ = {isa = PBXBuildFile; fileRef = 75DB998F042F5F877FD8C325 /* SpielWahl.c */; };
 		FE04998D8653339058EDA0AB /* JKXRApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12FC913F54114EA867076FDC /* JKXRApp.swift */; };
 /* End PBXBuildFile section */
 
@@ -40,6 +41,7 @@
 		40E4386F40A16FF2D112B627 /* WorldTracking.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WorldTracking.m; sourceTree = "<group>"; };
 		63D4B8E4A26A48D82F8DCE60 /* libEGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = libEGL.framework; path = Frameworks/libEGL.framework; sourceTree = "<group>"; };
 		6F7B01FB19B5941154702D36 /* JKXR-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "JKXR-Bridging-Header.h"; sourceTree = "<group>"; };
+		75DB998F042F5F877FD8C325 /* SpielWahl.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = SpielWahl.c; sourceTree = "<group>"; };
 		959BE1DE7DBFE94ACDC8E10F /* JKXR.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = JKXR.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E47635BCC2BCC1CC1C5751D4 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		EF7A3D96492B916A30A6FE3E /* JKXRBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = JKXRBridge.h; sourceTree = "<group>"; };
@@ -76,6 +78,7 @@
 				33D840871EDE1EC635691BD3 /* AngleBridge.h */,
 				6F7B01FB19B5941154702D36 /* JKXR-Bridging-Header.h */,
 				EF7A3D96492B916A30A6FE3E /* JKXRBridge.h */,
+				75DB998F042F5F877FD8C325 /* SpielWahl.c */,
 				40E4386F40A16FF2D112B627 /* WorldTracking.m */,
 			);
 			path = Bridge;
@@ -182,6 +185,7 @@
 				78CA5C5899D378FF4C88CE1D /* ContentView.swift in Sources */,
 				BCEEB8B7CE0E2A32AC9FF1E8 /* EngineHost.swift in Sources */,
 				FE04998D8653339058EDA0AB /* JKXRApp.swift in Sources */,
+				D7D7EF00F6C052A3F2BCC96C /* SpielWahl.c in Sources */,
 				368A53BEA92B4E1DAE469734 /* WorldTracking.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -198,13 +202,13 @@
 					"$(inherited)",
 					"\"Frameworks\"",
 				);
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../spikes/s4-angle/angle-include";
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../spikes/s4-angle/angle-include $(SRCROOT)/../../Projects/Android/jni/OpenJK/code/visionos";
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Jedi Knight XR";
 				INFOPLIST_KEY_NSWorldSensingUsageDescription = "Kopf- und Controllerposition für das Spiel im Immersive Space.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				OTHER_LDFLAGS = "-Wl,-force_load,$(SRCROOT)/../../build-visionos/gl4es/lib/libGL.a -Wl,-alias_list,$(SRCROOT)/../../build-visionos/gl4es-aliases.txt $(SRCROOT)/../../build-visionos/link/rd-gles-merged.o $(SRCROOT)/../../build-visionos/link/jagame-merged.o $(SRCROOT)/../build/libopenjk_ja.a $(SRCROOT)/../build/libtbxr_visionos.a $(SRCROOT)/../build/liblibpng.a $(SRCROOT)/../build/liblibjpeg.a $(SRCROOT)/../build/liblibzip.a $(SRCROOT)/../build/liblibminizip.a $(SRCROOT)/../build/libsigc.a -lz -lc++ -framework AudioToolbox -framework AVFoundation -framework GameController";
+				OTHER_LDFLAGS = "-Wl,-force_load,$(SRCROOT)/../../build-visionos/gl4es/lib/libGL.a -Wl,-alias_list,$(SRCROOT)/../../build-visionos/gl4es-aliases.txt $(SRCROOT)/../../build-visionos/link/spiel-ja.o $(SRCROOT)/../../build-visionos/link/spiel-jo.o -lz -lc++ -framework AudioToolbox -framework AVFoundation -framework GameController";
 				PRODUCT_NAME = JKXR;
 				SDKROOT = xros;
 				SWIFT_OBJC_BRIDGING_HEADER = "Sources/Bridge/JKXR-Bridging-Header.h";
@@ -281,13 +285,13 @@
 					"$(inherited)",
 					"\"Frameworks\"",
 				);
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../spikes/s4-angle/angle-include";
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../spikes/s4-angle/angle-include $(SRCROOT)/../../Projects/Android/jni/OpenJK/code/visionos";
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Jedi Knight XR";
 				INFOPLIST_KEY_NSWorldSensingUsageDescription = "Kopf- und Controllerposition für das Spiel im Immersive Space.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				OTHER_LDFLAGS = "-Wl,-force_load,$(SRCROOT)/../../build-visionos/gl4es/lib/libGL.a -Wl,-alias_list,$(SRCROOT)/../../build-visionos/gl4es-aliases.txt $(SRCROOT)/../../build-visionos/link/rd-gles-merged.o $(SRCROOT)/../../build-visionos/link/jagame-merged.o $(SRCROOT)/../build/libopenjk_ja.a $(SRCROOT)/../build/libtbxr_visionos.a $(SRCROOT)/../build/liblibpng.a $(SRCROOT)/../build/liblibjpeg.a $(SRCROOT)/../build/liblibzip.a $(SRCROOT)/../build/liblibminizip.a $(SRCROOT)/../build/libsigc.a -lz -lc++ -framework AudioToolbox -framework AVFoundation -framework GameController";
+				OTHER_LDFLAGS = "-Wl,-force_load,$(SRCROOT)/../../build-visionos/gl4es/lib/libGL.a -Wl,-alias_list,$(SRCROOT)/../../build-visionos/gl4es-aliases.txt $(SRCROOT)/../../build-visionos/link/spiel-ja.o $(SRCROOT)/../../build-visionos/link/spiel-jo.o -lz -lc++ -framework AudioToolbox -framework AVFoundation -framework GameController";
 				PRODUCT_NAME = JKXR;
 				SDKROOT = xros;
 				SWIFT_OBJC_BRIDGING_HEADER = "Sources/Bridge/JKXR-Bridging-Header.h";

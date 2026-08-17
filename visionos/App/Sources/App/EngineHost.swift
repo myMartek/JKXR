@@ -68,7 +68,16 @@ final class EngineHost {
     }
 
     func requestShutdown() {
-        JKXR_visionOS_RequestShutdown()
+        spiel?.pointee.RequestShutdown()
+    }
+
+    /// Die Tabelle des gewählten Spiels.
+    ///
+    /// Outcast und Academy bringen jede Engine-Funktion je einmal mit; welche
+    /// gilt, entscheidet die Auswahl im Startfenster. Ist nichts gewählt, ist
+    /// hier nil — dann darf die Engine auch nicht laufen.
+    private var spiel: UnsafePointer<JKXR_visionOS_Spiel>? {
+        JKXR_visionOS_Gewaehlt
     }
 
     // MARK: - Auf dem Engine-Thread
@@ -97,8 +106,18 @@ final class EngineHost {
                 + "verschiedene MTLDevices — der Texturimport wird scheitern")
         }
 
+        // Ohne Auswahl gibt es keine Engine, in die etwas übergeben werden
+        // könnte. Das ist kein erwarteter Zustand, sondern ein Fehler in der
+        // Reihenfolge — deshalb eine Meldung, die ihn benennt.
+        guard let spiel else {
+            print("[JKXR] FEHLER: kein Spiel gewählt, Engine startet nicht. "
+                + "JKXR_visionOS_Waehle muss vor dem Immersive Space laufen.")
+            return
+        }
+        print("[JKXR] Spiel: \(String(cString: spiel.pointee.name))")
+
         print("[JKXR] übergebe LayerRenderer an die XR-Schicht")
-        TBXR_visionOS_SetLayerRenderer(layerRenderer)
+        spiel.pointee.SetLayerRenderer(layerRenderer)
 
         print("[JKXR] messe Auflösung an einem Probe-Frame")
         guard let size = probeResolution() else {
@@ -106,7 +125,7 @@ final class EngineHost {
             return
         }
         print("[JKXR] Renderauflösung je Auge: \(size.width)x\(size.height)")
-        TBXR_visionOS_SetScreenRes(Int32(size.width), Int32(size.height))
+        spiel.pointee.SetScreenRes(Int32(size.width), Int32(size.height))
 
         // Zubehör-Provider ans Action-System: er liefert die Posen der
         // Controller und ist zugleich die Voraussetzung dafür, dass visionOS
@@ -117,14 +136,14 @@ final class EngineHost {
         // Liste, gemessen.
 
         print("[JKXR] frage Controller ab")
-        TBXR_visionOS_DumpInputs()
+        spiel.pointee.DumpInputs()
 
         print("[JKXR] starte Engine")
 
         var arg0 = strdup("jkxr")
         defer { free(arg0) }
         withUnsafeMutablePointer(to: &arg0) { argv in
-            _ = JKXR_visionOS_Main(1, argv)
+            _ = spiel.pointee.Main(1, argv)
         }
         print("[JKXR] Engine beendet")
     }

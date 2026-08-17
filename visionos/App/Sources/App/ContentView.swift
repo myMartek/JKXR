@@ -2,11 +2,55 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
+/// Welches der beiden Spiele.
+///
+/// Die Rohwerte müssen zu `JKXR_visionOS_SpielArt` in JKXR_visionOS_Spiel.h
+/// passen, und die Ordnernamen zu `JKXR_SPIELORDNER` in visionos_main.mm — dort
+/// sucht die Engine ihr `base/`.
+enum Spiel: Int32, CaseIterable, Identifiable {
+    case academy = 0
+    case outcast = 1
+
+    var id: Int32 { rawValue }
+
+    var name: String {
+        switch self {
+        case .academy: return "Jedi Academy"
+        case .outcast: return "Jedi Outcast"
+        }
+    }
+
+    /// Unterordner im Dokumentenverzeichnis. Beide Spiele nennen ihr
+    /// Datenverzeichnis "base"; ohne die Trennung überschrieben sich die
+    /// pk3-Dateien gegenseitig.
+    var ordner: String {
+        switch self {
+        case .academy: return "JediAcademy"
+        case .outcast: return "JediOutcast"
+        }
+    }
+
+    /// Was in `base/` liegen muss. Die z_vr_assets-Dateien stammen aus JKXR,
+    /// die assets aus dem jeweiligen Spiel.
+    var erwarteteDateien: String {
+        switch self {
+        case .academy:
+            return "assets0.pk3 bis assets3.pk3 aus einer Jedi-Academy-Installation, "
+                 + "dazu z_vr_assets_base.pk3 und z_vr_assets_jka.pk3."
+        case .outcast:
+            return "assets0.pk3, assets1.pk3, assets2.pk3 und assets5.pk3 aus einer "
+                 + "Jedi-Outcast-Installation, dazu z_vr_assets_base.pk3 und "
+                 + "z_vr_assets_jko.pk3."
+        }
+    }
+}
+
 /// Fenster vor dem Start.
 ///
-/// Zwei Aufgaben: die Spieldateien ins Dokumentenverzeichnis bekommen und den
-/// Immersive Space öffnen. Ohne `base/assets0.pk3` startet die Engine nicht,
-/// und die Fehlermeldung käme sonst erst im Headset — wo sie niemand liest.
+/// Drei Aufgaben: das Spiel wählen, die Spieldateien ins Dokumentenverzeichnis
+/// bekommen und den Immersive Space öffnen. Ohne `base/assets0.pk3` startet die
+/// Engine nicht, und die Fehlermeldung käme sonst erst im Headset — wo sie
+/// niemand liest.
 struct ContentView: View {
     @Environment(\.openImmersiveSpace) private var openImmersiveSpace
 
@@ -17,7 +61,8 @@ struct ContentView: View {
     /// Bild und muss von Hand weggeschoben werden.
     @Environment(\.dismissWindow) private var dismissWindow
 
-    @State private var assets = AssetStore.status()
+    @State private var spiel: Spiel = .academy
+    @State private var assets: AssetStatus = .missing
     @State private var importing = false
     @State private var progress: String?
     @State private var didAutoStart = false
@@ -27,24 +72,35 @@ struct ContentView: View {
             Text("Jedi Knight XR")
                 .font(.largeTitle)
 
+            // Die Auswahl steht ganz oben und nicht neben dem Spielen-Knopf:
+            // sie entscheidet, worauf sich alles darunter bezieht — Dateiliste,
+            // Pfad und Anleitung.
+            Picker("Spiel", selection: $spiel) {
+                ForEach(Spiel.allCases) { s in
+                    Text(s.name).tag(s)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 460)
+
             switch assets {
             case .ready(let names):
-                Label("\(names.count) pk3-Dateien in base/", systemImage: "checkmark.circle")
+                Label("\(names.count) pk3-Dateien in \(spiel.ordner)/base/",
+                      systemImage: "checkmark.circle")
                     .foregroundStyle(.green)
                 Text(names.sorted().joined(separator: ", "))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Button("Spielen") {
+                Button("\(spiel.name) spielen") {
                     Task { await startGame() }
                 }
                 .buttonStyle(.borderedProminent)
 
             case .missing:
-                Label("Spieldateien fehlen", systemImage: "exclamationmark.triangle")
+                Label("Spieldateien für \(spiel.name) fehlen",
+                      systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.orange)
-                Text("Benötigt werden assets0.pk3 bis assets3.pk3 aus einer "
-                   + "Jedi-Academy-Installation, dazu z_vr_assets_base.pk3 und "
-                   + "z_vr_assets_jka.pk3.")
+                Text("Benötigt werden \(spiel.erwarteteDateien)")
                     .font(.callout)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 460)
@@ -60,24 +116,28 @@ struct ContentView: View {
 
             HStack(spacing: 12) {
                 Button("Dateien auswählen…") { importing = true }
-                Button("In Dateien öffnen") { AssetStore.revealInFiles() }
-                Button("Erneut prüfen") { assets = AssetStore.status() }
+                Button("In Dateien öffnen") { AssetStore.revealInFiles(spiel) }
+                Button("Erneut prüfen") { assets = AssetStore.status(spiel) }
             }
             .font(.callout)
 
-            Text(AssetStore.baseDirectory.path)
+            Text(AssetStore.baseDirectory(spiel).path)
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(.tertiary)
                 .textSelection(.enabled)
         }
         .padding(40)
+        .onChange(of: spiel) { _, neu in
+            progress = nil
+            assets = AssetStore.status(neu)
+        }
         .task {
             // Muss vor allem anderen passieren: ein leeres Dokumentenverzeichnis
             // erscheint in der Dateien-App überhaupt nicht, egal was in der
             // Info.plist steht. Erst wenn etwas darin liegt, wird der Ordner
             // sichtbar und man kann hineinkopieren.
             AssetStore.prepare()
-            assets = AssetStore.status()
+            assets = AssetStore.status(spiel)
 
             // Hardware-Diagnose ohne UI-Automation. devicectl kann die App mit
             // JKXR_AUTO_START=1 starten; im normalen App-Start ist die Variable
@@ -104,8 +164,6 @@ struct ContentView: View {
         }
     }
 
-    /// Kopiert im Hintergrund: die Dateien sind zusammen rund 1,2 GB, das würde
-    /// die Oberfläche sonst für Minuten einfrieren.
     /// Immersive Space öffnen und danach das Startfenster schließen.
     ///
     /// Geschlossen wird NUR bei Erfolg. Scheitert das Öffnen, bleibt das
@@ -117,6 +175,13 @@ struct ContentView: View {
     /// statt Ambient. Ambient ist an den Vordergrundzustand gebunden und
     /// verstummt, sobald nur noch der Immersive Space offen ist.
     private func startGame() async {
+        // ZUERST die Wahl setzen, dann den Space öffnen.
+        //
+        // Der CompositorLayer wird beim Öffnen aufgebaut und startet den
+        // EngineHost; der liest die Tabelle sofort. Andersherum stünde dort nil
+        // und die Engine liefe gar nicht an.
+        JKXR_visionOS_Waehle(JKXR_visionOS_SpielArt(rawValue: UInt32(spiel.rawValue)))
+
         switch await openImmersiveSpace(id: "game") {
         case .opened:
             // Fenster schließen, sobald das Spiel läuft.
@@ -143,17 +208,21 @@ struct ContentView: View {
         }
     }
 
+    /// Kopiert im Hintergrund: die Dateien sind zusammen rund 1,2 GB, das würde
+    /// die Oberfläche sonst für Minuten einfrieren.
     private func copy(_ urls: [URL]) async {
+        let ziel = spiel
         for (index, url) in urls.enumerated() {
-            progress = "Kopiere \(url.lastPathComponent) (\(index + 1)/\(urls.count))…"
-            let result = await Task.detached { AssetStore.copyIntoBase(url) }.value
+            progress = "Kopiere \(url.lastPathComponent) (\(index + 1)/\(urls.count)) "
+                     + "nach \(ziel.ordner)…"
+            let result = await Task.detached { AssetStore.copyIntoBase(url, ziel) }.value
             if case .failure(let message) = result {
                 progress = message
                 return
             }
         }
         progress = nil
-        assets = AssetStore.status()
+        assets = AssetStore.status(spiel)
     }
 }
 
@@ -167,61 +236,110 @@ enum CopyResult {
     case failure(String)
 }
 
-/// Alles rund um `Documents/base` — demselben Ort, den `Sys_DefaultInstallPath`
-/// in `visionos_main.mm` liefert.
+/// Alles rund um `Documents/<Spiel>/base` — demselben Ort, den
+/// `Sys_DefaultInstallPath` in `visionos_main.mm` liefert.
 enum AssetStore {
     static var documentsDirectory: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
 
-    static var baseDirectory: URL {
-        documentsDirectory.appendingPathComponent("base")
+    static func baseDirectory(_ spiel: Spiel) -> URL {
+        documentsDirectory
+            .appendingPathComponent(spiel.ordner)
+            .appendingPathComponent("base")
     }
 
-    /// Legt `base/` an und hinterlegt eine Handreichung.
+    /// Legt für BEIDE Spiele `base/` an und hinterlegt je eine Handreichung.
     ///
-    /// Die Textdatei ist nicht nur Freundlichkeit: sie sorgt dafür, dass das
-    /// Dokumentenverzeichnis nicht leer ist. Ein leerer Ordner wird von der
-    /// Dateien-App ausgeblendet, und dann führt auch der angezeigte Pfad
-    /// nirgendwohin.
+    /// Beide, nicht nur das gewählte: die Ordner sollen in der Dateien-App
+    /// sichtbar sein, bevor man etwas hineinkopieren kann, und wer Outcast
+    /// einrichten will, sucht den Ordner dort — nicht erst nach einem
+    /// Spielwechsel im Fenster.
+    ///
+    /// Die Textdatei ist nicht nur Freundlichkeit: sie sorgt dafür, dass der
+    /// Ordner nicht leer ist. Ein leerer Ordner wird von der Dateien-App
+    /// ausgeblendet, und dann führt auch der angezeigte Pfad nirgendwohin.
     static func prepare() {
+        migriereAltesBase()
+
         let fm = FileManager.default
-        try? fm.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
+        for spiel in Spiel.allCases {
+            try? fm.createDirectory(at: baseDirectory(spiel),
+                                    withIntermediateDirectories: true)
 
-        let readme = documentsDirectory.appendingPathComponent("ANLEITUNG.txt")
-        if !fm.fileExists(atPath: readme.path) {
-            let text = """
-            Jedi Knight XR — Spieldateien
+            let readme = documentsDirectory
+                .appendingPathComponent(spiel.ordner)
+                .appendingPathComponent("ANLEITUNG.txt")
+            if !fm.fileExists(atPath: readme.path) {
+                let text = """
+                Jedi Knight XR — Spieldateien fuer \(spiel.name)
 
-            In den Ordner "base" gehören:
+                In den Ordner "base" gehoeren:
 
-              assets0.pk3   aus einer Jedi-Academy-Installation
-              assets1.pk3
-              assets2.pk3
-              assets3.pk3
-              z_vr_assets_base.pk3   aus JKXR
-              z_vr_assets_jka.pk3
+                \(spiel.erwarteteDateien)
 
-            Zusammen rund 1,2 GB. Sie lassen sich hier hineinkopieren oder im
-            Fenster der App ueber "Dateien auswaehlen" einlesen.
-            """
-            try? text.write(to: readme, atomically: true, encoding: .utf8)
+                Sie lassen sich hier hineinkopieren oder im Fenster der App
+                ueber "Dateien auswaehlen" einlesen.
+
+                Spielstaende und Konfiguration liegen NICHT hier, sondern unter
+                Library/Application Support (OpenJK fuer Academy, OpenJO fuer
+                Outcast). Beide Spiele halten sie getrennt.
+                """
+                try? text.write(to: readme, atomically: true, encoding: .utf8)
+            }
         }
     }
 
-    static func status() -> AssetStatus {
-        let files = (try? FileManager.default.contentsOfDirectory(atPath: baseDirectory.path)) ?? []
+    /// Einmaliger Umzug von `Documents/base` nach `Documents/JediAcademy/base`.
+    ///
+    /// Bis zur Spielauswahl gab es nur Academy, und deren Dateien lagen direkt
+    /// im Dokumentenverzeichnis. Ein Umbenennen kostet nichts und dauert
+    /// unabhängig von den 1,2 GB einen Augenblick; sie neu einzuspielen wäre
+    /// eine Viertelstunde.
+    ///
+    /// Verschoben wird nur, wenn das Ziel noch nichts enthält — sonst gewinnt,
+    /// was schon am neuen Ort liegt.
+    private static func migriereAltesBase() {
+        let fm = FileManager.default
+        let alt = documentsDirectory.appendingPathComponent("base")
+        let neu = baseDirectory(.academy)
+
+        var istOrdner: ObjCBool = false
+        guard fm.fileExists(atPath: alt.path, isDirectory: &istOrdner),
+              istOrdner.boolValue else { return }
+
+        let vorhanden = (try? fm.contentsOfDirectory(atPath: neu.path)) ?? []
+        guard vorhanden.filter({ $0.lowercased().hasSuffix(".pk3") }).isEmpty else {
+            return
+        }
+
+        do {
+            try fm.createDirectory(at: neu.deletingLastPathComponent(),
+                                   withIntermediateDirectories: true)
+            try? fm.removeItem(at: neu)          // leeres base/ aus prepare()
+            try fm.moveItem(at: alt, to: neu)
+            print("[JKXR] Documents/base nach \(Spiel.academy.ordner)/base verschoben")
+        } catch {
+            print("[JKXR] Umzug von Documents/base fehlgeschlagen: "
+                + "\(error.localizedDescription)")
+        }
+    }
+
+    static func status(_ spiel: Spiel) -> AssetStatus {
+        let files = (try? FileManager.default
+            .contentsOfDirectory(atPath: baseDirectory(spiel).path)) ?? []
         let pk3 = files.filter { $0.lowercased().hasSuffix(".pk3") }
         return pk3.isEmpty ? .missing : .ready(names: pk3)
     }
 
-    static func copyIntoBase(_ source: URL) -> CopyResult {
+    static func copyIntoBase(_ source: URL, _ spiel: Spiel) -> CopyResult {
         // Ausgewählte Dateien liegen außerhalb der Sandbox; ohne diesen Zugriff
         // schlägt das Lesen mit einem Rechtefehler fehl.
         let scoped = source.startAccessingSecurityScopedResource()
         defer { if scoped { source.stopAccessingSecurityScopedResource() } }
 
-        let destination = baseDirectory.appendingPathComponent(source.lastPathComponent)
+        let destination = baseDirectory(spiel)
+            .appendingPathComponent(source.lastPathComponent)
         do {
             try? FileManager.default.removeItem(at: destination)
             try FileManager.default.copyItem(at: source, to: destination)
@@ -236,10 +354,10 @@ enum AssetStore {
     /// `shareddocuments://` ist Apples eigenes Schema für genau das. Es steht
     /// in keiner Dokumentation, wird aber seit iOS 11 unverändert unterstützt.
     /// Schlägt es fehl, bleibt der angezeigte Pfad zum Abtippen.
-    static func revealInFiles() {
+    static func revealInFiles(_ spiel: Spiel) {
         var components = URLComponents()
         components.scheme = "shareddocuments"
-        components.path = baseDirectory.path
+        components.path = baseDirectory(spiel).path
         guard let url = components.url else { return }
         UIApplication.shared.open(url)
     }

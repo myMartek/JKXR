@@ -14,6 +14,10 @@
 #import <Foundation/Foundation.h>
 #import <GameController/GameController.h>
 
+// Die Tabelle des gewählten Spiels: der Zubehör-Provider muss dorthin, und die
+// Funktion gibt es zweimal — einmal in Outcast, einmal in Academy.
+#include "JKXR_visionOS_Spiel.h"
+
 /*
  * Bauzeit-Kennung.
  *
@@ -299,8 +303,22 @@ static void rebuildAccessories(void)
                 // nicht verfolgt — obwohl ARKit sie einwandfrei kennt. Der
                 // Aufruf stand einmal in EngineHost.swift und ging beim Umbau
                 // verloren, als der Provider hierher wanderte.
-                extern void TBXR_visionOS_SetAccessoryTracking(void *provider);
-                TBXR_visionOS_SetAccessoryTracking((__bridge void *)sAccessory);
+                //
+                // Über die Tabelle des gewählten Spiels, weil es die Funktion
+                // zweimal gibt — einmal in Outcast, einmal in Academy.
+                //
+                // Der umgekehrte Fall ist auch abgedeckt: steht der Provider
+                // vor der Auswahl (etwa weil ein Controller neu verbunden wurde
+                // und die Benachrichtigung einen Neuaufbau anstieß), holt
+                // JKXR_visionOS_Waehle ihn per GetAccessoryTracking nachträglich
+                // ab. Ohne diese zweite Richtung wäre der Provider verloren.
+                if (JKXR_visionOS_Gewaehlt) {
+                    JKXR_visionOS_Gewaehlt->SetAccessoryTracking(
+                        (__bridge void *)sAccessory);
+                } else {
+                    NSLog(@"[JKXR] Zubehör-Provider steht, aber noch kein Spiel "
+                          @"gewählt — wird beim Start zugestellt");
+                }
 
                 NSLog(@"[JKXR] Zubehörverfolgung läuft");
             }

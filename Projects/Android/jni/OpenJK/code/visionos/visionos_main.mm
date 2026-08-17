@@ -46,6 +46,23 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "sys/sys_local.h"
 #include "sys/sys_loadlib.h"
 #include "client/client.h"   // CL_ShutdownUI
+#include "visionos/JKXR_visionOS_Spiel.h"
+
+// Der Ordner im Dokumentenverzeichnis, in dem dieses Spiel seine Dateien sucht.
+//
+// Beide Spiele heißen ihr Datenverzeichnis "base", liegen aber im selben
+// Container — ohne diese Trennung würden sich die pk3-Dateien überschreiben.
+//
+// Spielstände und Konfiguration trennen sich dagegen schon von selbst:
+// HOMEPATH_NAME_MACOSX ist in q_shared.h je Spiel definiert (OpenJK gegen
+// OpenJO), und sys_unix.cpp baut den Heimatpfad daraus.
+#if JK2_MODE
+#define JKXR_SPIELORDNER "JediOutcast"
+#define JKXR_SPIELNAME   "Jedi Outcast"
+#else
+#define JKXR_SPIELORDNER "JediAcademy"
+#define JKXR_SPIELNAME   "Jedi Academy"
+#endif
 
 // In sys_public.h nur `extern` deklariert; die Definition steht auf Android in
 // android_main.cpp. Com_Frame und Sys_Init greifen darauf zu.
@@ -81,16 +98,7 @@ extern "C" void *GetRefAPI(int apiVersion, void *refimp);
 
 // Der Clientteil des Spielcodes steckt in derselben Bibliothek und hat zwei
 // eigene Einsprungpunkte, die CL_InitCGameVM (cl_cgame.cpp:68-75) auf demselben
-// Weg holt — dlsym über eine Zeichenkette. Für den Linker sind sie damit
-// genauso unsichtbar wie GetGameAPI und gehören genauso hierher.
-//
-// Sie fehlten, und der Fehler war lange verdeckt: -dead_strip behält im
-// Hauptprogramm nur, was von einer Wurzel aus erreichbar ist. GetGameAPI und
-// GetRefAPI hielt der Anker, vmMain und dllEntry hielt nichts. Sichtbar wurde
-// es erst bei einem Release-Build ("Failed to load client game functions" im
-// Hauptmenü, dlsym(RTLD_DEFAULT, vmMain): symbol not found); vorher wurde
-// ausschließlich Debug gebaut, wo genug übrig blieb. Ein Anker, der nur einen
-// Teil der nachgeschlagenen Symbole nennt, ist kein Anker.
+// Weg holt.
 //
 // Die Signaturen sind die aus cg_main.cpp:106 und cg_syscalls.cpp:33. Hier wird
 // nur die Adresse genommen, aufgerufen wird über die Engine.
@@ -99,19 +107,80 @@ extern "C" intptr_t vmMain(intptr_t command, intptr_t arg0, intptr_t arg1,
                            intptr_t arg5, intptr_t arg6, intptr_t arg7);
 extern "C" void dllEntry(intptr_t (*syscallptr)(intptr_t arg, ...));
 
-// Ohne diesen Anker fänden die Symbole nie den Weg ins Programm: referenziert
-// werden sie ausschließlich über Zeichenketten in dlsym, und ein Archivmitglied,
-// das niemand referenziert, bindet der Linker gar nicht erst ein. Was er
-// einbindet, könnte -dead_strip anschließend wieder entfernen.
+// Die Modultabelle. Sie ersetzt dlsym, und das aus zwei Gründen.
 //
-// `used` verhindert beides — die Adressen stehen hier sichtbar im Code.
-__attribute__((used))
-static void *const s_moduleAnchors[] = {
-    (void *)&GetGameAPI,
-    (void *)&GetRefAPI,
-    (void *)&vmMain,
-    (void *)&dllEntry,
+// Der eine ist zwingend: Outcast und Academy stecken in einem Programm, jedes
+// mit eigenem GetRefAPI, GetGameAPI und vmMain. Nach dem Teil-Link sind diese
+// Symbole lokal, und dlsym(RTLD_DEFAULT) fände sie entweder nicht oder — wären
+// sie global — die falsche Fassung.
+//
+// Der andere ist Erfahrung. Vorher stand hier ein reiner Ankertisch, der die
+// Symbole nur am Leben hielt, während dlsym sie über Zeichenketten suchte. Er
+// nannte vmMain und dllEntry nicht, und -dead_strip warf sie im Release-Build
+// weg: das Spiel brach im Hauptmenü mit "Failed to load client game functions"
+// ab. Zwei Listen, die übereinstimmen MÜSSEN, aber nicht müssen — jetzt ist es
+// eine.
+//
+// `used` bleibt: die Tabelle wird nur über den Namen gesucht, nicht aufgerufen.
+struct JKXR_visionOS_Modulfunktion {
+    const char *name;
+    void *fn;
 };
+
+__attribute__((used))
+static const JKXR_visionOS_Modulfunktion s_moduleFunctions[] = {
+    { "GetGameAPI", (void *)&GetGameAPI },
+    { "GetRefAPI",  (void *)&GetRefAPI  },
+    { "vmMain",     (void *)&vmMain     },
+    { "dllEntry",   (void *)&dllEntry   },
+};
+
+/*
+=================
+JKXR_visionOS_ModuleHandle
+
+Ersatz für RTLD_DEFAULT. Ein Zeiger auf die Tabelle selbst, damit ein falsches
+Handle auffällt statt stillschweigend zu funktionieren.
+=================
+*/
+extern "C" void *JKXR_visionOS_ModuleHandle(void)
+{
+    return (void *)s_moduleFunctions;
+}
+
+/*
+=================
+JKXR_visionOS_LoadFunction
+
+Gegenstück zu dlsym. Vier Einträge, also eine lineare Suche — sie läuft beim
+Start je Modul einmal.
+=================
+*/
+extern "C" void *JKXR_visionOS_LoadFunction(void *handle, const char *name)
+{
+    if (handle != (void *)s_moduleFunctions || !name) {
+        return NULL;
+    }
+    for (const JKXR_visionOS_Modulfunktion &f : s_moduleFunctions) {
+        if (!strcmp(f.name, name)) {
+            return f.fn;
+        }
+    }
+    return NULL;
+}
+
+/*
+=================
+JKXR_visionOS_LibraryError
+
+Gegenstück zu dlerror. Die Meldung nennt die Tabelle, weil dort die Ursache
+liegt, wenn ein Name nicht gefunden wird — nicht im Dateisystem.
+=================
+*/
+extern "C" const char *JKXR_visionOS_LibraryError(void)
+{
+    return "kein Eintrag in s_moduleFunctions (visionos_main.mm)";
+}
 
 /*
 =================
@@ -126,7 +195,7 @@ void * QDECL Sys_LoadDll(const char *name, qboolean useSystemLib)
 {
     (void)useSystemLib;
     Com_DPrintf("Sys_LoadDll(%s): statisch gelinkt\n", name ? name : "?");
-    return RTLD_DEFAULT;
+    return JKXR_visionOS_ModuleHandle();
 }
 
 /*
@@ -139,16 +208,15 @@ void *Sys_LoadSPGameDll(const char *name, GetGameAPIProc **GetGameAPIOut)
     assert(GetGameAPIOut);
     Com_DPrintf("Sys_LoadSPGameDll(%s): statisch gelinkt\n", name ? name : "?");
 
-    *GetGameAPIOut = (GetGameAPIProc *)Sys_LoadFunction(RTLD_DEFAULT, "GetGameAPI");
+    *GetGameAPIOut = (GetGameAPIProc *)Sys_LoadFunction(
+        JKXR_visionOS_ModuleHandle(), "GetGameAPI");
     if (!*GetGameAPIOut) {
-        // Wenn das fehlschlägt, ist das Symbol nicht exportiert — dann fehlt
-        // entweder Q_EXPORT an der Definition oder der Anker oben greift nicht.
         Com_Printf("Sys_LoadSPGameDll: GetGameAPI nicht auffindbar: %s\n",
                    Sys_LibraryError());
         return NULL;
     }
 
-    return RTLD_DEFAULT;
+    return JKXR_visionOS_ModuleHandle();
 }
 
 /*
@@ -188,9 +256,26 @@ char *Sys_DefaultInstallPath(void)
     @autoreleasepool {
         NSArray<NSString *> *dirs = NSSearchPathForDirectoriesInDomains(
             NSDocumentDirectory, NSUserDomainMask, YES);
-        if (dirs.count > 0) {
-            Q_strncpyz(installPath, [dirs[0] UTF8String], sizeof(installPath));
+        if (dirs.count == 0) {
+            return installPath;
         }
+
+        // Je Spiel ein eigener Unterordner, damit beide ihr "base" behalten
+        // können. Er wird hier angelegt und nicht erst beim ersten Schreiben:
+        // sonst gäbe es in der Dateien-App nichts, wohin man die pk3-Dateien
+        // legen könnte, und die Fehlermeldung wäre "base nicht gefunden" ohne
+        // sichtbaren Ausweg.
+        NSString *pfad = [dirs[0] stringByAppendingPathComponent:
+                                     @JKXR_SPIELORDNER];
+        NSError *err = nil;
+        if (![[NSFileManager defaultManager] createDirectoryAtPath:pfad
+                                      withIntermediateDirectories:YES
+                                                       attributes:nil
+                                                            error:&err]) {
+            Com_Printf("Sys_DefaultInstallPath: %s liess sich nicht anlegen: %s\n",
+                       JKXR_SPIELORDNER, err.localizedDescription.UTF8String);
+        }
+        Q_strncpyz(installPath, [pfad UTF8String], sizeof(installPath));
     }
 
     return installPath;
@@ -430,3 +515,36 @@ extern "C" Q_EXPORT void JKXR_visionOS_RequestShutdown(void)
 {
     s_shutdown = true;
 }
+
+// ---------------------------------------------------------------------------
+// Die Spieltabelle
+//
+// Der EINZIGE Name, den dieser Satz nach außen trägt. Alles andere wird beim
+// Teil-Link lokal, damit Outcast und Academy im selben Programm nebeneinander
+// bestehen können — Begründung in JKXR_visionOS_Spiel.h und link-visionos.sh.
+//
+// Definiert in dieser Datei, weil sie zu jedem Satz gehört und die Engineseite
+// der sechs Funktionen kennt. Die vier TBXR-Funktionen liegen in derselben
+// Übersetzungseinheit-Gruppe (JKXR/visionos), deshalb genügt die Deklaration.
+// ---------------------------------------------------------------------------
+
+extern "C" void TBXR_visionOS_SetLayerRenderer(cp_layer_renderer_t renderer);
+extern "C" void TBXR_visionOS_SetScreenRes(int width, int height);
+extern "C" void TBXR_visionOS_DumpInputs(void);
+extern "C" void TBXR_visionOS_SetAccessoryTracking(void *provider);
+
+#if JK2_MODE
+#define JKXR_SPIELTABELLE JKXR_visionOS_Spiel_jo
+#else
+#define JKXR_SPIELTABELLE JKXR_visionOS_Spiel_ja
+#endif
+
+extern "C" Q_EXPORT const JKXR_visionOS_Spiel JKXR_SPIELTABELLE = {
+    JKXR_SPIELNAME,
+    JKXR_visionOS_Main,
+    JKXR_visionOS_RequestShutdown,
+    TBXR_visionOS_SetLayerRenderer,
+    TBXR_visionOS_SetScreenRes,
+    TBXR_visionOS_DumpInputs,
+    TBXR_visionOS_SetAccessoryTracking,
+};
