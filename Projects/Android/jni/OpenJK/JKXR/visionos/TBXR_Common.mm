@@ -1750,13 +1750,22 @@ void TBXR_finishEyeBuffer(int eye)
         angle::Finish();
         drawMetalScreenPanel(eye);
     } else {
-        // Der klassische 2D-Renderer schreibt keine Tiefe. Für HUD-Inhalte im
-        // normalen 3D-Pfad bleibt vorerst der bisherige Tiefenpass bestehen.
+        // Die Tiefenwand ist heraus.
         //
-        // Nicht die Ursache des fehlenden Vorspanntextes -- geprueft, indem sie
-        // testweise wegblieb. Der Text kam trotzdem nicht; es lag am Verwerfen
-        // der Rueckseiten und am Ausschnitt (tr_scene.cpp).
-        drawScreenWallDepth(eye);
+        // Sie schrieb ein 4:3-Viereck in 2 m Entfernung, nur Tiefe und kein Bild
+        // (ColorMask aus, DepthMask an). Gedacht war sie als Bezugstiefe fuer
+        // HUD-Inhalte im 3D-Pfad. Das HUD wird seit dem Umbau aber kopf-fest und
+        // mit abgeschaltetem Tiefentest gezeichnet und braucht sie nicht.
+        //
+        // Schaden richtete sie sehr wohl an: visionOS nutzt den Tiefenpuffer zur
+        // Reprojektion. Auf dem Geraet beschrieben als unsichtbare Flaeche
+        // direkt vor dem Blick, die sich mitdreht -- und darin verformten sich
+        // beim schnellen Kopfdrehen alle Inhalte und zogen langsam nach.
+        // Seitlich davon war das Bild unauffaellig. Genau die Ausdehnung der
+        // Wand: 2,4 m breit im Verhaeltnis 640:480.
+        //
+        // Der Compositor nahm die 2 m also fuer echte Geometrie und hat sein
+        // Bild danach verzerrt.
     }
 
     // gl4es reports its logical default framebuffer as 0.  Query ANGLE
