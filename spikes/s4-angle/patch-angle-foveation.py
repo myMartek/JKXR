@@ -291,6 +291,54 @@ void SetDrawFramebufferRateMap(gl::Context *context, const void *rateMap)
         "Implementierung SetDrawFramebufferRateMap in FrameBufferMtl.mm",
     ),
     # ------------------------------------------------------------------
+    # 5c. Clear in Screen-Koordinaten
+    #
+    # Kann ANGLE einen Clear nicht über die Load-Action des Render-Passes
+    # erledigen, zeichnet es ihn als Vollbild-Quad. Dessen Viewport kommt aus
+    # den Maßen des Anhangs — physisch und kleiner als die Screen-Koordinaten,
+    # in denen der Pass mit Rate Map rastert. Der Clear deckt dann nur die
+    # linke obere Ecke ab, und außerhalb bleiben Farb- UND Tiefenwerte des
+    # Vorbilds stehen. Sichtbar wurde das als Kasten oben links, in dem
+    # einzelne Flächen erscheinen, die außerhalb am veralteten Tiefenpuffer
+    # scheitern.
+    # ------------------------------------------------------------------
+    (
+        "src/libANGLE/renderer/metal/FrameBufferMtl.mm",
+        """    ContextMtl *contextMtl = mtl::GetImpl(context);
+    const gl::Rectangle renderArea(0, 0, mState.getDimensions().width,
+                                   mState.getDimensions().height);
+
+    clearOpts.colorFormat    = mRenderPassFirstColorAttachmentFormat;
+    clearOpts.dstTextureSize = mState.getExtents();
+    clearOpts.clearArea      = ClipRectToScissor(contextMtl->getState(), renderArea, false);""",
+        """    ContextMtl *contextMtl = mtl::GetImpl(context);
+    gl::Rectangle renderArea(0, 0, mState.getDimensions().width,
+                             mState.getDimensions().height);
+    gl::Extents dstTextureSize = mState.getExtents();
+
+    // Fork-Ergänzung: Bei aktiver Rate Map rastert dieser Pass in
+    // Screen-Koordinaten. Mit den physischen Maßen träfe der Clear nur die
+    // linke obere Ecke; der Scissor der Engine steht ohnehin schon in
+    // Screen-Koordinaten, die Schnittmenge unten bleibt also stimmig.
+    if (const void *rateMap = getRasterizationRateMap())
+    {
+        if (@available(iOS 13.0, macOS 10.15.4, *))
+        {
+            MTLSize screen = [(__bridge id<MTLRasterizationRateMap>)const_cast<void *>(rateMap)
+                screenSize];
+            renderArea = gl::Rectangle(0, 0, static_cast<int>(screen.width),
+                                       static_cast<int>(screen.height));
+            dstTextureSize.width  = static_cast<int>(screen.width);
+            dstTextureSize.height = static_cast<int>(screen.height);
+        }
+    }
+
+    clearOpts.colorFormat    = mRenderPassFirstColorAttachmentFormat;
+    clearOpts.dstTextureSize = dstTextureSize;
+    clearOpts.clearArea      = ClipRectToScissor(contextMtl->getState(), renderArea, false);""",
+        "Clear-Quad bei aktiver Rate Map in Screen-Koordinaten aufziehen",
+    ),
+    # ------------------------------------------------------------------
     # 5b. Exportierte C-Hülle
     # ------------------------------------------------------------------
     (
