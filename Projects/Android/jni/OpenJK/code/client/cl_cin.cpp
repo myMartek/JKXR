@@ -2306,6 +2306,16 @@ qboolean CL_IsRunningInGameCinematic(void)
 	return qbPlayingInGameCinematic;
 }
 
+#if defined(JKXR_VISIONOS)
+// MESSPUNKT-Hilfe, wieder zu entfernen. Wie lange laeuft die Sequenz schon?
+int CL_SequenzLaufzeit( void )
+{
+	const int seitVideo  = cls.realtime - CL_iPlaybackStartTime;
+	const int seitSequenz = cls.realtime - CL_iInGameCinematicStartTime;
+	return ( seitSequenz < seitVideo ) ? seitSequenz : seitVideo;
+}
+#endif
+
 qboolean CL_InGameCinematicOnStandBy(void)
 {
 	return qbInGameCinematicOnStandBy;

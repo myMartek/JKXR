@@ -257,6 +257,27 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
 	}
 
 	// MESSPUNKT, wieder zu entfernen.
+	//
+	// Der Trigger wird mit EINER Schwelle zur Taste (OpenXrInput.cpp:876,
+	// IndexTrigger > 0,5) und ohne Hysterese. Liegt der Finger locker auf oder
+	// rauscht der Sensor um diesen Wert, flackert die Taste -- und A_MOUSE1
+	// beendet eine Filmsequenz. Diese Zeile sagt, ob das so ist und bei welchen
+	// Werten.
+	{
+		static int letzterTrigger = -1;
+		static int gemeldetT = 0;
+		const int jetzt =
+			((leftTrackedRemoteState_new.Buttons & xrButton_Trigger) ? 1 : 0) |
+			((rightTrackedRemoteState_new.Buttons & xrButton_Trigger) ? 2 : 0);
+		if (jetzt != letzterTrigger && gemeldetT < 60) {
+			letzterTrigger = jetzt;
+			++gemeldetT;
+			Com_Printf("[Trigger] Tasten %d · analog links %.3f rechts %.3f · Sequenz %d\n",
+				jetzt, leftTrackedRemoteState_new.IndexTrigger,
+				rightTrackedRemoteState_new.IndexTrigger, vr.cin_camera ? 1 : 0);
+		}
+	}
+
 	{
 		static int letzterEnter = -1;
 		const int jetzt =

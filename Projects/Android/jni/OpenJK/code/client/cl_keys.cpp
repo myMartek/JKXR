@@ -1261,8 +1261,12 @@ void CL_KeyDownEvent( int key, unsigned time )
 			SCR_StopCinematic(qtrue);
 			const qboolean laeuftNoch = (qboolean)( cls.state == CA_CINEMATIC
 				|| CL_IsRunningInGameCinematic() );
-			Com_Printf( "[Sequenz] Taste %d (%s), Zustand %d -> %s\n",
+			// Die verstrichene Zeit mit: ohne sie laesst sich nicht sagen, ob die
+			// Schonfrist ueberhaupt anwendbar war oder schon abgelaufen.
+			extern int CL_SequenzLaufzeit( void );
+			Com_Printf( "[Sequenz] Taste %d (%s), Zustand %d, seit %d ms -> %s\n",
 				key, Key_KeynumToString( key ), zustandVorher,
+				CL_SequenzLaufzeit(),
 				( liefVorher && laeuftNoch ) ? "verweigert, laeuft weiter" : "beendet" );
 			return;
 		}
