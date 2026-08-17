@@ -1380,9 +1380,26 @@ void TBXR_FrameSetup()
         // der die Engine rechnet. Bei aktiver Foveation muessen screenSize und
         // glConfig.vidWidth/vidHeight uebereinstimmen, sonst laufen Viewport und
         // Map auseinander.
+        //
+        // Ueber Com_Printf, nicht nur ALOGV: ALOGV schreibt nach stderr
+        // (TBXR_Common.h:63) und landet damit NICHT in qconsole.log. Der Weg
+        // ueber die Konsole der Engine ist der einzige, der ohne
+        // "devicectl --console" auslesbar ist -- und dessen Start stellt den
+        // Immersive Space wieder her, was den Geraetezustand schon einmal
+        // verdorben hat.
         const size_t rateMaps = cp_drawable_get_rasterization_rate_map_count(gDrawable);
         ALOGV("[Foveation] %zu Rate-Map(s), Engine rechnet mit %dx%d",
               rateMaps, gAppState.Width, gAppState.Height);
+        // %.0f, nicht %d: ovrApp.Width ist ein float (TBXR_Common.h:268). Mit
+        // %d gelesen ergibt es durch Varargs Unsinn -- meine erste Fassung
+        // meldete deshalb "0x0", waehrend TBXR_GetScreenRes voellig korrekt
+        // 2048x1984 lieferte. Eine halbe Stunde Suche an der falschen Stelle.
+        int engineW = 0, engineH = 0;
+        TBXR_GetScreenRes(&engineW, &engineH);
+        Com_Printf("[Foveation] %zu Rate-Map(s) · Layout %zu View(s)/%zu Textur(en) · "
+                   "gAppState %.0fx%.0f · Engine %dx%d\n",
+                   rateMaps, views, textures,
+                   gAppState.Width, gAppState.Height, engineW, engineH);
         for (size_t i = 0; i < rateMaps; ++i) {
             id<MTLRasterizationRateMap> rm =
                 cp_drawable_get_rasterization_rate_map(gDrawable, i);
@@ -1395,12 +1412,19 @@ void TBXR_FrameSetup()
                   i, (unsigned long)screen.width, (unsigned long)screen.height,
                   (unsigned long)t.width, (unsigned long)t.height,
                   (unsigned long)phys.width, (unsigned long)phys.height);
+            Com_Printf("[Foveation]  %zu: screen %lux%lu · Textur %lux%lu · "
+                       "Granularitaet %lux%lu\n",
+                       i, (unsigned long)screen.width, (unsigned long)screen.height,
+                       (unsigned long)t.width, (unsigned long)t.height,
+                       (unsigned long)phys.width, (unsigned long)phys.height);
         }
         for (size_t i = 0; i < views; ++i) {
             MTLViewport vp = cp_view_texture_map_get_viewport(
                 cp_view_get_view_texture_map(cp_drawable_get_view(gDrawable, i)));
             ALOGV("[Foveation]  Viewport Auge %zu: Ursprung %.0f,%.0f, %.0fx%.0f",
                   i, vp.originX, vp.originY, vp.width, vp.height);
+            Com_Printf("[Foveation]  Viewport Auge %zu: Ursprung %.0f,%.0f · %.0fx%.0f\n",
+                       i, vp.originX, vp.originY, vp.width, vp.height);
         }
         for (size_t i = 0; i < textures; ++i) {
             id<MTLTexture> t = cp_drawable_get_color_texture(gDrawable, i);
