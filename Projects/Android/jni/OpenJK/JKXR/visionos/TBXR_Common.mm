@@ -1777,7 +1777,7 @@ void TBXR_prepareEyeBuffer(int eye)
         // absichtlich dem Augen-FBO, und erst danach wird auf 0 gebunden. Die
         // Asymmetrie ist gewollt, nicht ein zweiter Fehler.
         angle::BindFramebuffer(GL_FRAMEBUFFER, gFlatScreenFramebuffer);
-        ANGLESetDrawFramebufferRateMapMTL(nullptr);
+ANGLESetDrawFramebufferRateMapMTL(nullptr);
         angle::Viewport(0, 0, gFlatScreenWidth, gFlatScreenHeight);
 
         const GLboolean flatScissorWasEnabled = angle::IsEnabled(GL_SCISSOR_TEST);
@@ -1858,15 +1858,32 @@ void TBXR_finishEyeBuffer(int eye)
     // gl4es reports its logical default framebuffer as 0.  Query ANGLE
     // directly here, after the engine rendered, to verify that the physical
     // binding still points at the imported compositor framebuffer.
+    // Bei jedem ZUSTANDSWECHSEL melden, nicht in den ersten acht Bildern.
+    //
+    // Die Begrenzung auf acht Bilder hat dreimal hintereinander nur Menue und
+    // Ladephase erwischt und nie das Spiel -- genau die Frage, um die es geht.
     static int framebufferDiagnostics = 0;
-    if (eye == 0 && framebufferDiagnostics < 8) {
+    static GLint letzterFbo = -2;
+    static bool letzterFlach = false;
+    if (eye == 0 && framebufferDiagnostics < 40) {
         GLint actualFramebuffer = -1;
         angle::GetIntegerv(GL_FRAMEBUFFER_BINDING, &actualFramebuffer);
         const GLenum error = angle::GetError();
         ALOGV("[ANGLE FBO] frame=%d actual=%d compositor=%u flat=%u error=0x%04x",
               gFrameCounter, actualFramebuffer, gFramebuffer,
               gFlatScreenFramebuffer, error);
-        framebufferDiagnostics++;
+        // Zusaetzlich ueber die Konsole der Engine: ALOGV geht nach stderr und
+        // ist ohne "devicectl --console" nicht auslesbar. Entscheidend fuer die
+        // Foveation-Frage -- rendert die Welt ueberhaupt in die Augentextur?
+        if (actualFramebuffer != letzterFbo || gRenderingFlatScreen[eye] != letzterFlach) {
+            letzterFbo = actualFramebuffer;
+            letzterFlach = gRenderingFlatScreen[eye];
+            framebufferDiagnostics++;
+            Com_Printf("[ANGLE FBO] Bild %d · tatsaechlich %d · Auge-FBO %u · "
+                       "Flach-FBO %u · Flachbild-Pfad %d\n",
+                       gFrameCounter, actualFramebuffer, gFramebuffer,
+                       gFlatScreenFramebuffer, gRenderingFlatScreen[eye] ? 1 : 0);
+        }
     }
 
     // glFinish, nicht glFlush.

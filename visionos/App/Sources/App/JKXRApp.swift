@@ -42,7 +42,13 @@ struct JKXRLayerConfiguration: CompositorLayerConfiguration {
         //
         // Der alte Text hat den nächsten Leser in die falsche Richtung geschickt
         // -- deshalb steht das hier und nicht nur im Commit.
-        let useFoveation = false
+        // BLEIBT AN, bis es steht.
+        //
+        // Der Zustand ist bekannt und eingegrenzt (siehe Commit): Menue, Videos
+        // und HUD sind korrekt, die 3D-Welt klemmt auf einen Bereich oben links.
+        // Ausgeschaltet waere der Fehler nicht mehr sichtbar und jede weitere
+        // Messung daran unmoeglich.
+        let useFoveation = true
         configuration.isFoveationEnabled = useFoveation && capabilities.supportsFoveation
         if useFoveation && !capabilities.supportsFoveation {
             print("[JKXR] WARNUNG: Foveation gewünscht, aber das Gerät meldet "
