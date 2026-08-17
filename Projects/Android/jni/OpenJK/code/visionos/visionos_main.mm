@@ -499,8 +499,37 @@ extern "C" Q_EXPORT int JKXR_visionOS_Main(int argc, char *argv[])
         Com_Frame();
     }
 
+    // Hier endet der PROZESS, nicht nur die Schleife.
+    //
+    // Warum kein zweiter Durchgang: id Tech 3 ist nicht darauf ausgelegt, in
+    // einem Prozess zweimal zu starten. Com_Init verteilt den Hunk, legt cvars
+    // an, baut das Dateisystem auf und meldet Kommandos an -- alles gegen
+    // globalen Zustand, den Com_Shutdown nur teilweise zurücknimmt. Dazu kommen
+    // auf visionOS der ANGLE-Kontext, gl4es' Zustand und die ARKit-Provider.
+    //
+    // Vorher kehrte diese Funktion einfach zurück. Schloss man den Immersive
+    // Space mit der Krone und öffnete ihn wieder, lief Com_Init auf eine halb
+    // abgebaute Engine: das Spiel lud nicht mehr, und mitunter musste die Brille
+    // neu starten. Ein sauberer Neustart im Prozess wäre der schönere Weg, aber
+    // er verlangt eine vollständige Abbaukette durch drei Fremdschichten -- und
+    // solange die nicht steht, ist ein ehrliches Ende besser als ein Zustand,
+    // aus dem nur ein Geräteneustart heraushilft.
+    //
+    // Die Reihenfolge ist die von Com_Quit_f (common.cpp:320) und nicht selbst
+    // erfunden: Com_Shutdown darin schreibt die Konfiguration und schliesst das
+    // Protokoll. Ohne diesen Aufruf gingen Einstellungen des Laufs verloren.
     CL_ShutdownUI();
-    return 0;
+
+    // Die Meldung VOR der Abbaukette: Com_Shutdown schliesst das Protokoll, und
+    // danach geschriebene Zeilen landen nirgends.
+    Com_Printf( "JKXR beendet sich: der Immersive Space wurde geschlossen.\n" );
+
+    SV_Shutdown( "Immersive Space geschlossen\n" );
+    CL_Shutdown();
+    Com_Shutdown();
+    FS_Shutdown();
+
+    exit( 0 );
 }
 
 /*

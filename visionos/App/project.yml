@@ -44,6 +44,14 @@ targets:
         PRODUCT_NAME: JKXR
         INFOPLIST_KEY_CFBundleDisplayName: Jedi Knight XR
 
+        # Das Programmsymbol.
+        #
+        # visionOS zeigt keine flache Grafik, sondern einen Stapel aus Schichten,
+        # die sich beim Ansehen gegeneinander verschieben. Deshalb ein
+        # .solidimagestack mit Rueckseite (Verlauf) und Vorderseite (Emblem,
+        # Schriftzug und Saeberschein, mit Alpha) statt eines einzelnen Bildes.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
         # Ohne Zweckangabe verweigert visionOS den ARKit-Provider, und zwar
         # wortlos — die Anfrage erreicht den Nutzer gar nicht erst.
         INFOPLIST_KEY_NSWorldSensingUsageDescription: >-

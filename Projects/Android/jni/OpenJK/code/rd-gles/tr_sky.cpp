@@ -429,11 +429,6 @@ static void DrawSkySide( struct image_s *image, const int mins[2], const int max
 #endif
 }
 
-#if defined(JKXR_VISIONOS)
-// Zaehler fuer den Messpunkt am Ende von DrawSkyBox.
-static int s_jkxrSkySeiten = 0;
-#endif
-
 static void DrawSkyBox( jk_shader_t *shader )
 {
 	int		i;
@@ -500,57 +495,8 @@ static void DrawSkyBox( jk_shader_t *shader )
 		DrawSkySide( shader->sky->outerbox[i],
 			         sky_mins_subd,
 					 sky_maxs_subd );
-#if defined(JKXR_VISIONOS)
-		++s_jkxrSkySeiten;
-#endif
 	}
 
-#if defined(JKXR_VISIONOS)
-	// MESSPUNKT, wieder zu entfernen.
-	//
-	// Deckt die Himmelsbox das Bild ab, oder verwirft die Sichtbarkeitsprüfung
-	// oben (sky_mins >= sky_maxs) alle sechs Seiten? Davon hängt ab, ob das
-	// unbedingte Löschen in RB_BeginDrawingView die Ursache behebt oder nur
-	// verdeckt: null Seiten heisst, der Himmel wird gar nicht gezeichnet und
-	// man sieht die Löschfarbe.
-	{
-		// Bei Zustandswechsel, aber gedeckelt.
-		//
-		// Die Seitenzahl ändert sich beim Umsehen in fast jedem Bild — als
-		// reiner Wechselmelder schrieb dieser Messpunkt 2,2 MB in eine Sitzung,
-		// und eine so grosse Datei laesst sich waehrend des Laufs nicht einmal
-		// mehr vom Geraet holen. Zwanzig Meldungen beantworten die Frage.
-		static int letzteSeiten = -1;
-		static int gemeldet = 0;
-		if ( s_jkxrSkySeiten != letzteSeiten && gemeldet < 20 ) {
-			letzteSeiten = s_jkxrSkySeiten;
-			++gemeldet;
-
-			// Passt die Box überhaupt ins Frustum?
-			//
-			// MakeSkyVec baut sie aus backEnd.viewParms.zFar; die Projektion
-			// kommt auf visionOS aber vom Compositor und ignoriert zNear/zFar
-			// der Engine vollständig (VR_GetVRProjection). Ist die Ferne des
-			// Compositors kleiner, liegt die ganze Box dahinter und wird
-			// weggeschnitten -- gezeichnet wäre sie trotzdem, nur nie zu sehen.
-			//
-			// Die Ferne aus der Matrix zurückgerechnet: für eine Projektion mit
-			// m[11] == -1 gilt f = m[14] / (m[10] + 1).
-			const float *m = backEnd.viewParms.projectionMatrix;
-			const float nenner = m[10] + 1.0f;
-			const float ferne = ( fabsf( nenner ) > 1e-6f ) ? ( m[14] / nenner ) : 0.0f;
-
-			ri.Printf( PRINT_ALL, "[Himmelsbox] %d von 6 Seiten · zFar %.0f · "
-				"Boxgroesse %.0f · Ecke %.0f · Ferne der Matrix %.0f "
-				"(m10 %.4f m14 %.1f m11 %.1f)\n",
-				s_jkxrSkySeiten, backEnd.viewParms.zFar,
-				backEnd.viewParms.zFar / 1.75f,
-				( backEnd.viewParms.zFar / 1.75f ) * 1.7320508f,
-				ferne, m[10], m[14], m[11] );
-		}
-		s_jkxrSkySeiten = 0;
-	}
-#endif
 }
 
 static void FillCloudySkySide( const int mins[2], const int maxs[2], qboolean addIndexes )
@@ -890,37 +836,6 @@ Other things could be stuck in here, like birds in the sky, etc
 ================
 */
 void RB_StageIteratorSky( void ) {
-#if defined(JKXR_VISIONOS)
-	// MESSPUNKT, wieder zu entfernen.
-	//
-	// Bei Jedi Outcast bleibt der Himmel schwarz, bei Academy nicht. Im
-	// Protokoll steht keine fehlende Textur, der Himmel wird also gezeichnet und
-	// verworfen -- oder diese Funktion steigt vorher aus. Sie hat drei
-	// Rücksprünge und zwei Zeichenwege; die Meldung nennt, welcher es ist.
-	//
-	// Bei jedem Zustandswechsel, damit ein Levelwechsel oder ein anderer
-	// Himmelsshader sichtbar wird.
-	{
-		static int letzterZustand = -1;
-		const int hatBox = ( tess.shader->sky
-			&& tess.shader->sky->outerbox[0]
-			&& tess.shader->sky->outerbox[0] != tr.defaultImage ) ? 1 : 0;
-		const int zustand = ( r_fastsky->integer ? 1 : 0 )
-			+ ( skyboxportal ? 2 : 0 )
-			+ ( ( backEnd.refdef.rdflags & RDF_SKYBOXPORTAL ) ? 4 : 0 )
-			+ ( hatBox ? 8 : 0 )
-			+ ( ( tess.shader->sky && tess.shader->sky->cloudHeight ) ? 16 : 0 );
-		if ( zustand != letzterZustand ) {
-			letzterZustand = zustand;
-			ri.Printf( PRINT_ALL, "[Himmel] %s · fastsky %d · Portal %d/%d · "
-				"Aussenbox %d · Wolkenhoehe %.0f · Stufen %d\n",
-				tess.shader->name, r_fastsky->integer, skyboxportal,
-				( backEnd.refdef.rdflags & RDF_SKYBOXPORTAL ) ? 1 : 0,
-				hatBox, tess.shader->sky ? tess.shader->sky->cloudHeight : 0.0f,
-				tess.shader->numUnfoggedPasses );
-		}
-	}
-#endif
 	if ( r_fastsky->integer ) {
 		return;
 	}

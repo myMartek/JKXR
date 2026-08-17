@@ -1220,27 +1220,6 @@ void TBXR_FrameSetup()
         return;
     }
 
-    // AUFRÄUMEN, darf nach einem Start wieder heraus.
-    //
-    // Die GPU-Aufzeichnung, die den Clear-Fehler gefunden hat, ist entfernt —
-    // ihr Ergebnis liegt aber noch als knapp 1 GB im Dokumentenordner, und
-    // devicectl kann Dateien nur schreiben, nicht löschen. Also einmal von
-    // innen.
-    {
-        static bool geraeumt = false;
-        if (!geraeumt) {
-            geraeumt = true;
-            NSArray *dirs = NSSearchPathForDirectoriesInDomains(
-                NSDocumentDirectory, NSUserDomainMask, YES);
-            NSString *pfad = [dirs.firstObject
-                stringByAppendingPathComponent:@"jkxr-foveation.gputrace"];
-            if ([[NSFileManager defaultManager] fileExistsAtPath:pfad]) {
-                [[NSFileManager defaultManager] removeItemAtPath:pfad error:nil];
-                Com_Printf("Diagnose-Ueberrest entfernt: jkxr-foveation.gputrace\n");
-            }
-        }
-    }
-
     gFrame = cp_layer_renderer_query_next_frame(gLayerRenderer);
     if (!gFrame) return;
 

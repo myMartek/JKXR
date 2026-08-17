@@ -14,6 +14,7 @@
 		7197778DD14A550DC4626FC1 /* libEGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 63D4B8E4A26A48D82F8DCE60 /* libEGL.framework */; };
 		78CA5C5899D378FF4C88CE1D /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47635BCC2BCC1CC1C5751D4 /* ContentView.swift */; };
 		78D555D5C95FDB660899D176 /* libEGL.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 63D4B8E4A26A48D82F8DCE60 /* libEGL.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		AC868F8DEF90BEA3B0B633BF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FED42145EED052145A239D27 /* Assets.xcassets */; };
 		BCEEB8B7CE0E2A32AC9FF1E8 /* EngineHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06BB71B3A0F665691FF899FB /* EngineHost.swift */; };
 		D7D7EF00F6C052A3F2BCC96C /* SpielWahl.c in Sources */ = {isa = PBXBuildFile; fileRef = 75DB998F042F5F877FD8C325 /* SpielWahl.c */; };
 		FE04998D8653339058EDA0AB /* JKXRApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12FC913F54114EA867076FDC /* JKXRApp.swift */; };
@@ -47,6 +48,7 @@
 		EF7A3D96492B916A30A6FE3E /* JKXRBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = JKXRBridge.h; sourceTree = "<group>"; };
 		F7BEE25D9141AD2B40FB361E /* AngleBridge.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = AngleBridge.c; sourceTree = "<group>"; };
 		FA12E523E340FEA71E6FA7C0 /* libGLESv2.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = libGLESv2.framework; path = Frameworks/libGLESv2.framework; sourceTree = "<group>"; };
+		FED42145EED052145A239D27 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -84,6 +86,14 @@
 			path = Bridge;
 			sourceTree = "<group>";
 		};
+		A698F2DEE10066241CC86EBA /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				FED42145EED052145A239D27 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		BA6D6FC6C97557A917052369 = {
 			isa = PBXGroup;
 			children = (
@@ -98,6 +108,7 @@
 			children = (
 				DA5C2726D5C4EC7B030C9990 /* App */,
 				8D57E08DA9B72859CF418ED7 /* Bridge */,
+				A698F2DEE10066241CC86EBA /* Resources */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -128,6 +139,7 @@
 			buildConfigurationList = C4E5BE4F1763B984825A8584 /* Build configuration list for PBXNativeTarget "JKXR" */;
 			buildPhases = (
 				489954EF19B6D83C617B01CB /* Sources */,
+				CA45A261A43C8C270B5CE57A /* Resources */,
 				B69A72AA6F9B7C29E318E617 /* Frameworks */,
 				FDB8E49709BAEABB8007FC1C /* Embed Frameworks */,
 			);
@@ -175,6 +187,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		CA45A261A43C8C270B5CE57A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AC868F8DEF90BEA3B0B633BF /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		489954EF19B6D83C617B01CB /* Sources */ = {

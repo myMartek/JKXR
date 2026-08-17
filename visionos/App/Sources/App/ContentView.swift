@@ -63,6 +63,18 @@ struct ContentView: View {
     /// Bild und muss von Hand weggeschoben werden.
     @Environment(\.dismissWindow) private var dismissWindow
 
+    /// Die letzte Wahl überlebt den Neustart.
+    ///
+    /// Seit die App sich beim Schliessen des Immersive Space beendet
+    /// (visionos_main.mm), ist jeder Spielwechsel ein Neustart -- eine
+    /// Vorauswahl, die dann immer wieder auf Academy zurückfällt, wäre bei jedem
+    /// Start erneut zu korrigieren.
+    ///
+    /// Der Rohwert wird gespeichert, nicht der Fall: AppStorage kann nur
+    /// einfache Typen, und der Rohwert ist ohnehin die Zahl, die auch die
+    /// C-Seite kennt.
+    @AppStorage("jkxr.letztesSpiel") private var letztesSpiel: Int = Int(Spiel.academy.rawValue)
+
     @State private var spiel: Spiel = .academy
     @State private var assets: AssetStatus = .missing
     @State private var importing = false
@@ -131,9 +143,16 @@ struct ContentView: View {
         .padding(40)
         .onChange(of: spiel) { _, neu in
             progress = nil
+            letztesSpiel = Int(neu.rawValue)
             assets = AssetStore.status(neu)
         }
         .task {
+            // Die gemerkte Wahl VOR der Statusabfrage übernehmen, sonst zeigt
+            // das Fenster einen Augenblick die Dateien des anderen Spiels.
+            if let gemerkt = Spiel(rawValue: Int32(letztesSpiel)) {
+                spiel = gemerkt
+            }
+
             // Muss vor allem anderen passieren: ein leeres Dokumentenverzeichnis
             // erscheint in der Dateien-App überhaupt nicht, egal was in der
             // Info.plist steht. Erst wenn etwas darin liegt, wird der Ordner
