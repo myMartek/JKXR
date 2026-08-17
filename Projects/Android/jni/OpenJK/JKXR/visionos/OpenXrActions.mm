@@ -549,6 +549,39 @@ static bool entprellt(const void *action, int hand, bool roh)
     return e->stabil;
 }
 
+/// Endet die Bindung dieser Aktion auf den angegebenen Pfad?
+static bool bindungEndetAuf(const void *action, int hand, const char *ende)
+{
+    const std::string *b = bindingForHand(
+        reinterpret_cast<const Action *>(action), hand);
+    if (!b) return false;
+    const size_t len = strlen(ende);
+    return b->size() >= len && b->compare(b->size() - len, len, ende) == 0;
+}
+
+/// Schaltschwelle mit Hysterese: an ab 0,80, aus unter 0,35.
+static bool schmitt(const void *action, int hand, float wert)
+{
+    struct Eintrag { const void *action; int hand; bool an; };
+    static Eintrag eintraege[4] = {};
+
+    Eintrag *e = nullptr;
+    for (Eintrag &kandidat : eintraege) {
+        if (kandidat.action == action && kandidat.hand == hand) { e = &kandidat; break; }
+        if (kandidat.action == nullptr && !e) { e = &kandidat; }
+    }
+    if (!e) return wert > 0.5f;
+
+    e->action = action;
+    e->hand = hand;
+    if (e->an) {
+        if (wert < 0.35f) e->an = false;
+    } else {
+        if (wert >= 0.80f) e->an = true;
+    }
+    return e->an;
+}
+
 extern "C" XrResult xrGetActionStateBoolean(XrSession, const XrActionStateGetInfo *info,
                                             XrActionStateBoolean *state)
 {
@@ -582,9 +615,8 @@ extern "C" XrResult xrGetActionStateBoolean(XrSession, const XrActionStateGetInf
     // Nur diese eine Taste, nicht alle: eine Entprellung kostet Reaktionszeit,
     // und beim Trigger waere das im Kampf zu spueren. Beim Menue faellt sie
     // nicht auf.
-    const std::string *bindung = bindingForHand(action, handForSubaction(action, info->subactionPath));
-    if (bindung && bindung->size() >= 12 &&
-        bindung->compare(bindung->size() - 12, 12, "/menu/click") == 0) {
+    if (bindungEndetAuf(action, handForSubaction(action, info->subactionPath),
+                        "/menu/click")) {
         gedrueckt = entprellt(action, handForSubaction(action, info->subactionPath), gedrueckt);
     }
 
@@ -612,7 +644,32 @@ extern "C" XrResult xrGetActionStateFloat(XrSession, const XrActionStateGetInfo 
         return XR_SUCCESS;
     }
 
-    state->currentState = button.value;
+    float wert = button.value;
+
+    // Schaltschwelle mit Hysterese fuer den Trigger.
+    //
+    // JKXR macht daraus eine Taste mit EINER Schwelle: IndexTrigger > 0,5
+    // (OpenXrInput.cpp:876). Auf den Sense-Controllern genuegt ein aufliegender
+    // Finger, um sie mehrfach zu ueberqueren -- GEMESSEN waehrend einer
+    // Filmsequenz: 0,649 · 0,435 · 0,823 · 0,075 binnen weniger Bilder. Jede
+    // Ueberquerung ist ein Druck, und ein Druck beendet die Sequenz.
+    //
+    // Zwei getrennte Schwellen loesen das: gedrueckt erst ab 0,80, losgelassen
+    // erst unter 0,35. Ein bewusster Zug erreicht 1,000 und wirkt weiter, ein
+    // aufliegender Finger nicht mehr.
+    //
+    // Zurueckgegeben wird ein Wert, der zur Entscheidung PASST -- die Engine
+    // schwellt bei 0,5, also muss er auf der richtigen Seite liegen. Die
+    // Groessenordnung bleibt erhalten, wo sie es kann.
+    if (bindungEndetAuf(action, handForSubaction(action, info->subactionPath),
+                        "/trigger/value")) {
+        const bool gedrueckt = schmitt(action,
+            handForSubaction(action, info->subactionPath), wert);
+        if (gedrueckt && wert < 0.55f)  wert = 0.55f;
+        if (!gedrueckt && wert > 0.45f) wert = 0.45f;
+    }
+
+    state->currentState = wert;
     state->isActive = XR_TRUE;
     return XR_SUCCESS;
 }
