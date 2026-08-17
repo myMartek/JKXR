@@ -44,6 +44,14 @@ targets:
         PRODUCT_NAME: JKXR
         INFOPLIST_KEY_CFBundleDisplayName: Jedi Knight XR
 
+        # DIAGNOSE, wieder zu entfernen.
+        #
+        # Ohne diesen Schluessel verweigert Metal jede Aufzeichnung -- auch die
+        # programmgesteuerte ueber MTLCaptureManager. Gebraucht wird sie fuer
+        # genau eine Frage: stehen in renderTargetWidth/Height die Screen-Masse
+        # (5087x4081) oder die physischen (2048x1984)? Nur der Trace zeigt das.
+        INFOPLIST_KEY_MetalCaptureEnabled: "YES"
+
         # Ohne Zweckangabe verweigert visionOS den ARKit-Provider, und zwar
         # wortlos — die Anfrage erreicht den Nutzer gar nicht erst.
         INFOPLIST_KEY_NSWorldSensingUsageDescription: >-

@@ -201,6 +201,7 @@
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../spikes/s4-angle/angle-include";
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Jedi Knight XR";
+				INFOPLIST_KEY_MetalCaptureEnabled = YES;
 				INFOPLIST_KEY_NSWorldSensingUsageDescription = "Kopf- und Controllerposition für das Spiel im Immersive Space.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
@@ -284,6 +285,7 @@
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../spikes/s4-angle/angle-include";
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Jedi Knight XR";
+				INFOPLIST_KEY_MetalCaptureEnabled = YES;
 				INFOPLIST_KEY_NSWorldSensingUsageDescription = "Kopf- und Controllerposition für das Spiel im Immersive Space.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";

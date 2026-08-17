@@ -214,6 +214,7 @@ namespace {
 /// Von der SwiftUI-Hülle gesetzt, sobald der Immersive Space offen ist.
 cp_layer_renderer_t gLayerRenderer = nullptr;
 
+bool           gCaptureRunning = false;   // DIAGNOSE
 cp_frame_t     gFrame    = nullptr;
 cp_drawable_t  gDrawable = nullptr;
 id<MTLCommandQueue>  gQueue = nil;
@@ -1227,6 +1228,58 @@ void TBXR_FrameSetup()
         return;
     }
 
+    // DIAGNOSE, wieder zu entfernen.
+    //
+    // Ein Bild aufzeichnen, sobald wir IM SPIEL sind -- nicht im Menue. Die
+    // Frage, die nur der Trace beantwortet: stehen in renderTargetWidth/Height
+    // des Renderpasses die Screen-Masse (5087x4081) oder die physischen
+    // (2048x1984)?
+    //
+    // Alles andere ist gemessen und stimmt: Zielpuffer, Viewport, Reihenfolge,
+    // Zahlen der Drawable, und der Aufruf wirkt nachweislich. Bleibt diese eine
+    // Groesse, und sie ist die einzige, die der Patch NICHT anfasst.
+    //
+    // Ausgeloest ueber den Wechsel des Flachbild-Pfads plus Vorlauf, nicht ueber
+    // eine feste Bildnummer: der Uebergang ins Spiel liegt je nach Spielverlauf
+    // irgendwo zwischen Bild 150 und 250.
+    {
+        static int spielSeit = -1;
+        static bool aufgezeichnet = false;
+        if (!gRenderingFlatScreen[0] && spielSeit < 0 && gFrameCounter > 30) {
+            spielSeit = gFrameCounter;
+        }
+        if (!aufgezeichnet && spielSeit >= 0 && gFrameCounter >= spielSeit + 60) {
+            aufgezeichnet = true;
+            MTLCaptureManager *cm = [MTLCaptureManager sharedCaptureManager];
+            if ([cm supportsDestination:MTLCaptureDestinationGPUTraceDocument]) {
+                NSArray *dirs = NSSearchPathForDirectoriesInDomains(
+                    NSDocumentDirectory, NSUserDomainMask, YES);
+                NSString *pfad = [dirs.firstObject
+                    stringByAppendingPathComponent:@"jkxr-foveation.gputrace"];
+                [[NSFileManager defaultManager] removeItemAtPath:pfad error:nil];
+
+                MTLCaptureDescriptor *d = [[MTLCaptureDescriptor alloc] init];
+                // Das Geraet des Layer-Renderers, nicht das Standardgeraet:
+                // ANGLE und CompositorServices muessen dasselbe benutzen, sonst
+                // scheitert schon der Texturimport (siehe EngineHost).
+                d.captureObject = cp_layer_renderer_get_device(gLayerRenderer);
+                d.destination = MTLCaptureDestinationGPUTraceDocument;
+                d.outputURL = [NSURL fileURLWithPath:pfad];
+
+                NSError *err = nil;
+                if ([cm startCaptureWithDescriptor:d error:&err]) {
+                    gCaptureRunning = true;
+                    Com_Printf("[Trace] Aufzeichnung gestartet, Bild %d\n", gFrameCounter);
+                } else {
+                    Com_Printf("[Trace] Start fehlgeschlagen: %s\n",
+                               err.localizedDescription.UTF8String);
+                }
+            } else {
+                Com_Printf("[Trace] Ziel GPUTraceDocument nicht unterstuetzt\n");
+            }
+        }
+    }
+
     gFrame = cp_layer_renderer_query_next_frame(gLayerRenderer);
     if (!gFrame) return;
 
@@ -2170,6 +2223,13 @@ void TBXR_submitFrame()
         ALOGV("[Bild %d] GPU %.2f ms vor Deadline fertig",
               gFrameCounter, completedSlackMs);
     }
+    // DIAGNOSE, wieder zu entfernen.
+    if (gCaptureRunning) {
+        gCaptureRunning = false;
+        [[MTLCaptureManager sharedCaptureManager] stopCapture];
+        Com_Printf("[Trace] Aufzeichnung beendet, Bild %d\n", gFrameCounter);
+    }
+
     cp_frame_end_submission(gFrame);
 
     gDrawable = nullptr;
