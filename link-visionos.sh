@@ -145,6 +145,6 @@ otool -l "$OUT" | grep -A3 LC_BUILD_VERSION | grep -E "platform|minos" | head -2
 echo
 echo "Einsprungpunkte im Export-Trie (dlsym muss sie finden):"
 xcrun dyld_info -exports "$OUT" 2>/dev/null | \
-    grep -E "GetGameAPI|GetRefAPI|JKXR_visionOS_Main|JKXR_visionOS_RequestShutdown" || \
+    grep -E "GetGameAPI|GetRefAPI|vmMain|dllEntry|JKXR_visionOS_Main|JKXR_visionOS_RequestShutdown" || \
     echo "  KEINE — Q_EXPORT fehlt an den Definitionen"
 
