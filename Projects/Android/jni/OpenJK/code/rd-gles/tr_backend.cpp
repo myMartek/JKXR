@@ -1137,7 +1137,7 @@ void	RB_SetGL2D (void) {
 		static cvar_t *hudStereo = NULL;
 		static cvar_t *hudSize = NULL;
 		static cvar_t *hudDown = NULL;
-		if ( !hudStereo ) hudStereo = ri.Cvar_Get( "cg_hudStereo", "35", CVAR_ARCHIVE );
+		if ( !hudStereo ) hudStereo = ri.Cvar_Get( "cg_hudStereo", JKXR_HUDSTEREO_DEFAULT, CVAR_ARCHIVE );
 		const float dx = ( hudStereo ? hudStereo->value : 35.0f )
 			* ( VR_GetCurrentEye() == 0 ? -1.0f : 1.0f );
 

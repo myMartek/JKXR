@@ -108,7 +108,11 @@ static void R_VR_GetHudReplayOffset( stereoFrame_t stereoFrame, float *x, float 
 		return;
 	}
 
+#if defined(JKXR_VISIONOS)
+	hudStereo = ri.Cvar_Get( "cg_hudStereo", JKXR_HUDSTEREO_DEFAULT, 0 );
+#else
 	hudStereo = ri.Cvar_Get( "cg_hudStereo", "20", 0 );
+#endif
 	if ( hudStereo ) {
 		*x += ( stereoFrame == STEREO_LEFT ) ? hudStereo->value : -hudStereo->value;
 	}

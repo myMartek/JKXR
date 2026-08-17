@@ -517,8 +517,28 @@ static void DrawSkyBox( jk_shader_t *shader )
 		static int letzteSeiten = -1;
 		if ( s_jkxrSkySeiten != letzteSeiten ) {
 			letzteSeiten = s_jkxrSkySeiten;
-			ri.Printf( PRINT_ALL, "[Himmelsbox] %d von 6 Seiten gezeichnet\n",
-				s_jkxrSkySeiten );
+
+			// Passt die Box überhaupt ins Frustum?
+			//
+			// MakeSkyVec baut sie aus backEnd.viewParms.zFar; die Projektion
+			// kommt auf visionOS aber vom Compositor und ignoriert zNear/zFar
+			// der Engine vollständig (VR_GetVRProjection). Ist die Ferne des
+			// Compositors kleiner, liegt die ganze Box dahinter und wird
+			// weggeschnitten -- gezeichnet wäre sie trotzdem, nur nie zu sehen.
+			//
+			// Die Ferne aus der Matrix zurückgerechnet: für eine Projektion mit
+			// m[11] == -1 gilt f = m[14] / (m[10] + 1).
+			const float *m = backEnd.viewParms.projectionMatrix;
+			const float nenner = m[10] + 1.0f;
+			const float ferne = ( fabsf( nenner ) > 1e-6f ) ? ( m[14] / nenner ) : 0.0f;
+
+			ri.Printf( PRINT_ALL, "[Himmelsbox] %d von 6 Seiten · zFar %.0f · "
+				"Boxgroesse %.0f · Ecke %.0f · Ferne der Matrix %.0f "
+				"(m10 %.4f m14 %.1f m11 %.1f)\n",
+				s_jkxrSkySeiten, backEnd.viewParms.zFar,
+				backEnd.viewParms.zFar / 1.75f,
+				( backEnd.viewParms.zFar / 1.75f ) * 1.7320508f,
+				ferne, m[10], m[14], m[11] );
 		}
 		s_jkxrSkySeiten = 0;
 	}

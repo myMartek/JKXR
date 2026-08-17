@@ -283,7 +283,11 @@ void UI_Init( int apiVersion, uiimport_t *uiimport, qboolean inGameLoad )
 	ui.Cvar_Create( "g_saberAnimSpeed", "1.2", CVAR_ARCHIVE );
 	ui.Cvar_Create( "cg_heightAdjust", "0.0", CVAR_ARCHIVE );
 	ui.Cvar_Create( "cg_hudScale", "2.5", CVAR_ARCHIVE );
+#if defined(JKXR_VISIONOS)
+	ui.Cvar_Create( "cg_hudStereo", JKXR_HUDSTEREO_DEFAULT, CVAR_ARCHIVE );
+#else
 	ui.Cvar_Create( "cg_hudStereo", "20", CVAR_ARCHIVE );
+#endif
 	ui.Cvar_Create( "cg_hudYOffset", "0.0", CVAR_ARCHIVE );
 	ui.Cvar_Create( "g_TeamBeefDirectorsCut", "1", CVAR_ARCHIVE );
 #ifdef JK2_MODE

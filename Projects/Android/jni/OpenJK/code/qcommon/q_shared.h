@@ -84,6 +84,22 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #endif
 
 #define	BASEGAME "base"
+
+#if defined(JKXR_VISIONOS)
+// Der waagerechte Stereo-Versatz des 2D, an EINER Stelle.
+//
+// Er wird an vier Stellen registriert: RB_SetGL2D und R_VR_GetHudReplayOffset im
+// Renderer, die cvar-Tabelle des cgame und ui_atoms.cpp. Wer zuerst dran ist,
+// bestimmt den Wert -- und das lief auseinander: Academy bekam 35 (Renderer war
+// zuerst), Outcast 20 (cgame war zuerst). Gemessen auf dem Geraet stehen die
+// beiden Augen damit 238 gegen 208 Einheiten auseinander, und nur die 238 lassen
+// sich fusionieren. In Outcast lag das HUD im linken Auge zu weit links.
+//
+// Die Zahl ist NICHT von anderen Plattformen uebertragbar: dort ist das
+// Ortho-Fenster 640 Einheiten breit bei schmalerem Sichtfeld, dieselbe Zahl
+// ergibt einen anderen Winkel.
+#define JKXR_HUDSTEREO_DEFAULT "35"
+#endif
 #define OPENJKGAME "OpenJK"
 
 #define Q3CONFIG_NAME PRODUCT_NAME ".cfg"

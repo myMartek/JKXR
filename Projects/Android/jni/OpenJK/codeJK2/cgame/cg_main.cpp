@@ -391,7 +391,11 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_shadows, "cg_shadows", "1", CVAR_ARCHIVE  },
 #endif
 	{ &cg_hudScale, "cg_hudScale", "2.5", CVAR_ARCHIVE  },
+#if defined(JKXR_VISIONOS)
+	{ &cg_hudStereo, "cg_hudStereo", JKXR_HUDSTEREO_DEFAULT, CVAR_ARCHIVE  },
+#else
 	{ &cg_hudStereo, "cg_hudStereo", "20", CVAR_ARCHIVE  },
+#endif
 	{ &cg_hudYOffset, "cg_hudYOffset", "0.0", CVAR_ARCHIVE  },
 
 	{ &cg_draw2D, "cg_draw2D", "1", CVAR_ARCHIVE  },
