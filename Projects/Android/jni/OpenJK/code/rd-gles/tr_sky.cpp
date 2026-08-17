@@ -514,9 +514,17 @@ static void DrawSkyBox( jk_shader_t *shader )
 	// verdeckt: null Seiten heisst, der Himmel wird gar nicht gezeichnet und
 	// man sieht die Löschfarbe.
 	{
+		// Bei Zustandswechsel, aber gedeckelt.
+		//
+		// Die Seitenzahl ändert sich beim Umsehen in fast jedem Bild — als
+		// reiner Wechselmelder schrieb dieser Messpunkt 2,2 MB in eine Sitzung,
+		// und eine so grosse Datei laesst sich waehrend des Laufs nicht einmal
+		// mehr vom Geraet holen. Zwanzig Meldungen beantworten die Frage.
 		static int letzteSeiten = -1;
-		if ( s_jkxrSkySeiten != letzteSeiten ) {
+		static int gemeldet = 0;
+		if ( s_jkxrSkySeiten != letzteSeiten && gemeldet < 20 ) {
 			letzteSeiten = s_jkxrSkySeiten;
+			++gemeldet;
 
 			// Passt die Box überhaupt ins Frustum?
 			//
@@ -947,10 +955,37 @@ void RB_StageIteratorSky( void ) {
 
 		qglPushMatrix ();
 		GL_State( 0 );
+#if defined(JKXR_VISIONOS)
+		// Beidseitig zeichnen.
+		//
+		// Diese Funktion setzt sonst KEINEN Cull-Modus — es gilt, was die letzte
+		// Fläche hinterlassen hat. Auf einem Monitor geht das durch: die
+		// Himmelsbox wird von innen gesehen, und ihre Wicklung passt zur
+		// Vorderseite.
+		//
+		// Auf visionOS nicht. Die Projektion spiegelt Y (Metal zeigt Speicherzeile
+		// 0 oben, GL adressiert von unten), dadurch kehrt sich die Wicklung ALLER
+		// Dreiecke um, und der Port gleicht das zentral mit glFrontFace(GL_CW)
+		// aus. Für Flächen, die ihren Cull-Modus selbst setzen, stimmt das
+		// wieder — für die Himmelsbox, die es nicht tut, hängt es am Zufall.
+		//
+		// Beidseitig ist hier ohnehin das Richtige: eine Box, in der man steht,
+		// hat keine sinnvolle Rückseite, und die sechs Seiten überdecken sich
+		// nicht. Es kostet also nichts und macht die Sichtbarkeit unabhängig von
+		// der Wicklung.
+		const int himmelCullVorher = glState.faceCulling;
+		GL_Cull( CT_TWO_SIDED );
+#endif
 		qglTranslatef (backEnd.viewParms.ori.origin[0], backEnd.viewParms.ori.origin[1], backEnd.viewParms.ori.origin[2]);
 
 		DrawSkyBox( tess.shader );
 
+#if defined(JKXR_VISIONOS)
+		// Den vorgefundenen Cull-Modus zurueckgeben: die Wolkenschicht darunter
+		// laeuft ueber den gewoehnlichen Stufen-Iterator, und der setzt ihn aus
+		// dem Shader. Ihn hier stehen zu lassen waere eine stille Nebenwirkung.
+		GL_Cull( himmelCullVorher );
+#endif
 		qglPopMatrix();
 	}
 

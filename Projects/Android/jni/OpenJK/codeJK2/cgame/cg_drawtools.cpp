@@ -40,10 +40,12 @@ void CG_AdjustFrom640( float *x, float *y, float *w, float *h ) {
 	// Aufrufe kommen aus dem Ladebild und beantworten die Frage nicht.
 	{
 		static int letzterZustand = -1;
+		static int gemeldet = 0;
 		const int zustand = (cg.drawingHUD * 100) + (cg.stereoView * 10)
 			+ (vr->using_screen_layer ? 1 : 0);
-		if ( zustand != letzterZustand ) {
+		if ( zustand != letzterZustand && gemeldet < 40 ) {
 			letzterZustand = zustand;
+			++gemeldet;
 			CG_Printf( "[HUD] drawingHUD %d · stereoView %d · Bildschirmschicht %d "
 				"· cin_camera %d · hudStereo %.1f · hudScale %.2f · fovX %.4f\n",
 				cg.drawingHUD, cg.stereoView, vr->using_screen_layer ? 1 : 0,
