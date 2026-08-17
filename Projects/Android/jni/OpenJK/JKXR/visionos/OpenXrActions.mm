@@ -26,6 +26,31 @@
 // Von TBXR_Common.mm bereitgestellt.
 extern "C" void TBXR_visionOS_Vibrate(int hand, float amplitude, float seconds);
 
+// Aus der Engine.
+//
+// NICHT extern "C": Com_Printf ist dort C++ (qcommon.h:615), und eine
+// C-Bindung suchte einen Namen, den es nicht gibt. QDECL steht hier nicht,
+// weil q_platform.h in dieser Datei nicht eingebunden ist -- auf arm64 ist das
+// Makro leer, die Signatur stimmt also ueberein.
+void Com_Printf(const char *fmt, ...);
+
+/// Wann die Zuordnung der Controller zuletzt gewechselt hat, 0 = nie.
+static CFTimeInterval gMappingChangedAt = 0.0;
+
+/// Wie lange danach keine Tasten gemeldet werden.
+///
+/// Lang genug, dass der Wechsel abgeschlossen ist, kurz genug, dass ein echter
+/// Druck in dieser Zeit nicht auffaellt -- er wird ohnehin gehalten und kommt
+/// im naechsten Bild durch.
+static const CFTimeInterval BERUHIGUNG = 0.30;
+
+/// Gilt gerade das Beruhigungsfenster?
+static bool mappingBeruhigt(void)
+{
+    return gMappingChangedAt > 0.0 &&
+           (CACurrentMediaTime() - gMappingChangedAt) < BERUHIGUNG;
+}
+
 // Vom App-Ziel bereitgestellt (Sources/Bridge/WorldTracking.m). Liefert das
 // GCDevice einer Hand, dessen Händigkeit ARKit über
 // ar_accessory_get_inherent_chirality bestimmt hat — dieselbe Quelle, aus der
@@ -106,18 +131,15 @@ int handIndexForPath(const std::string &path)
 
 /// Bildet einen OpenXR-Eingabepfad auf den Namen eines GameController-Elements ab.
 ///
-/// ACHTUNG: Diese Zuordnung ist nach Bedeutung geraten, nicht gemessen. Wie die
-/// Sense-Controller ihre Elemente tatsächlich benennen, steht nicht fest —
-/// GCInputRightTrigger und Verwandte sind die Namen des erweiterten
-/// Gamepad-Profils, und ob ein räumlicher Controller dieselben verwendet, ist
-/// eine Annahme.
+/// Die Namen im Rumpf sind auf dem Gerät GEMESSEN, nicht geraten --
+/// TBXR_visionOS_DumpInputs gibt sie aus. (Ein früherer Kopf dieser Funktion
+/// behauptete das Gegenteil und stand damit im Widerspruch zu seinem eigenen
+/// Rumpf.)
 ///
-/// Deshalb wird unten über `physicalInputProfile` gesucht statt über
-/// `extendedGamepad`: das Profil legt alle Elemente als
-/// zeichenkettenindizierte Sammlung offen, und ein unbekannter Name führt dann
-/// zu "nicht gefunden" statt zu einem falschen Element. TBXR_visionOS_DumpInputs
-/// gibt die tatsächlichen Namen aus, damit die Tabelle hier gegen Gemessenes
-/// ersetzt werden kann.
+/// Gesucht wird über `physicalInputProfile` statt über `extendedGamepad`: das
+/// Profil legt alle Elemente als zeichenkettenindizierte Sammlung offen, und ein
+/// unbekannter Name führt dann zu "nicht gefunden" statt zu einem falschen
+/// Element.
 /// Wahr, wenn beide Hände auf demselben Gerät liegen (kombiniertes Gamepad).
 bool gCombinedDevice = false;
 
@@ -322,15 +344,42 @@ extern "C" void TBXR_visionOS_RefreshControllers(void)
     // eine vertauschte Steuerung eine Vermutung — so steht sie im Protokoll.
     {
         static GCController *gemeldet[2] = { nil, nil };
-        if (gControllers[0] != gemeldet[0] || gControllers[1] != gemeldet[1]) {
+        static bool kombiniertGemeldet = false;
+        if (gControllers[0] != gemeldet[0] || gControllers[1] != gemeldet[1] ||
+            gCombinedDevice != kombiniertGemeldet) {
+            const bool ersteZuordnung = (gemeldet[0] == nil && gemeldet[1] == nil);
             gemeldet[0] = gControllers[0];
             gemeldet[1] = gControllers[1];
-            fprintf(stderr, "[TBXR] Haende: links %s (ARKit %s) · rechts %s (ARKit %s)%s\n",
-                    gControllers[0].vendorName.UTF8String ?: "-",
-                    ausArkit[0] ? "ja" : "nein",
-                    gControllers[1].vendorName.UTF8String ?: "-",
-                    ausArkit[1] ? "ja" : "nein",
-                    gCombinedDevice ? " · kombiniertes Geraet" : "");
+            kombiniertGemeldet = gCombinedDevice;
+
+            // Nach einem Wechsel kurz keine Tasten melden.
+            //
+            // visionOS reicht die Controller in ZWEI Zustaenden heraus: erst ein
+            // kombiniertes MFi-Geraet, und sobald die Zubehoerverfolgung laeuft,
+            // zwei getrennte Spatial Controller mit ganz anderen Elementnamen
+            // (siehe gcNameForInputPath). Beim Umbruch zeigt derselbe
+            // Tastenzustand auf ein anderes Element -- und die Engine sieht eine
+            // FLANKE, obwohl niemand etwas gedrueckt hat.
+            //
+            // Das ist nicht theoretisch: waehrend einer Filmsequenz genuegt eine
+            // einzige solche Flanke, um sie abzubrechen (CL_KeyDownEvent
+            // beendet sie bei JEDER Taste, cl_keys.cpp:1244). Der Umbruch faellt
+            // genau in die Startphase -- Videos und erste Sequenz.
+            //
+            // Beim allerersten Zuordnen ist nichts zu unterdruecken: davor gab
+            // es keinen Zustand, aus dem eine Flanke entstehen koennte.
+            if (!ersteZuordnung) {
+                gMappingChangedAt = CACurrentMediaTime();
+            }
+
+            // Ueber Com_Printf, nicht fprintf: stderr landet nicht in
+            // qconsole.log, und genau dort braucht man diese Zeile.
+            Com_Printf("[TBXR] Haende: links %s (ARKit %s) · rechts %s (ARKit %s)%s\n",
+                       gControllers[0].vendorName.UTF8String ?: "-",
+                       ausArkit[0] ? "ja" : "nein",
+                       gControllers[1].vendorName.UTF8String ?: "-",
+                       ausArkit[1] ? "ja" : "nein",
+                       gCombinedDevice ? " · kombiniertes Geraet" : "");
         }
     }
 }
@@ -479,6 +528,13 @@ extern "C" XrResult xrGetActionStateBoolean(XrSession, const XrActionStateGetInf
     GCControllerButtonInput *button = buttonFor(action, handForSubaction(action, info->subactionPath));
     if (!button) return XR_SUCCESS;
 
+    // Waehrend der Beruhigung "nicht gedrueckt" melden. Ein Loslassen ist
+    // harmlos -- die Filmsequenz bricht nur bei CL_KeyDownEvent ab.
+    if (mappingBeruhigt()) {
+        state->isActive = XR_TRUE;
+        return XR_SUCCESS;
+    }
+
     state->currentState = button.pressed ? XR_TRUE : XR_FALSE;
     state->isActive = XR_TRUE;
     return XR_SUCCESS;
@@ -495,6 +551,13 @@ extern "C" XrResult xrGetActionStateFloat(XrSession, const XrActionStateGetInfo 
 
     GCControllerButtonInput *button = buttonFor(action, handForSubaction(action, info->subactionPath));
     if (!button) return XR_SUCCESS;
+
+    // Auch den Analogwert: der Trigger wird ueber ihn zur Taste gemacht
+    // (OpenXrInput.cpp:876, Schwelle 0,5).
+    if (mappingBeruhigt()) {
+        state->isActive = XR_TRUE;
+        return XR_SUCCESS;
+    }
 
     state->currentState = button.value;
     state->isActive = XR_TRUE;
