@@ -836,6 +836,37 @@ Other things could be stuck in here, like birds in the sky, etc
 ================
 */
 void RB_StageIteratorSky( void ) {
+#if defined(JKXR_VISIONOS)
+	// MESSPUNKT, wieder zu entfernen.
+	//
+	// Bei Jedi Outcast bleibt der Himmel schwarz, bei Academy nicht. Im
+	// Protokoll steht keine fehlende Textur, der Himmel wird also gezeichnet und
+	// verworfen -- oder diese Funktion steigt vorher aus. Sie hat drei
+	// Rücksprünge und zwei Zeichenwege; die Meldung nennt, welcher es ist.
+	//
+	// Bei jedem Zustandswechsel, damit ein Levelwechsel oder ein anderer
+	// Himmelsshader sichtbar wird.
+	{
+		static int letzterZustand = -1;
+		const int hatBox = ( tess.shader->sky
+			&& tess.shader->sky->outerbox[0]
+			&& tess.shader->sky->outerbox[0] != tr.defaultImage ) ? 1 : 0;
+		const int zustand = ( r_fastsky->integer ? 1 : 0 )
+			+ ( skyboxportal ? 2 : 0 )
+			+ ( ( backEnd.refdef.rdflags & RDF_SKYBOXPORTAL ) ? 4 : 0 )
+			+ ( hatBox ? 8 : 0 )
+			+ ( ( tess.shader->sky && tess.shader->sky->cloudHeight ) ? 16 : 0 );
+		if ( zustand != letzterZustand ) {
+			letzterZustand = zustand;
+			ri.Printf( PRINT_ALL, "[Himmel] %s · fastsky %d · Portal %d/%d · "
+				"Aussenbox %d · Wolkenhoehe %.0f · Stufen %d\n",
+				tess.shader->name, r_fastsky->integer, skyboxportal,
+				( backEnd.refdef.rdflags & RDF_SKYBOXPORTAL ) ? 1 : 0,
+				hatBox, tess.shader->sky ? tess.shader->sky->cloudHeight : 0.0f,
+				tess.shader->numUnfoggedPasses );
+		}
+	}
+#endif
 	if ( r_fastsky->integer ) {
 		return;
 	}

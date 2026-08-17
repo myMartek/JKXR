@@ -27,6 +27,31 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 
 
 void CG_AdjustFrom640( float *x, float *y, float *w, float *h ) {
+#if defined(JKXR_VISIONOS)
+	// MESSPUNKT, wieder zu entfernen.
+	//
+	// Das HUD ist kopf-fest richtig, liegt aber in den beiden Augen nicht
+	// übereinander. Die Rechnung hier ist mit der von Academy Zeichen für
+	// Zeichen identisch, und beide Hälften des Versatzes lesen dieselbe cvar --
+	// also entscheidet ein Zustand, den man nur auf dem Gerät sieht. Diese fünf
+	// Zahlen sind alle Eingänge der Rechnung.
+	//
+	// Bei jedem ZUSTANDSWECHSEL, nicht in den ersten N Aufrufen: die frühen
+	// Aufrufe kommen aus dem Ladebild und beantworten die Frage nicht.
+	{
+		static int letzterZustand = -1;
+		const int zustand = (cg.drawingHUD * 100) + (cg.stereoView * 10)
+			+ (vr->using_screen_layer ? 1 : 0);
+		if ( zustand != letzterZustand ) {
+			letzterZustand = zustand;
+			CG_Printf( "[HUD] drawingHUD %d · stereoView %d · Bildschirmschicht %d "
+				"· cin_camera %d · hudStereo %.1f · hudScale %.2f · fovX %.4f\n",
+				cg.drawingHUD, cg.stereoView, vr->using_screen_layer ? 1 : 0,
+				vr->cin_camera ? 1 : 0, cg_hudStereo.value, cg_hudScale.value,
+				vr->off_center_fov_x );
+		}
+	}
+#endif
 	if (cg.drawingHUD && (!vr->cin_camera || vr->immersive_cinematics) && !vr->using_screen_layer)
 	{
 		float screenXScale = 1.0f / (cg.drawingHUD == CG_HUD_SCALED ? cg_hudScale.value : 1.0f);

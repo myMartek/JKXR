@@ -8,8 +8,10 @@ import UniformTypeIdentifiers
 /// passen, und die Ordnernamen zu `JKXR_SPIELORDNER` in visionos_main.mm — dort
 /// sucht die Engine ihr `base/`.
 enum Spiel: Int32, CaseIterable, Identifiable {
-    case academy = 0
+    // Die Rohwerte folgen der C-Aufzählung; die ANZEIGE folgt der Reihenfolge
+    // der Fälle, und die ist chronologisch — Outcast (2002) vor Academy (2003).
     case outcast = 1
+    case academy = 0
 
     var id: Int32 { rawValue }
 
