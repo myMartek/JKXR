@@ -1247,12 +1247,25 @@ void CL_KeyDownEvent( int key, unsigned time )
 #if defined(JKXR_VISIONOS)
 		// MESSPUNKT, wieder zu entfernen.
 		//
-		// Hier bricht JEDE Taste eine Filmsequenz ab, ohne Schonfrist und ohne
-		// Filter. Auf der Brille geschah das wiederholt, ohne dass jemand etwas
-		// gedrueckt hatte -- und welche Taste es war, liess sich nicht sagen.
-		// Diese Zeile sagt es.
-		Com_Printf( "[Sequenz] abgebrochen durch Taste %d (%s), Zustand %d\n",
-			key, Key_KeynumToString( key ), cls.state );
+		// Die ERSTE Fassung meldete nur, dass eine Taste ankommt, und war
+		// beschriftet, als sei damit auch abgebrochen worden. Das ist nicht
+		// dasselbe: SCR_StopCinematic(qtrue) darf ablehnen und tut das in den
+		// ersten 1,2 Sekunden auch (cl_cin.cpp:2140). Aus "Taste kam an" wurde
+		// so faelschlich "Taste hat abgebrochen".
+		//
+		// Diese Fassung meldet das Ergebnis.
+		{
+			const int zustandVorher = cls.state;
+			const qboolean liefVorher = (qboolean)( cls.state == CA_CINEMATIC
+				|| CL_IsRunningInGameCinematic() );
+			SCR_StopCinematic(qtrue);
+			const qboolean laeuftNoch = (qboolean)( cls.state == CA_CINEMATIC
+				|| CL_IsRunningInGameCinematic() );
+			Com_Printf( "[Sequenz] Taste %d (%s), Zustand %d -> %s\n",
+				key, Key_KeynumToString( key ), zustandVorher,
+				( liefVorher && laeuftNoch ) ? "verweigert, laeuft weiter" : "beendet" );
+			return;
+		}
 #endif
 		SCR_StopCinematic(qtrue);
 		return;
