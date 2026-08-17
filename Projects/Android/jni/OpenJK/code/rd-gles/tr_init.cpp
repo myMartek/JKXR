@@ -1256,7 +1256,27 @@ static void JKXR_visionOS_ApplyDepthState( void )
 	if ( flat ) {
 		glDepthRangef( s_jkxrDepthNear, s_jkxrDepthFar );
 	} else {
-		glDepthRangef( 1.0f - s_jkxrDepthFar, 1.0f - s_jkxrDepthNear );
+		// Derselbe Sockel wie beim Löschwert unten, und aus demselben Grund
+		// nötig -- aber er muss auch HIER greifen, sonst widersprechen sich die
+		// beiden.
+		//
+		// Der Löschwert wird auf 1e-4 angehoben, weil visionOS Pixel mit Tiefe
+		// genau 0 als "nicht gezeichnet" behandelt. Der Tiefenbereich blieb
+		// dagegen bei 0 -- und der Himmel ist das einzige, was id Tech 3 mit
+		// glDepthRange(1,1) auf GENAU die Ferne zeichnet (RB_StageIteratorSky).
+		// Gespiegelt wurde daraus (0,0), und gegen den auf 1e-4 angehobenen
+		// Löschwert scheiterte GEQUAL: 0 >= 1e-4 ist falsch. Jedes Himmelspixel
+		// wurde verworfen, während die Box nachweislich gezeichnet wurde --
+		// sichtbar blieb die Löschfarbe.
+		//
+		// Für den gewöhnlichen Bereich (0,1) verschiebt der Sockel die Ferne um
+		// 1e-4. Das ist nicht nur harmlos, sondern richtig: auch Geometrie an
+		// der Ferne soll nicht als "nicht gezeichnet" gelten.
+		float nah  = 1.0f - s_jkxrDepthFar;
+		float fern = 1.0f - s_jkxrDepthNear;
+		if ( nah  < 1.0e-4f ) nah  = 1.0e-4f;
+		if ( fern < 1.0e-4f ) fern = 1.0e-4f;
+		glDepthRangef( nah, fern );
 	}
 
 	if ( flat ) {
