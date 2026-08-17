@@ -168,6 +168,44 @@ PATCHES = [
         "Scissor bei aktiver Rate Map in Screen-Koordinaten rechnen",
     ),
     # ------------------------------------------------------------------
+    # 4b-2. Der Viewport — die Stelle, die bis 8034773 gefehlt hat
+    #
+    # GetViewport spiegelt Y gegen die uebergebene Hoehe, weil GL von unten links
+    # rechnet und Metal von oben links. Uebergeben wird die PHYSISCHE Hoehe des
+    # Anhangs; der Viewport steht bei aktiver Rate Map aber in SCREEN-Koordinaten.
+    #
+    # Auf dem Geraet gemessen: physisch 1984, Viewport 0,1 5086x4080. Die
+    # Spiegelung ergibt 1984 - (1 + 4080) = -2097 statt 0. Der Viewport landet
+    # weit im Negativen, und uebrig bleibt der obere linke Ausschnitt -- genau das
+    # Bild, das JKXR mit eingeschalteter Foveation zeigte.
+    #
+    # Der Patch korrigierte bisher nur den Scissor (4b) und dessen Obergrenze
+    # (4c). Ohne diese dritte Stelle traegt die Rate Map im GL-Pfad nicht.
+    # ------------------------------------------------------------------
+    (
+        METAL + "ContextMtl.mm",
+        """    mViewport = mtl::GetViewport(viewport, framebufferMtl->getState().getDimensions().height,
+                                 framebufferMtl->getFlipY(), nearPlane, farPlane);""",
+        """    // Fork-Ergänzung: Bei aktiver Rasterization Rate Map ist der Viewport in
+    // Screen-Koordinaten angegeben, die Anhänge sind physisch und kleiner.
+    // GetViewport spiegelt Y gegen die übergebene Höhe — mit der physischen
+    // landet der Viewport im Negativen, und sichtbar bleibt eine Ecke.
+    int flipHeight = framebufferMtl->getState().getDimensions().height;
+    if (const void *rateMap = framebufferMtl->getRasterizationRateMap())
+    {
+        if (@available(iOS 13.0, macOS 10.15.4, *))
+        {
+            MTLSize screen = [(__bridge id<MTLRasterizationRateMap>)const_cast<void *>(rateMap)
+                screenSize];
+            flipHeight = static_cast<int>(screen.height);
+        }
+    }
+
+    mViewport = mtl::GetViewport(viewport, flipHeight,
+                                 framebufferMtl->getFlipY(), nearPlane, farPlane);""",
+        "Viewport bei aktiver Rate Map gegen die Screen-Höhe spiegeln",
+    ),
+    # ------------------------------------------------------------------
     # 4c. Die Scissor-Obergrenze anheben
     #
     # Letztes Glied der Kette. mRenderPassMaxScissorRect startet bei "unendlich"
