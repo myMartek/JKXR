@@ -1599,42 +1599,47 @@ void TBXR_prepareEyeBuffer(int eye)
         return;
     }
 
+    // Rate Map VOR dem Viewport. Die Reihenfolge ist nicht beliebig.
+    //
+    // ANGLE rechnet Viewport und Scissor BEIM SETZEN aus, nicht beim Zeichnen
+    // (ContextMtl::syncState -> updateScissor; genau dort greift der Patch aus
+    // spikes/s4-angle und stellt die renderArea auf die screenSize der Map um).
+    // setRasterizationRateMap schreibt dagegen nur Felder und setzt KEIN
+    // Dirty-Bit. Wer den Viewport vorher setzt, lässt updateScissor mit der
+    // PHYSISCHEN renderArea laufen — und nichts rechnet das später nach.
+    //
+    // Die funktionierende Referenz macht es genau so herum, und ihr Kommentar
+    // sagt es wörtlich: "muss nach dem Binden und vor dem Zeichnen passieren"
+    // (spikes/s4-angle/visionOS/Sources/Angle/AngleBridge.c:426-441 — Map bei
+    // :428, glViewport erst bei :441). Hier stand es bis b4cbb01 vertauscht.
+    //
+    // Verschärft durch gl4es: gl4es_glViewport leitet nur bei GEÄNDERTEM Wert
+    // weiter (SupportLibs/gl4es/src/gl/raster.c:57-68). Die XR-Schicht setzt
+    // per angle::Viewport an gl4es vorbei, ein späteres qglViewport der Engine
+    // mit denselben Werten wird also verworfen — es gibt kein zweites
+    // Dirty-Bit, das den falsch gerechneten Scissor noch korrigieren könnte.
+    //
+    // Hinter der Vollständigkeitsprüfung, nicht davor wie in der Referenz: so
+    // bleibt auf den Früh-Rücksprüngen oben keine Map an einem unvollständigen
+    // FBO hängen.
+    //
+    // nil ist ein gültiger Wert und muss durchgereicht werden — der Patch
+    // verlangt "immer zuweisen, auch nil", weil die Descriptors wiederverwendet
+    // werden und sonst eine Map aus einem früheren Auge stehenbliebe. Bei
+    // abgeschalteter Foveation ist die Anzahl 0 und es gibt nichts zu holen.
+    const size_t rateMapCount = cp_drawable_get_rasterization_rate_map_count(gDrawable);
+    ANGLESetDrawFramebufferRateMapMTL(
+        ((size_t)eye < rateMapCount)
+            ? (__bridge const void *)cp_drawable_get_rasterization_rate_map(gDrawable, eye)
+            : nullptr);
+
     // Der Viewport steht bei aktiver Foveation in Screen-Koordinaten, die
-    // Textur ist physisch kleiner. Die Rate Map bildet dazwischen ab; ohne den
-    // ANGLE-Patch aus spikes/s4-angle bliebe nur eine Ecke des Bildes übrig.
+    // Textur ist physisch kleiner. Die Rate Map bildet dazwischen ab.
     cp_view_t view = cp_drawable_get_view(gDrawable, eye);
     cp_view_texture_map_t map = cp_view_get_view_texture_map(view);
     MTLViewport viewport = cp_view_texture_map_get_viewport(map);
     angle::Viewport((GLint)viewport.originX, (GLint)viewport.originY,
                (GLsizei)viewport.width, (GLsizei)viewport.height);
-
-    // DIAGNOSE: Rate-Map abschaltbar, Vorgabe AUS.
-    //
-    // Sie ist der letzte ungeprüfte Unterschied zwischen den beiden Zielen.
-    // Der Zwischenpuffer, in den die Welt nachweislich rendert, hat keine; die
-    // Augentextur, in der nur Clear und 2D ankommen, hat eine — und sie kommt
-    // aus einem eigenen ANGLE-Patch, ist also der am wenigsten erprobte Teil
-    // der Kette.
-    //
-    // Ohne Rate-Map muss auch die Ansicht auf die physische Texturgröße
-    // zurück: der Compositor gibt sie in Screen-Koordinaten (5087x4081), die
-    // Textur ist 2048x1984. Sonst läge nur eine Ecke des Bildes im Puffer.
-    // Getestet: OHNE Rate-Map bleibt die Welt ebenfalls aus. Sie ist damit
-    // nicht die Ursache, und der Normalzustand gilt wieder — sonst verfälscht
-    // die abgeschaltete Foveation samt geänderter Bildschirmauflösung jede
-    // weitere Messung (das HUD verlor dabei seine Weltstabilität).
-    static const int useRateMap = 1;
-    if (useRateMap) {
-        ANGLESetDrawFramebufferRateMapMTL(
-            (__bridge const void *)cp_drawable_get_rasterization_rate_map(gDrawable, eye));
-    } else {
-        ANGLESetDrawFramebufferRateMapMTL(nullptr);
-        id<MTLTexture> phys = cp_drawable_get_color_texture(gDrawable, eye);
-        if (phys) {
-            TBXR_visionOS_SetScreenRes((int)phys.width, (int)phys.height);
-            angle::Viewport(0, 0, (GLsizei)phys.width, (GLsizei)phys.height);
-        }
-    }
 
 
     // Reversed-Z wie vom Compositor erwartet. visionOS behandelt Pixel, deren
@@ -1689,8 +1694,22 @@ void TBXR_prepareEyeBuffer(int eye)
     // mit der unveränderten ARKit-Kamera als Quad in die Welt.
     if (VR_UseScreenLayer() && ensureFlatScreenTarget()) {
         restoreTextureBinding();
-        ANGLESetDrawFramebufferRateMapMTL(nullptr);
+        // Erst binden, dann abmelden. Die Reihenfolge war vertauscht.
+        //
+        // ANGLESetDrawFramebufferRateMapMTL wirkt auf den GERADE GEBUNDENEN
+        // Draw-Framebuffer (der Patch holt sich
+        // context->getState().getDrawFramebuffer()). Vor dem Binden landete das
+        // nil also auf dem Augen-FBO und löschte dort die eben gesetzte Map,
+        // während der Flachbild-FBO nie eine abgemeldet bekam.
+        //
+        // Bei abgeschalteter Foveation folgenlos, weil nil dann beidesmal ein
+        // No-op ist. Mit Foveation verliert die Augentextur sonst ihre Map.
+        //
+        // In TBXR_finishEyeBuffer ist die Reihenfolge RICHTIG: dort gilt das nil
+        // absichtlich dem Augen-FBO, und erst danach wird auf 0 gebunden. Die
+        // Asymmetrie ist gewollt, nicht ein zweiter Fehler.
         angle::BindFramebuffer(GL_FRAMEBUFFER, gFlatScreenFramebuffer);
+        ANGLESetDrawFramebufferRateMapMTL(nullptr);
         angle::Viewport(0, 0, gFlatScreenWidth, gFlatScreenHeight);
 
         const GLboolean flatScissorWasEnabled = angle::IsEnabled(GL_SCISSOR_TEST);
