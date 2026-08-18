@@ -335,3 +335,28 @@ Vier Fallen, jede einmal hineingetreten:
 Die beiden Skripte ändern zusammen **fünfzehn Dateien** im Baum; mehr steckt
 nicht in unserer ANGLE-Fassung. Deshalb genügen Commit-Stand und Skripte, um
 sie jederzeit wiederherzustellen.
+
+## Nach einem Neubau: `CFBundleShortVersionString` nachtragen
+
+ANGLEs erzeugte Frameworks bringen `CFBundleVersion` mit, aber kein
+`CFBundleShortVersionString`. Auf dem Gerät stört das nicht, und im Archiv
+fällt es auch nicht auf — erst App Store Connect weist die Lieferung zurück:
+
+```
+The bundle 'Payload/JKXR.app/Frameworks/libGLESv2.framework' is missing plist
+key. The Info.plist file is missing the required key:
+CFBundleShortVersionString. (90057)
+```
+
+Nach jedem Neubau also:
+
+```bash
+for f in libEGL libGLESv2; do
+    plutil -insert CFBundleShortVersionString -string "1.0" \
+        visionos/App/Frameworks/$f.framework/Info.plist
+done
+```
+
+Der Zeitpunkt ist unkritisch, solange es vor dem Bauen geschieht: Xcode
+signiert die eingebetteten Frameworks ohnehin neu (`codeSign: true` in
+project.yml).
