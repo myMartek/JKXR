@@ -2037,6 +2037,16 @@ static void PlayCinematic(const char *arg, const char *s, qboolean qbInGame)
 		////////////////////////////////////////////////////////////////////
 
 		CL_handle = CIN_PlayCinematic( arg, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, bits, psAudioFile );
+#if defined(JKXR_VISIONOS)
+		// MESSPUNKT, wieder zu entfernen.
+		//
+		// Die entscheidende Zahl. Nur bei gueltigem Handle pausiert die Engine
+		// das Spiel (cl_paused unten) -- sonst laeuft das Skript weiter, und im
+		// Protokoll folgt unmittelbar der naechste Kartenwechsel, der die
+		// Sequenz mitnimmt. Genau das war bei "ja01" zu sehen.
+		Com_Printf( "[Oeffnen] \"%s\" · Handle %d · imSpiel %d\n",
+			arg ? arg : "?", CL_handle, qbInGame ? 1 : 0 );
+#endif
 		if (CL_handle >= 0)
 		{
 			cinTable[CL_handle].hCRAWLTEXT = hCrawl;
