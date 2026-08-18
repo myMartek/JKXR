@@ -463,22 +463,7 @@ char *Sys_DefaultHomePath(void)
 			if ( com_homepath && com_homepath->string[0] )
 				Q_strcat( homePath, sizeof( homePath ), com_homepath->string );
 			else
-#if defined(JKXR_VISIONOS) && defined(JKXR_FRISCHES_HEIM)
-				// VORUEBERGEHEND, nur zum Ausprobieren.
-				//
-				// Marcels Verdacht: aus einem vorhandenen Spielstand oder der
-				// Konfiguration wird etwas in ein "neues Spiel" uebernommen, und
-				// deshalb ueberspringt das Spiel die gescriptete Kamerafahrt.
-				//
-				// Ein eigener Heimatordner beantwortet das ohne Loeschen: keine
-				// Konfiguration, keine Spielstaende, und die vorhandenen bleiben
-				// unberuehrt. Laeuft die Szene damit, ist der Verdacht bestaetigt
-				// und wir wissen, wo zu suchen ist; laeuft sie nicht, ist er
-				// ausgeraeumt und wir sparen uns diese Richtung.
-				Q_strcat( homePath, sizeof( homePath ), HOMEPATH_NAME_MACOSX "-Frisch" );
-#else
 				Q_strcat( homePath, sizeof( homePath ), HOMEPATH_NAME_MACOSX );
-#endif
 		}
 	}
 
