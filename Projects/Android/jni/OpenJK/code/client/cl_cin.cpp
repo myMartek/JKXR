@@ -1919,6 +1919,12 @@ static qboolean CIN_HardwareReadyToPlayVideos(void)
 }
 
 
+#if defined(JKXR_VISIONOS)
+// Die zweite Notiz. Vor PlayCinematic deklariert, weil beide sie brauchen:
+// dort verfaellt sie, weiter unten wird sie gesetzt und eingeloest.
+static char sJKXR_AngeforderteSequenz[MAX_QPATH] = {0};
+#endif
+
 static void PlayCinematic(const char *arg, const char *s, qboolean qbInGame)
 {
 	qboolean bFailed = qfalse;
@@ -1963,6 +1969,17 @@ static void PlayCinematic(const char *arg, const char *s, qboolean qbInGame)
 		}
 
 		qbPlayingInGameCinematic = qbInGame;
+#if defined(JKXR_VISIONOS)
+		// Die Notiz verfaellt, sobald ueberhaupt eine Sequenz startet.
+		//
+		// Ohne das holt sie spaeter etwas nach, das laengst gelaufen oder
+		// bewusst uebersprungen ist -- gemessen: das erste Video wurde nach dem
+		// Ueberspringen erneut abgespielt.
+		if ( sJKXR_AngeforderteSequenz[0] ) {
+			Com_Printf( "[Notiz] verfaellt, \"%s\" startet\n", arg ? arg : "?" );
+			sJKXR_AngeforderteSequenz[0] = 0;
+		}
+#endif
 
 		if ((s && s[0] == '1') || Q_stricmp(arg,"video/end.roq")==0) {
 			bits |= CIN_hold;
@@ -2115,7 +2132,6 @@ void CL_PlayCinematic_f(void)
 // Diese Notiz fasst nichts davon an. Kein Stopp kennt sie, sie wird beim
 // Starten sofort verbraucht, und wenn die Warteschlange der Engine ausnahmsweise
 // ueberlebt, tritt sie zurueck.
-static char sJKXR_AngeforderteSequenz[MAX_QPATH] = {0};
 
 /*
 =================
@@ -2162,12 +2178,19 @@ void CL_PlayInGameCinematic_f(void)
 {
 	const char *arg = Cmd_Argv( 1 );
 #if defined(JKXR_VISIONOS)
+	// MESSPUNKT, wieder zu entfernen.
+	Com_Printf( "[Anforderung] \"%s\" · cls.state %d · wartet schon %d · Notiz \"%s\"\n",
+		arg ? arg : "?", cls.state, qbInGameCinematicOnStandBy ? 1 : 0,
+		sJKXR_AngeforderteSequenz );
+#endif
+#if defined(JKXR_VISIONOS)
 	// Zusaetzlich merken, solange das Spiel nicht spielbereit ist. Der
 	// gewoehnliche Weg darunter bleibt unveraendert; diese Notiz greift nur,
 	// wenn er verloren geht.
 	if ( cls.state != CA_ACTIVE && arg && arg[0] ) {
 		Q_strncpyz( sJKXR_AngeforderteSequenz, arg,
 			sizeof( sJKXR_AngeforderteSequenz ) );
+		Com_Printf( "[Notiz] gesetzt: \"%s\"\n", sJKXR_AngeforderteSequenz );
 	}
 #endif
 	if (cls.state == CA_ACTIVE)
@@ -2278,6 +2301,14 @@ void SCR_StopCinematic( qboolean bAllowRefusal /* = qfalse */ )
 
 	if(stopCinematicCallCount != 2)
 	{
+#if defined(JKXR_VISIONOS)
+		// MESSPUNKT, wieder zu entfernen. Nur melden, wenn wirklich einer wartet.
+		if ( sInGameCinematicStandingBy[0] ) {
+			Com_Printf( "[Verworfen] \"%s\" · Zaehler %d · verweigerbar war %d\n",
+				sInGameCinematicStandingBy, stopCinematicCallCount,
+				bAllowRefusal ? 1 : 0 );
+		}
+#endif
 		qbPlayingInGameCinematic = qfalse;
 		qbInGameCinematicOnStandBy = qfalse;
 		sInGameCinematicStandingBy[0]=0;
