@@ -179,10 +179,14 @@ struct ContentView: View {
                       systemImage: "checkmark.seal")
                     .foregroundStyle(.blue)
                 Text(Sprache.t(
-                        "No game data is present. \"Play\" opens the small demo "
-                            + "world built into the app.",
-                        "Es liegen keine Spieldaten vor. „Spielen“ öffnet die "
-                            + "kleine Demo-Welt, die die App selbst mitbringt."))
+                        "\"Play\" opens the small demo world built into the app. "
+                            + "It takes precedence over any game data present — "
+                            + "delete \(DemoDatei.dateiname) from the folder below "
+                            + "to play normally again.",
+                        "„Demo-Welt starten“ öffnet die kleine Welt, die die App "
+                            + "selbst mitbringt. Sie hat Vorrang vor vorhandenen "
+                            + "Spieldateien — zum normalen Spielen \(DemoDatei.dateiname) "
+                            + "im Ordner unten löschen."))
                     .font(.callout)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 460)
@@ -477,14 +481,19 @@ enum AssetStore {
         // Pruefung haette ab sofort auf jedem frischen Geraet "bereit"
         // gemeldet, und der Spielen-Knopf haette in eine Engine gefuehrt, die
         // nichts findet.
-        let vorhanden = pk3.contains { $0.lowercased() == spiel.pflichtDatei }
-        if vorhanden { return .ready(names: pk3) }
-
-        // Echte Spieldateien haben Vorrang, deshalb erst hier. Wer das Spiel
-        // besitzt, soll es spielen und nicht in einer Demo landen, bloss weil
-        // die Datei noch danebenliegt.
+        // Die Pruefdatei gewinnt, auch wenn echte Spieldateien danebenliegen.
+        //
+        // Sie kommt nicht aus Versehen dorthin: man muss sie herunterladen und
+        // ausdruecklich einspielen. Wer das tut, will die Demo sehen -- und ein
+        // Pruefer, der ein Geraet mit installiertem Spiel in die Hand bekommt,
+        // saehe sonst nicht das, wofuer wir ihm die Datei gegeben haben.
+        //
+        // Der Weg zurueck ist die Datei zu loeschen, und der steht auch im
+        // Fenster.
         if DemoDatei.vorhanden(in: baseDirectory(spiel)) { return .demo }
-        return .missing
+
+        let vorhanden = pk3.contains { $0.lowercased() == spiel.pflichtDatei }
+        return vorhanden ? .ready(names: pk3) : .missing
     }
 
     /// Die VR-Zusatzdateien aus dem Bundle nach `base/` legen.

@@ -65,7 +65,6 @@ enum Laufmodus {
 /// Gezeigt wird, was die Store-Beschreibung behauptet und ein Prüfer prüfen
 /// können soll: eine Welt, die im Raum steht statt vor dem Gesicht zu kleben,
 /// je Auge gerechnet, mit Kopfverfolgung und Foveation.
-@MainActor
 final class DemoWelt {
     private let layerRenderer: LayerRenderer
     private let geraet: MTLDevice
@@ -74,6 +73,9 @@ final class DemoWelt {
     private var tiefenzustand: MTLDepthStencilState?
     private var eckenPuffer: MTLBuffer?
     private var eckenAnzahl = 0
+    /// Nur fürs erste Bild: was der Compositor tatsächlich liefert.
+    private var gezaehlt = false
+    private var zahlenGemeldet = false
 
     private let sitzung = ARKitSession()
     private let weltverfolgung = WorldTrackingProvider()
@@ -97,11 +99,16 @@ final class DemoWelt {
             }
         }
 
-        // Eigener Thread, keine Task: die Schleife läuft ohne Unterbrechung bis
-        // zum Schließen des Raums und würde den kooperativen Pool von Swift
-        // Concurrency aushungern. Dieselbe Begründung wie beim Engine-Thread.
+        // Eigener Thread, und die Schleife läuft UNMITTELBAR darauf.
+        //
+        // Hier stand zuerst ein Thread, der innen ein Task { @MainActor ... }
+        // aufmachte. Das hebt den eigenen Thread wieder auf: die Schleife lief
+        // auf dem Hauptthread, blockierte ihn, und der Compositor brachte die
+        // App nach wenigen Sekunden mit SIGKILL um -- nachdem sie noch
+        // "Demo-Welt läuft" gemeldet hatte. Ein Prozess, der keine Bilder mehr
+        // abliefert, wird beendet, und die Meldung davor führt in die Irre.
         let t = Thread { [weak self] in
-            Task { @MainActor in self?.schleife() }
+            self?.schleife()
         }
         t.name = "de.martek.jkxr.demo"
         t.qualityOfService = .userInteractive
@@ -121,6 +128,7 @@ final class DemoWelt {
             // Beide Augen in einem Durchgang wären mit "layered" möglich; wir
             // fahren "dedicated" (siehe JKXRApp), also je Auge ein Pass.
             pipeline = try geraet.makeRenderPipelineState(descriptor: beschreibung)
+
         } catch {
             print("[Demo] Pipeline ließ sich nicht bauen: \(error)")
             return false
@@ -170,18 +178,34 @@ final class DemoWelt {
             LayerRenderer.Clock().wait(until: takt.optimalInputTime)
 
             frame.startSubmission()
-            guard let drawable = frame.queryDrawables().first else {
+
+            // ALLE Drawables, nicht die erste.
+            //
+            // Eine geholte Drawable MUSS präsentiert werden. Hier stand
+            // queryDrawables().first, und der Prozess endete mit SIGABRT --
+            // kommentarlos, ohne Metal-Meldung, mitten im Lauf. Eine liegen
+            // gelassene Drawable ist für CompositorServices kein Auslassen,
+            // sondern ein Fehler.
+            let drawables = frame.queryDrawables()
+            if drawables.isEmpty {
                 frame.endSubmission()
                 continue
             }
-
-            let zeit = LayerRenderer.Clock.Instant.epoch
-                .duration(to: drawable.frameTiming.trackableAnchorTime).sekunden
-            if let anker = weltverfolgung.queryDeviceAnchor(atTimestamp: zeit) {
-                drawable.deviceAnchor = anker
+            if !gezaehlt {
+                gezaehlt = true
+                print("[Demo] \(drawables.count) Drawable(s), "
+                    + "\(drawables[0].views.count) Sicht(en), "
+                    + "\(drawables[0].colorTextures.count) Textur(en)")
             }
 
-            zeichne(drawable)
+            for drawable in drawables {
+                let zeit = LayerRenderer.Clock.Instant.epoch
+                    .duration(to: drawable.frameTiming.trackableAnchorTime).sekunden
+                if let anker = weltverfolgung.queryDeviceAnchor(atTimestamp: zeit) {
+                    drawable.deviceAnchor = anker
+                }
+                zeichne(drawable)
+            }
             frame.endSubmission()
         }
     }
@@ -207,14 +231,29 @@ final class DemoWelt {
                 MTLClearColor(red: 0.03, green: 0.04, blue: 0.07, alpha: 1.0)
             pass.depthAttachment.texture = drawable.depthTextures[index]
             pass.depthAttachment.loadAction = .clear
-            pass.depthAttachment.storeAction = .dontCare
-            pass.depthAttachment.clearDepth = 0.0
+            // .store und ein Löschwert ÜBER null -- beides ist Bedingung dafür,
+            // dass überhaupt etwas zu sehen ist.
+            //
+            // visionOS benutzt den Tiefenpuffer zur Reprojektion und verwirft
+            // einen Frame ohne brauchbare Tiefe lautlos. Hier stand .dontCare
+            // und clearDepth 0: der Compositor nahm 90 Bilder je Sekunde
+            // entgegen, bestätigte sie, und zeigte schwarz. Kein Fehler, keine
+            // Warnung, kein Hinweis.
+            //
+            // Bei umgekehrter Tiefe ist 0 der Fernwert und heißt "hier ist
+            // nichts". 1e-4 ist ein sichtbarer Fernwert. Dieselbe Zahl und
+            // dieselbe Begründung stehen in TBXR_submitFrame -- dort als
+            // "teuerster Fehler in S4" vermerkt, und hier ein zweites Mal
+            // hineingelaufen.
+            pass.depthAttachment.storeAction = .store
+            pass.depthAttachment.clearDepth = 1.0e-4
             if index < drawable.rasterizationRateMaps.count {
                 pass.rasterizationRateMap = drawable.rasterizationRateMaps[index]
             }
 
             guard let enc = befehle.makeRenderCommandEncoder(descriptor: pass) else { continue }
             enc.setViewport(sicht.textureMap.viewport)
+
             enc.setRenderPipelineState(pipeline)
             enc.setDepthStencilState(tiefenzustand)
             enc.setCullMode(.back)
@@ -224,7 +263,23 @@ final class DemoWelt {
             // Projektion des Compositors. Sie selbst zu bauen wäre falsch: die
             // Sichtkegel der Vision Pro sind schief und je Auge verschieden.
             let blick = (ankerMatrix * sicht.transform).inverse
-            var u = Uniformen(mvp: drawable.computeProjection(viewIndex: i) * blick)
+            let projektion = drawable.computeProjection(viewIndex: i)
+            var u = Uniformen(mvp: projektion * blick)
+
+            if !zahlenGemeldet, i == 0 {
+                zahlenGemeldet = true
+                let sichtfeld = sicht.textureMap.viewport
+                print("[Demo] Viewport \(sichtfeld.width)x\(sicht.textureMap.viewport.height) "
+                    + "Textur \(drawable.colorTextures[index].width)x\(drawable.colorTextures[index].height) "
+                    + "Ratemaps \(drawable.rasterizationRateMaps.count)")
+                print("[Demo] Tiefenbereich \(drawable.depthRange)")
+                print("[Demo] Ankerposition \(ankerMatrix.columns.3)")
+                // Ein bekannter Punkt: Mitte des naechsten Wuerfels, 1,5 m vor
+                // dem Ursprung, 17 cm ueber dem Boden.
+                let probe = SIMD4<Float>(-0.9, 0.17, -1.5, 1)
+                let clip = u.mvp * probe
+                print("[Demo] Probe -> clip \(clip), ndc \(SIMD3(clip.x, clip.y, clip.z) / clip.w)")
+            }
 
             enc.setVertexBuffer(eckenPuffer, offset: 0, index: 0)
             enc.setVertexBytes(&u, length: MemoryLayout<Uniformen>.size, index: 1)
