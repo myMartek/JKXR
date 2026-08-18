@@ -3089,6 +3089,46 @@ static void CG_DrawCrosshair3D(int type) // 0 - force, 1 - weapons
 		ent.shaderRGBA[3] = 255;
 
 		cgi_R_AddRefEntityToScene(&ent);
+
+		// Der blaue Wirbel, der "hier geht was" sagt.
+		//
+		// Am Bildschirm zeichnet CG_DrawCrosshair zwei Dinge uebereinander:
+		// das Fadenkreuz und darum den Wirbel gfx/hud/force_swirl. In VR wird
+		// CG_DrawCrosshair aber nur noch fuer das ferngesteuerte Geschuetz
+		// aufgerufen -- das Fadenkreuz steht als Sprite im Raum --, und damit
+		// fiel der Wirbel ersatzlos weg.
+		//
+		// Er blendet ueber 300 ms ein, wie am Bildschirm, und pulst danach
+		// leicht. Die beiden Zeitmarken in cg dienen sonst nur dem
+		// 2D-Fadenkreuz und sind hier frei.
+		if ( type == 0 && cg_forceCrosshair && cg_crosshairForceHint.integer )
+		{
+			if ( !cg.forceCrosshairStartTime )
+			{
+				cg.forceCrosshairStartTime = cg.time;
+			}
+			cg.forceCrosshairEndTime = 0;
+
+			float ein = (cg.time - cg.forceCrosshairStartTime) / 300.0f;
+			if ( ein > 1.0f ) ein = 1.0f;
+			if ( ein < 0.0f ) ein = 0.0f;
+
+			float puls = sin( cg.time * 0.001f ) * 0.15f + 0.85f;
+
+			refEntity_t wirbel = ent;
+			wirbel.customShader = cgs.media.forceCoronaShader;
+			wirbel.radius = ent.radius * 2.5f;
+			wirbel.shaderRGBA[0] = (byte)(  51 * puls );
+			wirbel.shaderRGBA[1] = (byte)( 128 * puls );
+			wirbel.shaderRGBA[2] = 255;
+			wirbel.shaderRGBA[3] = (byte)( 255 * ein );
+
+			cgi_R_AddRefEntityToScene( &wirbel );
+		}
+		else if ( type == 0 )
+		{
+			cg.forceCrosshairStartTime = 0;
+		}
 	}
 }
 
@@ -3123,8 +3163,18 @@ static void CG_ScanForCrosshairEntity( qboolean scanAll )
 		}
 		else
 		{
-			VectorCopy( g_entities[0].client->renderInfo.eyePoint, start );
-			AngleVectors( cg_entities[0].lerpAngles, d_f, d_rt, d_up );
+			// Der Strahl der Nebenhand, nicht der des Kopfes.
+			//
+			// Ob etwas mit der Macht zu greifen ist, wird hier entschieden --
+			// und am Bildschirm zeigt der Kopf ohnehin dorthin, wo gezielt
+			// wird. In VR nicht: gezielt wird mit der Nebenhand
+			// (g_active.cpp benutzt fuer die Machtkraefte selbst
+			// BG_CalculateVROffHandPosition), waehrend der Kopf frei umsieht.
+			// Mit dem Kopfstrahl leuchtet der Hinweis deshalb dann auf, wenn
+			// man das Ding ANSIEHT, und nicht, wenn man darauf zeigt.
+			vec3_t handWinkel;
+			BG_CalculateVROffHandPosition( start, handWinkel );
+			AngleVectors( handWinkel, d_f, d_rt, d_up );
 		}
 
 		VectorMA( start, 2048, d_f, end );//4028 is max for mind trick
@@ -4311,9 +4361,39 @@ static void CG_Draw2D( void )
 		//indicate this with sight cone thingy
 		cg.drawingHUD = CG_HUD_OTHER;
 		CG_DrawVignette(true);
-		CG_DrawPic( 50, 40, 540, 400, cgi_R_RegisterShader( "gfx/2d/jsense" ));
+		// Ueber die ganze Flaeche statt 50,40,540,400.
+		//
+		// Das eingerueckte Rechteck ist eine Monitor-Entscheidung: es laesst
+		// ringsum acht Prozent frei, und am Bildschirm faellt der Rand kaum
+		// auf. Im Headset sind dieselben acht Prozent ein breiter Streifen am
+		// Rand des Blickfelds, in dem die Welt unbehandelt weiterlaeuft --
+		// das Sichtbild endet mit einer harten Kante mitten im Bild.
+		CG_DrawPic( 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, cgi_R_RegisterShader( "gfx/2d/jsense" ));
 		cg.drawingHUD = CG_HUD_SCALED;
 		CG_DrawHealthBars();
+
+#if defined(JKXR_VISIONOS)
+		// MESSPUNKT, wieder zu entfernen.
+		//
+		// Marcel vermisst die Markierung an beeinflussbaren Dingen. Die einzige
+		// Stelle, die waehrend Machtgespür etwas an Objekte zeichnet, ist
+		// CG_AddForceSightShell. Bleibt der Zaehler auf 0, wird sie gar nicht
+		// erst gerufen -- dann liegt es an den Bedingungen davor (Sichtkegel,
+		// Machtstufe, EF_FORCE_VISIBLE) und nicht am Zeichnen.
+		{
+			extern int jkxrSichtHuellen;
+			static int letzteMeldung = 0;
+			if ( cg.time - letzteMeldung > 1000 )
+			{
+				letzteMeldung = cg.time;
+				CG_Printf( "[Sicht] Stufe %d · %d Huellen · Schale %d · Wirbel %d · Hinweis %d\n",
+					cg.snap->ps.forcePowerLevel[FP_SEE], jkxrSichtHuellen,
+					cgs.media.forceShell, cgs.media.forceCoronaShader,
+					(int)cg_forceCrosshair );
+			}
+			jkxrSichtHuellen = 0;
+		}
+#endif
 	}
 	else if ( cg_debugHealthBars.integer )
 	{

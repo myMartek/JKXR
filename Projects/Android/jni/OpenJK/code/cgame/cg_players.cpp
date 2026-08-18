@@ -4514,8 +4514,15 @@ Adds the special effect
 ===============
 */
 extern void CG_AddHealthBarEnt( int entNum );
+#if defined(JKXR_VISIONOS)
+// MESSPUNKT, wieder zu entfernen: wie viele Huellen je Bild entstehen.
+int jkxrSichtHuellen = 0;
+#endif
 void CG_AddForceSightShell( refEntity_t *ent, centity_t *cent )
 {
+#if defined(JKXR_VISIONOS)
+	jkxrSichtHuellen++;
+#endif
 	ent->customShader = cgs.media.forceShell;
 	ent->renderfx &= ~RF_RGB_TINT;
 	// See through walls.
