@@ -306,6 +306,30 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
 			wurfAlt = wurfNeu;
 		}
 
+		// BENUTZEN. Zwei Wege, weil das Spiel zwei kennt.
+		//
+		// +use ist die klassische Benutzentaste; im VR-Betrieb liegt sie auf
+		// dem Stickklick der dominanten Hand (weiter unten) und ist am Gamepad
+		// als R3 erreichbar. Sie hier zusaetzlich auf Dreieck zu legen kostet
+		// nichts und erspart es, beim Steuern den Daumen vom Stick zu nehmen.
+		//
+		// +altuse dagegen loest sonst NUR eine Geste aus: die Nebenhand vom
+		// Koerper wegstrecken (Zeile ~1305). Das ist der Griff, den das
+		// Hand-Symbol im Spiel ankuendigt -- und am Gamepad gibt es keine
+		// Nebenhand, die man ausstrecken koennte. Ohne eine Taste dafuer sieht
+		// man die Aufforderung und kann ihr nicht folgen. Genau so ist es beim
+		// ferngesteuerten Droiden in Outcast aufgefallen.
+		{
+			static bool benutzenAlt = false, greifenAlt = false;
+			const bool benutzenNeu = TBXR_visionOS_GamepadButton("Button Y");
+			const bool greifenNeu  = TBXR_visionOS_GamepadButton("Left Trigger");
+
+			if (benutzenNeu != benutzenAlt) sendButtonAction("+use", benutzenNeu);
+			if (greifenNeu != greifenAlt)   sendButtonAction("+altuse", greifenNeu);
+			benutzenAlt = benutzenNeu;
+			greifenAlt = greifenNeu;
+		}
+
 		// WAFFENWECHSEL MIT DEM STEUERKREUZ, solange R1 gehalten wird.
 		//
 		// Das Waffenrad taugt am Gamepad nicht: es wird durch Zeigen bedient
@@ -1298,6 +1322,23 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
 
         // Process "use" gesture
         if (vr_gesture_triggered_use->integer) {
+            // Beim ferngesteuerten Droiden bleibt die Geste ABGESCHALTET.
+            //
+            // vr.misc_camera deckt zwei Faelle ab: die feste Ueberwachungskamera
+            // und einen Droiden, den man herumfaehrt (cg_view.cpp:2147, aus
+            // in_misccamera, worin remote_droid steckt). Naheliegend war,
+            // den Droiden auszunehmen -- das Spiel zeigt dort die Aufforderung
+            // zum Benutzen an, und die Geste schien der einzige Weg dorthin.
+            //
+            // Ausprobiert und wieder verworfen: im Droidenblick sind die
+            // Handabstaende zum Koerper nicht mehr aussagekraeftig, die
+            // Waffenhand liegt praktisch immer jenseits der Schwelle, und der
+            // Block unten haelt dann +use dauerhaft gedrueckt. Damit liess sich
+            // der Droide nicht mehr fahren.
+            //
+            // Der Weg zum Schalter ist statt dessen der Klick auf den Stick der
+            // dominanten Hand (weiter oben, ~Zeile 1064) -- der funktioniert
+            // dort und braucht keine Geste.
             bool gestureUseAllowed = !vr.weapon_stabilised && !vr.cin_camera && !vr.misc_camera && !vr.remote_turret && !vr.emplaced_gun && !vr.in_vehicle && !thirdPersonActive;
             // Off-hand gesture
             float distanceToBody = sqrt(vr.offhandoffset[0]*vr.offhandoffset[0] + vr.offhandoffset[2]*vr.offhandoffset[2]);
