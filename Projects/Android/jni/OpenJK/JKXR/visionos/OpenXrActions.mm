@@ -96,6 +96,36 @@ ar_accessory_tracking_provider_t gTracking = nullptr;
 /// liefert Tasten, ARKit die Posen — beide zum selben Gerät.
 GCController *gControllers[2] = { nil, nil };
 
+/// Läuft die Steuerung über ein gewöhnliches Gamepad statt über räumliche
+/// Controller?
+///
+/// Das entscheidet mehr als nur die Tastenbelegung: ohne räumliche Controller
+/// gibt es keine Posen, und alles, was auf Zeigen beruht, geht ins Leere. Das
+/// Menü braucht dann einen anderen Weg (siehe VrInputDefault.cpp).
+static bool gGamepadRueckfall = false;
+
+extern "C" bool TBXR_visionOS_GamepadFallback(void)
+{
+    return gGamepadRueckfall;
+}
+
+/// Einen Knopf unmittelbar beim Namen abfragen, am Aktionssystem vorbei.
+///
+/// Fuer die zwei Knoepfe, die es an einem VR-Controller nicht gibt und die im
+/// OpenXR-Aktionssatz deshalb auch nicht vorkommen: die beiden Pillen des
+/// Gamepads. Auf dem DualSense meldet das GameController-Framework sie als
+/// "Button Menu" (Options, rechts) und "Button Options" (Create, links) -- die
+/// Namen sind vertauschter, als einem lieb ist, gemessen im Dump beim Start.
+extern "C" bool TBXR_visionOS_GamepadButton(const char *name)
+{
+    if (!gGamepadRueckfall || !name) return false;
+    GCController *c = gControllers[0];
+    if (!c) return false;
+    GCControllerButtonInput *b =
+        c.physicalInputProfile.buttons[[NSString stringWithUTF8String:name]];
+    return b != nil && b.pressed;
+}
+
 int handIndexForPath(const std::string &path)
 {
     // OpenXR-Pfade beginnen mit /user/hand/left oder /user/hand/right.
@@ -148,11 +178,26 @@ NSString *gcNameForInputPath(const std::string &path, int hand)
             return left ? GCInputLeftThumbstickButton : GCInputRightThumbstickButton;
         if (ends("/thumbstick"))
             return left ? GCInputLeftThumbstick : GCInputRightThumbstick;
-        if (ends("/a/click"))     return GCInputButtonA;
-        if (ends("/b/click"))     return GCInputButtonB;
-        if (ends("/x/click"))     return GCInputButtonX;
-        if (ends("/y/click"))     return GCInputButtonY;
-        if (ends("/menu/click"))  return GCInputButtonMenu;
+        // GESICHTSTASTEN NUR AN DER RECHTEN HAND -- am Gamepad.
+        //
+        // Ein kombiniertes Geraet ist EIN physischer Knopf fuer beide Haende:
+        // beide lesen dasselbe Element, also loest ein Druck auf Kreuz zugleich
+        // die Belegung der rechten UND der linken Hand aus. Auf dem Geraet
+        // beobachtet: Kreuz sprang und pausierte gleichzeitig, Kreis oeffnete
+        // das Datapad und schoss.
+        //
+        // An den Sense-Controllern ist das kein Problem, denn dort hat jede
+        // Hand ihre eigenen Tasten. Am Gamepad muss eine der beiden verzichten,
+        // und das ist die linke: sie behaelt Stick, Trigger und Schulter (siehe
+        // oben), gibt die vier Gesichtstasten aber ab. Was die linke Hand sonst
+        // noch koennen soll, liegt auf den beiden Pillen -- ausdruecklich
+        // belegt in VrInputDefault.cpp.
+        const bool nurRechts = gGamepadRueckfall && left;
+        if (ends("/a/click"))     return nurRechts ? nil : GCInputButtonA;
+        if (ends("/b/click"))     return nurRechts ? nil : GCInputButtonB;
+        if (ends("/x/click"))     return nurRechts ? nil : GCInputButtonX;
+        if (ends("/y/click"))     return nurRechts ? nil : GCInputButtonY;
+        if (ends("/menu/click"))  return nurRechts ? nil : GCInputButtonMenu;
         return nil;
     }
 
@@ -284,7 +329,32 @@ extern "C" void TBXR_visionOS_RefreshControllers(void)
         }
     }
 
-    for (GCController *controller in [GCController controllers]) {
+    // RÄUMLICHE CONTROLLER HABEN VORRANG, ein Gamepad ist nur der Rückfall.
+    //
+    // Sind beide angeschlossen, wird das Gamepad vollständig übergangen. Ohne
+    // diese Trennung gewann es sogar: ein DualSense trägt linken UND rechten
+    // Trigger, erfüllt damit die Prüfung auf ein kombiniertes Gerät weiter
+    // unten, belegte beide Hände und brach die Schleife ab — die Sense-Controller
+    // kamen gar nicht mehr an die Reihe. Welches Gerät gewann, hing allein an
+    // der Reihenfolge in [GCController controllers].
+    NSMutableArray<GCController *> *raeumlich = [NSMutableArray array];
+    NSMutableArray<GCController *> *gamepads = [NSMutableArray array];
+    for (GCController *c in [GCController controllers]) {
+        if ([c.productCategory isEqualToString:GCProductCategorySpatialController]) {
+            [raeumlich addObject:c];
+        } else if (c.physicalInputProfile.buttons[GCInputButtonA]) {
+            [gamepads addObject:c];
+        }
+    }
+
+    gGamepadRueckfall = (raeumlich.count == 0 && gamepads.count > 0);
+
+    // Ein kombiniertes Gerät bleibt möglich, auch unter den räumlichen: das
+    // System reicht das Sense-Paar unter Umständen als EIN Gerät durch, dann
+    // zeigen beide Hände darauf.
+    NSArray<GCController *> *kandidaten = gGamepadRueckfall ? gamepads : raeumlich;
+
+    for (GCController *controller in kandidaten) {
         GCPhysicalInputProfile *profile = controller.physicalInputProfile;
 
         // Kombiniertes Gerät: erkennbar an den präfixierten Elementnamen.
@@ -303,7 +373,7 @@ extern "C" void TBXR_visionOS_RefreshControllers(void)
     // oben, damit ein von ARKit bestätigter Controller nicht von einem
     // geratenen verdrängt wird.
     if (!gCombinedDevice && (!gControllers[0] || !gControllers[1])) {
-        for (GCController *controller in [GCController controllers]) {
+        for (GCController *controller in kandidaten) {
             if (controller == gControllers[0] || controller == gControllers[1]) continue;
             NSString *name = controller.vendorName ?: @"";
             if ([name containsString:@"(L)"] && !gControllers[0])      gControllers[0] = controller;
@@ -537,18 +607,107 @@ extern "C" XrResult xrGetCurrentInteractionProfile(
 // Posen
 // ---------------------------------------------------------------------------
 
+// Die Kopfpose, gehalten in TBXR_Common.mm.
+extern "C" bool TBXR_visionOS_GetHeadPose(float *quatXYZW, float *posXYZ);
+
+/// Waffenpose aus dem Kopf, wenn keine Hand verfolgt wird.
+///
+/// Ein Gamepad ist fuer ARKit kein Zubehoer; ohne Anker blieb die Pose ein
+/// Nullquaternion, und QuatToYawPitchRoll machte daraus NaN. Auf dem Geraet
+/// gemessen: "[Winkel] Waffe nan nan nan". Alles Weitere folgte daraus -- kein
+/// Fadenkreuz, ein Schuss ohne Richtung, und ein Muendungslicht irgendwo im
+/// Raum.
+///
+/// Gezielt wird deshalb mit dem Blick: die Waffe uebernimmt Lage und Richtung
+/// des Kopfes. Das ist am Gamepad die naheliegende Loesung -- der rechte Stick
+/// behaelt seine Drehung, und es braucht keine zweite Belegung.
+static bool poseAusKopf(XrSpaceLocation *location, bool griff)
+{
+    float q[4], p[3];
+    if (!TBXR_visionOS_GetHeadPose(q, p)) return false;
+
+    // Zwei Korrekturen, beide auf dem Geraet ausgemessen.
+    //
+    // NEIGUNG: die Waffe zeigt roh unter die Blickrichtung -- man
+    // musste den Kopf heben, um geradeaus zu schiessen. Das ist kein Fehler in
+    // der Kopfpose, sondern die Haltung, die JKXR fuer eine HAND annimmt: eine
+    // gehaltene Waffe zeigt schraeg nach oben, und dieselbe Annahme trifft nun
+    // den Kopf. Also zurueckdrehen.
+    //
+    // SEITLICH: der Ursprung sass mitten zwischen den Augen, das Waffenmodell
+    // stand also im Blick. Er wandert nach rechts, wohin eine haltende Hand
+    // gehoert.
+    //
+    // Beide Werte sind Geschmackssache und stehen deshalb hier oben, einzeln
+    // aenderbar.
+    static const float NEIGUNG  = 11.0f * (float)M_PI / 180.0f;
+    static const float SEITLICH = 0.12f;   // Meter nach rechts
+    static const float TIEFER   = 0.22f;   // Meter nach unten
+    static const float VORNE    = 0.25f;   // Meter nach vorn
+
+    // Die GRIFFPOSE steht deutlich steiler.
+    //
+    // OpenXR trennt Ziel- und Griffpose: die eine ist die Richtung der Waffe,
+    // die andere die Haltung der Hand. Das Lichtschwert haengt an der
+    // Griffpose (vr.weaponangles[ANGLES_SABER]), und mit der Kopfneigung zeigte
+    // die Klinge waagerecht nach vorn -- als truege man sie wie eine Lanze.
+    // Aufrecht gehalten sind es rund achtzig Grad mehr.
+    static const float GRIFF_STEILER = 80.0f * (float)M_PI / 180.0f;
+
+    const simd_quatf kopf = simd_quaternion(q[0], q[1], q[2], q[3]);
+    // Nach RECHTS multipliziert, also im Bezugssystem des Kopfes: eine Drehung
+    // um dessen eigene X-Achse neigt nach oben, unabhaengig davon, wohin er
+    // gerade schaut. Andersherum waere es eine Drehung um die Weltachse und
+    // wuerde beim Umsehen kippen.
+    const simd_quatf gezielt =
+        simd_normalize(simd_mul(kopf, simd_quaternion(NEIGUNG + (griff ? GRIFF_STEILER : 0.0f),
+                                                      simd_make_float3(1, 0, 0))));
+
+    // Versatz im Bezugssystem des Kopfes, nicht der Welt: die Waffe soll beim
+    // Umsehen an ihrem Platz neben der Schulter bleiben und nicht um einen
+    // Weltpunkt kreisen.
+    const simd_float3 rechts = simd_act(kopf, simd_make_float3(1, 0, 0));
+    const simd_float3 hoch   = simd_act(kopf, simd_make_float3(0, 1, 0));
+    // Blickrichtung ist -Z; nach vorn heisst also entlang dieser Achse.
+    const simd_float3 vorn   = simd_act(kopf, simd_make_float3(0, 0, -1));
+    const simd_float3 ursprung = simd_make_float3(p[0], p[1], p[2])
+                               + rechts * SEITLICH
+                               - hoch * TIEFER
+                               + vorn * VORNE;
+
+    location->pose.orientation = { gezielt.vector.x, gezielt.vector.y,
+                                   gezielt.vector.z, gezielt.vector.w };
+    location->pose.position = { ursprung.x, ursprung.y, ursprung.z };
+    location->locationFlags = XR_SPACE_LOCATION_ORIENTATION_VALID_BIT
+                            | XR_SPACE_LOCATION_POSITION_VALID_BIT
+                            | XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT
+                            | XR_SPACE_LOCATION_POSITION_TRACKED_BIT;
+    return true;
+}
+
 extern "C" XrResult xrLocateSpace(XrSpace space, XrSpace, XrTime time,
                                   XrSpaceLocation *location)
 {
     if (!location) return XR_SUCCESS;
     location->locationFlags = 0;
 
+
     // Hand aus dem untersten Bit des Handles, siehe xrCreateActionSpace.
     const uintptr_t raw = reinterpret_cast<uintptr_t>(space);
     const int hand = (int)(raw & 1);
     Action *action = reinterpret_cast<Action *>(raw & ~(uintptr_t)1);
-    if (!action || !gTracking) return XR_SUCCESS;
+    if (!action) return XR_SUCCESS;
     const std::string *binding = bindingForHand(action, hand);
+
+    // Kein raeumlicher Controller: die Pose kommt vom Kopf. Vor der Abfrage von
+    // gTracking, denn ohne Zubehoerverfolgung gibt es die gar nicht.
+    if (gGamepadRueckfall) {
+        const bool griff = !(binding && binding->find("/aim") != std::string::npos);
+        poseAusKopf(location, griff);
+        return XR_SUCCESS;
+    }
+
+    if (!gTracking) return XR_SUCCESS;
 
     // Grip oder Aim: OpenXR unterscheidet Griffpose (Handhaltung) und
     // Zielpose (Blickrichtung der Waffe). ARKit kennt dieselbe Unterscheidung

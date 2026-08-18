@@ -2775,3 +2775,28 @@ extern "C" int VR_GetCurrentEye(void)
 {
     return gCurrentEye;
 }
+
+/// Die zuletzt bekannte Kopfpose herausgeben.
+///
+/// gHeadTransform liegt in einem namenlosen Namensraum und ist damit nur hier
+/// sichtbar. Statt das zu ändern -- die Kapselung ist richtig so -- gibt es
+/// diesen einen Zugang. Gebraucht wird er von OpenXrActions.mm: ohne verfolgtes
+/// Zubehör übernimmt die Waffe die Lage des Kopfes, sonst bleibt ihre Pose ein
+/// Nullquaternion und alles Abgeleitete wird NaN.
+extern "C" bool TBXR_visionOS_GetHeadPose(float *quatXYZW, float *posXYZ)
+{
+    if (!gHeadValid || !quatXYZW || !posXYZ) return false;
+
+    const simd_float4x4 m = gHeadTransform;
+    const simd_quatf q = simd_quaternion(simd_matrix(m.columns[0].xyz,
+                                                     m.columns[1].xyz,
+                                                     m.columns[2].xyz));
+    quatXYZW[0] = q.vector.x;
+    quatXYZW[1] = q.vector.y;
+    quatXYZW[2] = q.vector.z;
+    quatXYZW[3] = q.vector.w;
+    posXYZ[0] = m.columns[3].x;
+    posXYZ[1] = m.columns[3].y;
+    posXYZ[2] = m.columns[3].z;
+    return true;
+}

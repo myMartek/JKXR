@@ -26,5 +26,12 @@ void rotateAboutOrigin(float v1, float v2, float rotation, vec2_t out);
 void QuatToYawPitchRoll(XrQuaternionf q, vec3_t rotation, vec3_t out);
 void handleTrackedControllerButton(ovrInputStateTrackedRemote * trackedRemoteState, ovrInputStateTrackedRemote * prevTrackedRemoteState, uint32_t button, int key);
 void interactWithTouchScreen(float menuYaw, vec3_t controllerAngles);
+#if defined(JKXR_VISIONOS)
+void menuGamepadNavigation(const ovrInputStateTrackedRemote *linksNeu,
+                           const ovrInputStateTrackedRemote *rechtsNeu,
+                           const ovrInputStateTrackedRemote *rechtsAlt);
+extern "C" bool TBXR_visionOS_GamepadFallback(void);
+extern "C" bool TBXR_visionOS_GamepadButton(const char *name);
+#endif
 
 #endif //vrcommon_h

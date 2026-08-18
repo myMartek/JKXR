@@ -249,6 +249,64 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
     // Solange ein Menue offen ist, schickt auch die linke Taste ESCAPE. Sonst
     // liesse sich das Datapad mit genau der Taste, die es geoeffnet hat, nicht
     // wieder schliessen, und im Hauptmenue laege eine Taste tot.
+#if defined(JKXR_VISIONOS)
+	if (TBXR_visionOS_GamepadFallback())
+	{
+		// Am Gamepad liegen Pause und Datapad auf den beiden Pillen, nicht auf
+		// X und Kreis. Die brauchen wir im Spiel fuer anderes, und die Pillen
+		// tun am Gamepad ohnehin nichts.
+		//
+		// Die Namen sind Apples, nicht Sonys: "Button Menu" ist die RECHTE
+		// Pille (Options, hier die Pause), "Button Options" die LINKE (Create,
+		// hier das Datapad). Beim Start werden sie im Dump so gemeldet.
+		static bool pauseAlt = false, padAlt = false;
+		const bool pauseNeu = TBXR_visionOS_GamepadButton("Button Menu");
+		const bool padNeu   = TBXR_visionOS_GamepadButton("Button Options");
+
+		if (pauseNeu != pauseAlt)
+		{
+			Sys_QueEvent(0, SE_KEY, A_ESCAPE, pauseNeu, 0, NULL);
+		}
+		// Solange ein Menue offen ist, schliesst auch die linke Pille -- sonst
+		// liesse sich das Datapad mit genau der Taste, die es geoeffnet hat,
+		// nicht wieder zumachen.
+		if (padNeu && !padAlt)
+		{
+			if (VR_UseScreenLayer())
+			{
+				Sys_QueEvent(0, SE_KEY, A_ESCAPE, qtrue, 0, NULL);
+				Sys_QueEvent(0, SE_KEY, A_ESCAPE, qfalse, 0, NULL);
+			}
+			else
+			{
+				sendButtonActionSimple("datapad");
+			}
+		}
+		// SCHWINGEN UND WERFEN.
+		//
+		// In VR schwingt man das Lichtschwert mit dem Arm; ein Gamepad hat
+		// keinen. Die klassischen Befehle des Spiels gibt es aber weiterhin,
+		// sie werden hier nur nicht mehr ausgeloest -- also von Hand:
+		// R2 schlaegt, Viereck wirft.
+		if (cl.frame.ps.weapon == WP_SABER)
+		{
+			static bool schlagAlt = false, wurfAlt = false;
+			const bool schlagNeu =
+				(rightTrackedRemoteState_new.Buttons & xrButton_Trigger) != 0;
+			const bool wurfNeu = TBXR_visionOS_GamepadButton("Button X");
+
+			if (schlagNeu != schlagAlt) sendButtonAction("+attack", schlagNeu);
+			if (wurfNeu != wurfAlt)     sendButtonAction("+altattack", wurfNeu);
+			schlagAlt = schlagNeu;
+			wurfAlt = wurfNeu;
+		}
+
+		pauseAlt = pauseNeu;
+		padAlt = padNeu;
+	}
+	else
+#endif
+	{
 	handleTrackedControllerButton(&rightTrackedRemoteState_new, &rightTrackedRemoteState_old, xrButton_Enter, A_ESCAPE);
 	if (VR_UseScreenLayer())
 	{
@@ -258,6 +316,7 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
 	        !(leftTrackedRemoteState_old.Buttons & xrButton_Enter))
 	{
 		sendButtonActionSimple("datapad");
+	}
 	}
 
     static float menuYaw = 0;
@@ -286,6 +345,23 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
         }
 
         bool controlsLeftHanded = vr_control_scheme->integer >= 10;
+#if defined(JKXR_VISIONOS)
+        // Gewoehnliches Gamepad: tasten statt zeigen.
+        //
+        // Der Zweig darunter rechnet den Cursor aus dem Winkel des Controllers.
+        // Ein Gamepad wird nicht verfolgt, der Winkel bleibt stehen, und jeder
+        // Klick geht ins Leere -- gemessen mit einem DualSense: die Menuetaste
+        // uebersprang noch, danach war nichts mehr bedienbar.
+        //
+        // Nur als Rueckfall, und die Entscheidung faellt in OpenXrActions.mm:
+        // sind raeumliche Controller da, wird das Gamepad vollstaendig
+        // uebergangen und hier gar nicht erst gefragt.
+        if (TBXR_visionOS_GamepadFallback()) {
+            menuGamepadNavigation(&leftTrackedRemoteState_new,
+                                  &rightTrackedRemoteState_new,
+                                  &rightTrackedRemoteState_old);
+        } else
+#endif
         if (controlsLeftHanded == vr.menu_right_handed) {
             interactWithTouchScreen(menuYaw, vr.offhandangles[ANGLES_DEFAULT]);
             handleTrackedControllerButton(pOffTrackedRemoteNew, pOffTrackedRemoteOld, offButton1, A_MOUSE1);
