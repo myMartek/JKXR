@@ -2378,11 +2378,27 @@ void SCR_StopCinematic( qboolean bAllowRefusal /* = qfalse */ )
 	// CA_ACTIVE eingeloest -- er wird hier nur wiederbefuellt, NACHDEM ihn der
 	// Abbau geleert hat.
 	char merkeSequenz[MAX_QPATH] = {0};
+	const qboolean handleGueltig =
+		(qboolean)( CL_handle >= 0 && CL_handle < MAX_VIDEO_HANDLES );
 	if ( !bAllowRefusal
 		&& !sJKXR_NatuerlichesEnde
 		&& qbPlayingInGameCinematic
-		&& CL_handle >= 0 && CL_handle < MAX_VIDEO_HANDLES ) {
+		&& handleGueltig ) {
 		Q_strncpyz( merkeSequenz, cinTable[CL_handle].fileName, sizeof( merkeSequenz ) );
+	}
+	// MESSPUNKT, wieder zu entfernen.
+	//
+	// Die Wiedervorlage lehnt manchmal ab, und aus dem Schweigen liess sich
+	// nicht ablesen, an welcher der vier Bedingungen es lag. Nur melden, wenn
+	// ueberhaupt eine Spielsequenz im Spiel ist -- sonst ist es das
+	// gewoehnliche Beenden eines Menuevideos.
+	if ( qbPlayingInGameCinematic || handleGueltig ) {
+		Com_Printf( "[Wiedervorlage] %s · verweigerbar %d · natEnde %d · imSpiel %d "
+			"· Handle %d · Standby \"%s\"\n",
+			merkeSequenz[0] ? "vorgemerkt" : "abgelehnt",
+			bAllowRefusal ? 1 : 0, sJKXR_NatuerlichesEnde ? 1 : 0,
+			qbPlayingInGameCinematic ? 1 : 0, CL_handle,
+			sInGameCinematicStandingBy );
 	}
 #endif
 	if(stopCinematicCallCount != 2)
