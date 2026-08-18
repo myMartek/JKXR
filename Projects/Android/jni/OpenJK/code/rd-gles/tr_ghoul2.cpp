@@ -1800,6 +1800,31 @@ void G2_TransformBone (int child,CBoneCache &BC)
 	if (angleOverride & BONE_ANGLES_POSTMULT)
 	{
 		mdxaBone_t	tempMatrix;
+#if defined(JKXR_VISIONOS)
+		// MESSPUNKT, wieder zu entfernen.
+		//
+		// Hier wird die Vorgabe wirksam, und zwar unmittelbar -- dieser Zweig
+		// blendet nicht, er multipliziert. Gemeldet wird bei jeder AENDERUNG
+		// der Matrix, nicht im Takt: der Lidschlag dauert 300 ms von sieben
+		// Sekunden, eine Stichprobe je Sekunde traefe ihn selten.
+		//
+		// Wechselt der Wert im Rhythmus des Blinzelns, macht der Renderer
+		// seine Arbeit und Jans Augen haengen an etwas anderem. Steht er,
+		// haben wir die Stelle.
+		{
+			const mdxaBone_t &m = HackadelicOnClient
+				? boneList[boneListIndex].newMatrix : boneList[boneListIndex].matrix;
+			static float zuletzt[64] = {0};
+			const int fach = boneListIndex & 63;
+			if ( fabs( m.matrix[0][0] - zuletzt[fach] ) > 0.01f )
+			{
+				zuletzt[fach] = m.matrix[0][0];
+				ri.Printf( PRINT_ALL, "[Knochen] Nr %d · Zeile %.3f %.3f %.3f · Zeit %d · Hack %d\n",
+					boneListIndex, m.matrix[0][0], m.matrix[0][1], m.matrix[0][2],
+					BC.incomingTime, HackadelicOnClient ? 1 : 0 );
+			}
+		}
+#endif
 		memcpy (&tempMatrix,&BC.mFinalBones[child].boneMatrix, sizeof(mdxaBone_t));
 		if (HackadelicOnClient)
 		{
