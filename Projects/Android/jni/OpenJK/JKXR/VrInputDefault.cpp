@@ -124,24 +124,6 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
     }
 
     static int cinCameraTimestamp = -1;
-#if defined(JKXR_VISIONOS)
-    // MESSPUNKT, wieder zu entfernen.
-    //
-    // DIE andere Ebene. Was cl_cin.cpp verwaltet, sind Videos (ROQ). Eine Szene,
-    // die die Spiel-Engine rendert, ist eine Kamerafahrt aus dem Levelskript --
-    // erkennbar an vr.cin_camera, uebersprungen ueber "+use" aus den beiden
-    // Bloecken weiter unten, nicht ueber SCR_StopCinematic.
-    //
-    // Bis hierher wurde die falsche Ebene untersucht; dieser Punkt zeigt die
-    // richtige.
-    {
-        static bool letzteKamera = false;
-        if ((vr.cin_camera != 0) != letzteKamera) {
-            letzteKamera = (vr.cin_camera != 0);
-            Com_Printf("[Kamerafahrt] %s\n", letzteKamera ? "beginnt" : "endet");
-        }
-    }
-#endif
     if (vr.cin_camera && cinCameraTimestamp == -1) {
         cinCameraTimestamp = Sys_Milliseconds();
     }
@@ -266,22 +248,6 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
         {
             // To skip cinematic use any thumb or trigger (but wait a while
             // to prevent skipping when cinematic is started during action)
-#if defined(JKXR_VISIONOS)
-            // MESSPUNKT, wieder zu entfernen. Wer schickt das "+use", das die
-            // Kamerafahrt beendet?
-            if (((primaryButtonsNew & primaryThumb) != (primaryButtonsOld & primaryThumb)) ||
-                ((secondaryButtonsNew & secondaryThumb) != (secondaryButtonsOld & secondaryThumb)) ||
-                ((pDominantTrackedRemoteNew->Buttons & xrButton_Trigger) != (pDominantTrackedRemoteOld->Buttons & xrButton_Trigger)) ||
-                ((pOffTrackedRemoteNew->Buttons & xrButton_Trigger) != (pOffTrackedRemoteOld->Buttons & xrButton_Trigger))) {
-                Com_Printf("[Kamerafahrt] +use durch Daumen %d/%d Trigger %d/%d "
-                    "· seit %d ms\n",
-                    (primaryButtonsNew & primaryThumb) ? 1 : 0,
-                    (secondaryButtonsNew & secondaryThumb) ? 1 : 0,
-                    (pDominantTrackedRemoteNew->Buttons & xrButton_Trigger) ? 1 : 0,
-                    (pOffTrackedRemoteNew->Buttons & xrButton_Trigger) ? 1 : 0,
-                    Sys_Milliseconds() - cinCameraTimestamp);
-            }
-#endif
             if ((primaryButtonsNew & primaryThumb) != (primaryButtonsOld & primaryThumb)) {
                 sendButtonAction("+use", (primaryButtonsNew & primaryThumb));
             }

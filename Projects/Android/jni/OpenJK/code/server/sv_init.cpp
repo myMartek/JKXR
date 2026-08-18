@@ -196,16 +196,6 @@ clients along with it.
 */
 void SV_SpawnServer( const char *server, ForceReload_e eForceReload, qboolean bAllowScreenDissolve )
 {
-#if defined(JKXR_VISIONOS)
-	// MESSPUNKT, wieder zu entfernen. Lief die Pause noch, als die Karte
-	// gewechselt wurde? Wenn ja, greift sie nicht auf diesen Weg -- der
-	// Kartenwechsel kaeme dann aus dem Kommandopuffer und nicht aus dem
-	// Serverbild, das SV_CheckPaused anhaelt.
-	Com_Printf( "[Kartenwechsel] cl_paused %d · sv_paused %d\n",
-		Cvar_VariableIntegerValue( "cl_paused" ),
-		Cvar_VariableIntegerValue( "sv_paused" ) );
-#endif
-
 	int			i;
 	int			checksum;
 

@@ -479,21 +479,6 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 
 	qboolean uiFullscreen = _UI_IsFullscreen();
 
-#if defined(JKXR_VISIONOS)
-	// Eine Sequenz nachholen, die waehrend des Ladens angefordert wurde.
-	//
-	// VOR der uiFullscreen-Schranke, und das ist der Punkt: der Aufruf stand
-	// erst im CA_ACTIVE-Zweig darunter und wurde nie erreicht, weil die
-	// Oberflaeche in dieser Phase das Bild fuellt und der ganze switch
-	// uebersprungen wird. Im Protokoll fehlte die Meldung deshalb vollstaendig.
-	//
-	// Begruendung und Messung bei JKXR_StartAngeforderteSequenz in cl_cin.cpp.
-	{
-		extern void JKXR_StartAngeforderteSequenz( void );
-		JKXR_StartAngeforderteSequenz();
-	}
-#endif
-
 	// if the menu is going to cover the entire screen, we
 	// don't need to render anything under it
 	if ( !uiFullscreen ) {

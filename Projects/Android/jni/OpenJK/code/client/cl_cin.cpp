@@ -1919,15 +1919,6 @@ static qboolean CIN_HardwareReadyToPlayVideos(void)
 }
 
 
-#if defined(JKXR_VISIONOS)
-// Die zweite Notiz. Vor PlayCinematic deklariert, weil beide sie brauchen:
-// dort verfaellt sie, weiter unten wird sie gesetzt und eingeloest.
-static char sJKXR_AngeforderteSequenz[MAX_QPATH] = {0};
-
-// Wahr, waehrend SCR_RunCinematic eine durchgelaufene Sequenz beendet.
-static qboolean sJKXR_NatuerlichesEnde = qfalse;
-#endif
-
 static void PlayCinematic(const char *arg, const char *s, qboolean qbInGame)
 {
 	qboolean bFailed = qfalse;
@@ -1972,17 +1963,6 @@ static void PlayCinematic(const char *arg, const char *s, qboolean qbInGame)
 		}
 
 		qbPlayingInGameCinematic = qbInGame;
-#if defined(JKXR_VISIONOS)
-		// Die Notiz verfaellt, sobald ueberhaupt eine Sequenz startet.
-		//
-		// Ohne das holt sie spaeter etwas nach, das laengst gelaufen oder
-		// bewusst uebersprungen ist -- gemessen: das erste Video wurde nach dem
-		// Ueberspringen erneut abgespielt.
-		if ( sJKXR_AngeforderteSequenz[0] ) {
-			Com_Printf( "[Notiz] verfaellt, \"%s\" startet\n", arg ? arg : "?" );
-			sJKXR_AngeforderteSequenz[0] = 0;
-		}
-#endif
 
 		if ((s && s[0] == '1') || Q_stricmp(arg,"video/end.roq")==0) {
 			bits |= CIN_hold;
@@ -2040,16 +2020,6 @@ static void PlayCinematic(const char *arg, const char *s, qboolean qbInGame)
 		////////////////////////////////////////////////////////////////////
 
 		CL_handle = CIN_PlayCinematic( arg, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, bits, psAudioFile );
-#if defined(JKXR_VISIONOS)
-		// MESSPUNKT, wieder zu entfernen.
-		//
-		// Die entscheidende Zahl. Nur bei gueltigem Handle pausiert die Engine
-		// das Spiel (cl_paused unten) -- sonst laeuft das Skript weiter, und im
-		// Protokoll folgt unmittelbar der naechste Kartenwechsel, der die
-		// Sequenz mitnimmt. Genau das war bei "ja01" zu sehen.
-		Com_Printf( "[Oeffnen] \"%s\" · Handle %d · imSpiel %d\n",
-			arg ? arg : "?", CL_handle, qbInGame ? 1 : 0 );
-#endif
 		if (CL_handle >= 0)
 		{
 			cinTable[CL_handle].hCRAWLTEXT = hCrawl;
@@ -2062,17 +2032,6 @@ static void PlayCinematic(const char *arg, const char *s, qboolean qbInGame)
 			if (qbInGame)
 			{
 				Cvar_SetValue( "cl_paused", 1);	// remove-menu call will have unpaused us, so we sometimes need to re-pause
-#if defined(JKXR_VISIONOS)
-				// MESSPUNKT, wieder zu entfernen.
-				//
-				// Diese Pause haelt den Server an (SV_CheckPaused,
-				// sv_main.cpp:393) und damit das Skript, das die Karte
-				// wechselt. cl_paused ist CVAR_ROM -- wenn Cvar_SetValue hier
-				// nicht durchgreift, laeuft das Skript weiter und ueberrollt die
-				// Sequenz. Genau das ist zu sehen.
-				Com_Printf( "[Pause] nach dem Setzen: cl_paused %d\n",
-					Cvar_VariableIntegerValue( "cl_paused" ) );
-#endif
 			}
 
 			CL_iPlaybackStartTime = cls.realtime;	// special use to avoid accidentally skipping ingame videos via fast-firing
@@ -2138,85 +2097,9 @@ void CL_PlayCinematic_f(void)
 	PlayCinematic(arg,s,qfalse);
 }
 
-#if defined(JKXR_VISIONOS)
-// Eine zweite, unantastbare Notiz fuer eine angeforderte Sequenz.
-//
-// GEMESSEN: der Spielcode fordert die Sequenz an, waehrend cls.state noch
-// CA_PRIMED ist. Sie geht damit in die Warteschlange der Engine
-// (sInGameCinematicStandingBy), die SCR_DrawCinematic in CA_ACTIVE starten
-// wuerde -- nur wird sie vorher abgeraeumt, erst vom Ladeweg und dann von einer
-// Taste. Sie wird also nicht abgebrochen, sondern nie gestartet.
-//
-// Die Warteschlange gegen diese Stopps zu verteidigen, wurde ausprobiert und
-// war falsch: SCR_StopCinematic wird aus dem Ladeweg, vom Disconnect und von
-// Tasten gerufen, mit ganz verschiedener Absicht, und der Code unterscheidet
-// sie nicht. Zu streng gefasst kam die Taste durch; zu weit gefasst wurde der
-// Wartende nie mehr abgeraeumt und das Intro lief in eine Endlosschleife.
-//
-// Diese Notiz fasst nichts davon an. Kein Stopp kennt sie, sie wird beim
-// Starten sofort verbraucht, und wenn die Warteschlange der Engine ausnahmsweise
-// ueberlebt, tritt sie zurueck.
-
-/*
-=================
-JKXR_StartAngeforderteSequenz
-
-Aus SCR_DrawScreenField gerufen, sobald cls.state CA_ACTIVE erreicht.
-=================
-*/
-void JKXR_StartAngeforderteSequenz( void )
-{
-	if ( !sJKXR_AngeforderteSequenz[0] ) {
-		return;
-	}
-
-	// Nur in CA_ACTIVE nachholen. Frueher waere es genau der Fehler, den der
-	// Warteschlangen-Mechanismus vermeiden soll.
-	if ( cls.state != CA_ACTIVE ) {
-		return;
-	}
-
-	// Zuruecktreten OHNE die Notiz zu verlieren, wenn die Engine ihre eigene
-	// Warteschlange noch hat oder bereits etwas laeuft -- sonst liefe die
-	// Sequenz zweimal.
-	//
-	// Die erste Fassung leerte das Feld VOR dieser Pruefung und verlor es damit
-	// stillschweigend, sobald die Bedingung einmal zutraf. Jetzt bleibt es
-	// stehen, bis es wirklich gestartet wurde.
-	if ( CL_InGameCinematicOnStandBy() || CL_IsRunningInGameCinematic() ) {
-		return;
-	}
-
-	// Genau einmal, und zwar VOR dem Starten leeren: PlayCinematic laeuft tief
-	// und kann ueber Umwege wieder hier landen.
-	char name[MAX_QPATH];
-	Q_strncpyz( name, sJKXR_AngeforderteSequenz, sizeof( name ) );
-	sJKXR_AngeforderteSequenz[0] = 0;
-
-	Com_Printf( "Sequenz \"%s\" nachgeholt.\n", name );
-	PlayCinematic( name, NULL, qtrue );
-}
-#endif
-
 void CL_PlayInGameCinematic_f(void)
 {
 	const char *arg = Cmd_Argv( 1 );
-#if defined(JKXR_VISIONOS)
-	// MESSPUNKT, wieder zu entfernen.
-	Com_Printf( "[Anforderung] \"%s\" · cls.state %d · wartet schon %d · Notiz \"%s\"\n",
-		arg ? arg : "?", cls.state, qbInGameCinematicOnStandBy ? 1 : 0,
-		sJKXR_AngeforderteSequenz );
-#endif
-#if defined(JKXR_VISIONOS)
-	// Zusaetzlich merken, solange das Spiel nicht spielbereit ist. Der
-	// gewoehnliche Weg darunter bleibt unveraendert; diese Notiz greift nur,
-	// wenn er verloren geht.
-	if ( cls.state != CA_ACTIVE && arg && arg[0] ) {
-		Q_strncpyz( sJKXR_AngeforderteSequenz, arg,
-			sizeof( sJKXR_AngeforderteSequenz ) );
-		Com_Printf( "[Notiz] gesetzt: \"%s\"\n", sJKXR_AngeforderteSequenz );
-	}
-#endif
 	if (cls.state == CA_ACTIVE)
 	{
 		PlayCinematic(arg,NULL,qtrue);
@@ -2261,48 +2144,11 @@ void SCR_RunCinematic (void)
 	CL_CheckPendingCinematic();
 
 	if (CL_handle >= 0 && CL_handle < MAX_VIDEO_HANDLES) {
-#if defined(JKXR_VISIONOS)
-		// Die Pause halten, solange die Sequenz laeuft.
-		//
-		// PlayCinematic setzt cl_paused einmal, und der Kommentar dort weiss
-		// bereits, dass etwas sie wieder aufhebt: "remove-menu call will have
-		// unpaused us, so we sometimes need to re-pause". Bei uns kommt dieses
-		// Aufheben NACH dem Setzen -- gemessen:
-		//
-		//     [Pause] nach dem Setzen: cl_paused 1
-		//     [Kartenwechsel] cl_paused 0 · sv_paused 1
-		//
-		// Ohne die Pause laeuft der Server weiter (SV_CheckPaused), das Skript
-		// wechselt die Karte, und die Sequenz ist nach rund hundert
-		// Millisekunden weg. Genau so war es zu sehen: kurz sichtbar, dann der
-		// Ladeschirm.
-		//
-		// Einmal zu setzen und zu hoffen genuegt also nicht -- wer aufhebt, tut
-		// es irgendwann danach. Die laufende Sequenz besitzt die Pause und
-		// behaelt sie, bis sie endet; SCR_StopCinematic gibt sie unten wieder
-		// frei.
-		if ( CL_IsRunningInGameCinematic()
-			&& !Cvar_VariableIntegerValue( "cl_paused" ) ) {
-			Cvar_SetValue( "cl_paused", 1 );
-		}
-#endif
 		e_status Status = CIN_RunCinematic(CL_handle);
 
 		if (CL_IsRunningInGameCinematic() && Status == FMV_IDLE  && !cinTable[CL_handle].holdAtEnd)
 		{
-#if defined(JKXR_VISIONOS)
-			// Das ist das NATUERLICHE Ende, kein Abbruch durch den Ladeweg.
-			//
-			// Beide gehen durch SCR_StopCinematic ohne Verweigerungs-Flag und
-			// waeren sonst nicht zu unterscheiden -- die Wiedervorlage dort
-			// haette eine durchgelaufene Sequenz erneut angesetzt. Genau so war
-			// es zu sehen: die Szene lief zweimal hintereinander.
-			sJKXR_NatuerlichesEnde = qtrue;
-#endif
 			SCR_StopCinematic();	// change ROQ from FMV_IDLE to FMV_EOF, and clear some other vars
-#if defined(JKXR_VISIONOS)
-			sJKXR_NatuerlichesEnde = qfalse;
-#endif
 		}
 	}
 }
@@ -2360,72 +2206,13 @@ void SCR_StopCinematic( qboolean bAllowRefusal /* = qfalse */ )
 		stopCinematicCallCount = 0;
 	}
 
-#if defined(JKXR_VISIONOS)
-	// Raeumt der LADEWEG eine laufende Spielsequenz ab, sie fuer danach vormerken.
-	//
-	// Im Originalspiel laeuft das Laden PARALLEL zu den Sequenzen -- sie
-	// verdecken es, und sichtbar wird der Ladeschirm nur, wenn man ein Video
-	// ueberspringt. Genau dann rutscht alles nach vorn, und der Kartenwechsel
-	// faellt mitten in die naechste Sequenz statt davor. CL_MapLoading ruft
-	// dabei SCR_StopCinematic ohne Verweigerungs-Flag, und die Sequenz ist weg.
-	//
-	// Gemessen: "ja01" oeffnet sauber (Handle 6), ist rund hundert Millisekunden
-	// zu sehen, und dann folgt "Server: yavin1b". Die Pause hilft nicht -- der
-	// Wechsel kommt aus dem Kommandopuffer, sv_paused stand dabei auf 1.
-	//
-	// Also nicht den Ladeweg aufhalten, sondern die Sequenz danach fortsetzen.
-	// Der Standby-Mechanismus tut genau das und wird von SCR_DrawCinematic in
-	// CA_ACTIVE eingeloest -- er wird hier nur wiederbefuellt, NACHDEM ihn der
-	// Abbau geleert hat.
-	char merkeSequenz[MAX_QPATH] = {0};
-	const qboolean handleGueltig =
-		(qboolean)( CL_handle >= 0 && CL_handle < MAX_VIDEO_HANDLES );
-	if ( !bAllowRefusal
-		&& !sJKXR_NatuerlichesEnde
-		&& qbPlayingInGameCinematic
-		&& handleGueltig ) {
-		Q_strncpyz( merkeSequenz, cinTable[CL_handle].fileName, sizeof( merkeSequenz ) );
-	}
-	// MESSPUNKT, wieder zu entfernen.
-	//
-	// Die Wiedervorlage lehnt manchmal ab, und aus dem Schweigen liess sich
-	// nicht ablesen, an welcher der vier Bedingungen es lag. Nur melden, wenn
-	// ueberhaupt eine Spielsequenz im Spiel ist -- sonst ist es das
-	// gewoehnliche Beenden eines Menuevideos.
-	if ( qbPlayingInGameCinematic || handleGueltig ) {
-		Com_Printf( "[Wiedervorlage] %s · verweigerbar %d · natEnde %d · imSpiel %d "
-			"· Handle %d · Standby \"%s\"\n",
-			merkeSequenz[0] ? "vorgemerkt" : "abgelehnt",
-			bAllowRefusal ? 1 : 0, sJKXR_NatuerlichesEnde ? 1 : 0,
-			qbPlayingInGameCinematic ? 1 : 0, CL_handle,
-			sInGameCinematicStandingBy );
-	}
-#endif
 	if(stopCinematicCallCount != 2)
 	{
-#if defined(JKXR_VISIONOS)
-		// MESSPUNKT, wieder zu entfernen. Nur melden, wenn wirklich einer wartet.
-		if ( sInGameCinematicStandingBy[0] ) {
-			Com_Printf( "[Verworfen] \"%s\" · Zaehler %d · verweigerbar war %d\n",
-				sInGameCinematicStandingBy, stopCinematicCallCount,
-				bAllowRefusal ? 1 : 0 );
-		}
-#endif
 		qbPlayingInGameCinematic = qfalse;
 		qbInGameCinematicOnStandBy = qfalse;
 		sInGameCinematicStandingBy[0]=0;
 		Cvar_SetValue( "cl_paused", 0 );
 	}
-#if defined(JKXR_VISIONOS)
-	// Jetzt wiedereintragen: der Block darueber hat den Standby geleert.
-	if ( merkeSequenz[0] && !qbInGameCinematicOnStandBy ) {
-		Q_strncpyz( sInGameCinematicStandingBy, merkeSequenz,
-			sizeof( sInGameCinematicStandingBy ) );
-		qbInGameCinematicOnStandBy = qtrue;
-		Com_Printf( "[Sequenz] \"%s\" wird nach dem Laden fortgesetzt\n",
-			merkeSequenz );
-	}
-#endif
 	if (cls.state != CA_DISCONNECTED)	// cut down on needless calls to music code
 	{
 		S_RestartMusic();	//restart the level music
