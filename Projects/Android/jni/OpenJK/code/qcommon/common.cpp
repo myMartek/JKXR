@@ -1407,23 +1407,6 @@ void Com_Frame( void ) {
 		// Die Aufrufer sind inzwischen korrigiert, aber der Motor hat hunderte
 		// Cvar_Get-Stellen. Die Bremse hier ist billiger als die Annahme, sie
 		// alle geprueft zu haben.
-		// AUF WUNSCH ABGESCHALTET, zum Ausprobieren.
-		//
-		// Marcel vermutet einen Zusammenhang zwischen dem periodischen Schreiben
-		// und den Filmsequenzen, die von selbst abbrechen. Ich halte das fuer
-		// unwahrscheinlich -- Com_WriteConfiguration schreibt Dateiinhalte und
-		// erzeugt keine Tastenereignisse --, aber ausschliessen laesst es sich
-		// nur durch Ausprobieren, und die Vermutung kostet weniger als eine
-		// weitere Runde Raten.
-		//
-		// Was dadurch verloren geht: Einstellungen, die waehrend des Spiels
-		// geaendert werden, ueberleben nur noch, wenn Com_Shutdown laeuft. Das
-		// tut es inzwischen bei jedem Schliessen des Immersive Space
-		// (visionos_main.mm), der urspruengliche Grund fuer diesen Schreiber ist
-		// damit ohnehin entfallen.
-		//
-		// Wieder einschalten: den Block unten auskommentieren.
-#if 0
 		{
 			static int lastConfigWrite = 0;
 			const int now = Sys_Milliseconds();
@@ -1432,7 +1415,6 @@ void Com_Frame( void ) {
 				Com_WriteConfiguration();
 			}
 		}
-#endif
 #else
 		//Com_WriteConfiguration();
 #endif

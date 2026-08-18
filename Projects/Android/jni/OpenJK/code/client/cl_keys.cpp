@@ -1244,33 +1244,6 @@ void CL_KeyDownEvent( int key, unsigned time )
 	// keys can still be used for bound actions
 	if ( ( cls.state == CA_CINEMATIC || CL_IsRunningInGameCinematic()) && !Key_GetCatcher() )
 	{
-#if defined(JKXR_VISIONOS)
-		// MESSPUNKT, wieder zu entfernen.
-		//
-		// Die ERSTE Fassung meldete nur, dass eine Taste ankommt, und war
-		// beschriftet, als sei damit auch abgebrochen worden. Das ist nicht
-		// dasselbe: SCR_StopCinematic(qtrue) darf ablehnen und tut das in den
-		// ersten 1,2 Sekunden auch (cl_cin.cpp:2140). Aus "Taste kam an" wurde
-		// so faelschlich "Taste hat abgebrochen".
-		//
-		// Diese Fassung meldet das Ergebnis.
-		{
-			const int zustandVorher = cls.state;
-			const qboolean liefVorher = (qboolean)( cls.state == CA_CINEMATIC
-				|| CL_IsRunningInGameCinematic() );
-			SCR_StopCinematic(qtrue);
-			const qboolean laeuftNoch = (qboolean)( cls.state == CA_CINEMATIC
-				|| CL_IsRunningInGameCinematic() );
-			// Die verstrichene Zeit mit: ohne sie laesst sich nicht sagen, ob die
-			// Schonfrist ueberhaupt anwendbar war oder schon abgelaufen.
-			extern int CL_SequenzLaufzeit( void );
-			Com_Printf( "[Sequenz] Taste %d (%s), Zustand %d, seit %d ms -> %s\n",
-				key, Key_KeynumToString( key ), zustandVorher,
-				CL_SequenzLaufzeit(),
-				( liefVorher && laeuftNoch ) ? "verweigert, laeuft weiter" : "beendet" );
-			return;
-		}
-#endif
 		SCR_StopCinematic(qtrue);
 		return;
 //		key = A_ESCAPE;

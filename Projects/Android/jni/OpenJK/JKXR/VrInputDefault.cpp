@@ -27,12 +27,6 @@ Authors		:	Simon Brown
 #include "game/wp_saber.h"
 #include "game/g_vehicles.h"
 
-#if defined(JKXR_VISIONOS)
-// Aus dem Client (cl_cin.cpp). Laeuft gerade eine Filmsequenz, gleich welcher
-// Art? Nicht extern "C" -- die Funktion ist dort C++.
-qboolean VR_CinematicRunning( void );
-#endif
-
 void Sys_QueEvent(int time, sysEventType_t type, int value, int value2, int ptrLength, void* ptr);
 
 
@@ -244,70 +238,8 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
     }
 
     //Menu button
-#if defined(JKXR_VISIONOS)
-	// Waehrend einer Filmsequenz nicht.
-	//
-	// GEMESSEN, in dieser Reihenfolge: die rechte Menuetaste geht im ersten Bild
-	// nach dem Levelladen auf "gedrueckt", haelt laenger als die 80 ms der
-	// Entprellung in OpenXrActions.mm, und die Sequenz stirbt an dem daraus
-	// erzeugten A_ESCAPE -- CL_KeyDownEvent beendet sie bei jeder Taste
-	// (cl_keys.cpp:1244).
-	//
-	// Der Trigger ist dagegen entlastet: er springt sauber auf 1,000 mit
-	// Zwischenwerten, kommt also von Hand. Deshalb verliert NUR die Menuetaste
-	// ihre Wirkung auf Sequenzen; der Trigger behaelt sie, man soll
-	// ueberspringen koennen.
-	//
-	// Gefragt wird VR_CinematicRunning und NICHT vr.cin_camera: das steht bei
-	// dieser Szene auf 0 (gemessen), weshalb dieselbe Sperre vorher ins Leere
-	// griff. vr.cin_camera meldet Kamerafahrten des Spielcodes, nicht
-	// abgespielte Sequenzen.
-	if (!VR_CinematicRunning())
-	{
 	handleTrackedControllerButton(&leftTrackedRemoteState_new, &leftTrackedRemoteState_old, xrButton_Enter, A_ESCAPE);
 	handleTrackedControllerButton(&rightTrackedRemoteState_new, &rightTrackedRemoteState_old, xrButton_Enter, A_ESCAPE);
-	}
-
-	// MESSPUNKT, wieder zu entfernen.
-	//
-	// Der Trigger wird mit EINER Schwelle zur Taste (OpenXrInput.cpp:876,
-	// IndexTrigger > 0,5) und ohne Hysterese. Liegt der Finger locker auf oder
-	// rauscht der Sensor um diesen Wert, flackert die Taste -- und A_MOUSE1
-	// beendet eine Filmsequenz. Diese Zeile sagt, ob das so ist und bei welchen
-	// Werten.
-	{
-		static int letzterTrigger = -1;
-		static int gemeldetT = 0;
-		const int jetzt =
-			((leftTrackedRemoteState_new.Buttons & xrButton_Trigger) ? 1 : 0) |
-			((rightTrackedRemoteState_new.Buttons & xrButton_Trigger) ? 2 : 0);
-		if (jetzt != letzterTrigger && gemeldetT < 60) {
-			letzterTrigger = jetzt;
-			++gemeldetT;
-			Com_Printf("[Trigger] Tasten %d · analog links %.3f rechts %.3f · Sequenz %d\n",
-				jetzt, leftTrackedRemoteState_new.IndexTrigger,
-				rightTrackedRemoteState_new.IndexTrigger, vr.cin_camera ? 1 : 0);
-		}
-	}
-
-	{
-		static int letzterEnter = -1;
-		const int jetzt =
-			((leftTrackedRemoteState_new.Buttons & xrButton_Enter) ? 1 : 0) |
-			((rightTrackedRemoteState_new.Buttons & xrButton_Enter) ? 2 : 0);
-		const int vorher =
-			((leftTrackedRemoteState_old.Buttons & xrButton_Enter) ? 1 : 0) |
-			((rightTrackedRemoteState_old.Buttons & xrButton_Enter) ? 2 : 0);
-		if (jetzt != letzterEnter) {
-			letzterEnter = jetzt;
-			Com_Printf("[Menuetaste] links/rechts jetzt %d, vorher %d, Sequenz %d\n",
-				jetzt, vorher, vr.cin_camera ? 1 : 0);
-		}
-	}
-#else
-	handleTrackedControllerButton(&leftTrackedRemoteState_new, &leftTrackedRemoteState_old, xrButton_Enter, A_ESCAPE);
-	handleTrackedControllerButton(&rightTrackedRemoteState_new, &rightTrackedRemoteState_old, xrButton_Enter, A_ESCAPE);
-#endif
 
     static float menuYaw = 0;
     if (VR_UseScreenLayer() && !vr.misc_camera)
@@ -334,38 +266,12 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
             }
         }
 
-#if defined(JKXR_VISIONOS)
-        // Waehrend einer Filmsequenz KEINE Menuebedienung.
-        //
-        // Der Block darueber ist der gewollte Weg zum Ueberspringen: er schickt
-        // "+use" als Kommando und wartet dafuer eine Sekunde ab, damit ein
-        // Druck aus dem Menue oder von einem uebersprungenen Video nicht gleich
-        // die naechste Sequenz mitnimmt.
-        //
-        // Der Block hier schickt dagegen eine TASTE (A_MOUSE1 ueber
-        // Sys_QueEvent), und CL_KeyDownEvent beendet eine Sequenz bei jeder
-        // Taste (cl_keys.cpp:1244) -- ohne Schonfrist. Beide laufen, weil Menue
-        // und Filmsequenz denselben Flachbild-Pfad benutzen; die Schonfrist
-        // schuetzte also genau einen der beiden Wege.
-        //
-        // Genau das war der Fehler: Sequenzen brachen von selbst ab, ohne dass
-        // jemand etwas gedrueckt hatte. Waehrend einer Sequenz gibt es ohnehin
-        // kein Menue zu bedienen -- weder ein Zeiger noch A_ESCAPE oder A_TAB
-        // haetten dort einen Sinn, alle drei wuerden sie nur abbrechen.
-        // Nur die Tasten sperren, die eine Sequenz nur abbrechen koennten --
-        // A_ESCAPE und A_TAB. Der Zeiger und der Trigger (A_MOUSE1) bleiben:
-        // ueber sie wird bewusst uebersprungen, und der Trigger ist gemessen
-        // sauber.
-        const qboolean sequenzLaeuft = VR_CinematicRunning();
-        if (true)
-        {
-#endif
         bool controlsLeftHanded = vr_control_scheme->integer >= 10;
         if (controlsLeftHanded == vr.menu_right_handed) {
             interactWithTouchScreen(menuYaw, vr.offhandangles[ANGLES_DEFAULT]);
             handleTrackedControllerButton(pOffTrackedRemoteNew, pOffTrackedRemoteOld, offButton1, A_MOUSE1);
             handleTrackedControllerButton(pOffTrackedRemoteNew, pOffTrackedRemoteOld, xrButton_Trigger, A_MOUSE1);
-            if (!sequenzLaeuft) handleTrackedControllerButton(pOffTrackedRemoteNew, pOffTrackedRemoteOld, offButton2, A_ESCAPE);
+            handleTrackedControllerButton(pOffTrackedRemoteNew, pOffTrackedRemoteOld, offButton2, A_ESCAPE);
             if ((pDominantTrackedRemoteNew->Buttons & xrButton_Trigger) != (pDominantTrackedRemoteOld->Buttons & xrButton_Trigger) && (pDominantTrackedRemoteNew->Buttons & xrButton_Trigger)) {
                 vr.menu_right_handed = !vr.menu_right_handed;
             }
@@ -373,24 +279,21 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
             interactWithTouchScreen(menuYaw, vr.weaponangles[ANGLES_DEFAULT]);
             handleTrackedControllerButton(pDominantTrackedRemoteNew, pDominantTrackedRemoteOld, domButton1, A_MOUSE1);
             handleTrackedControllerButton(pDominantTrackedRemoteNew, pDominantTrackedRemoteOld, xrButton_Trigger, A_MOUSE1);
-            if (!sequenzLaeuft) handleTrackedControllerButton(pDominantTrackedRemoteNew, pDominantTrackedRemoteOld, domButton2, A_ESCAPE);
+            handleTrackedControllerButton(pDominantTrackedRemoteNew, pDominantTrackedRemoteOld, domButton2, A_ESCAPE);
             if ((pOffTrackedRemoteNew->Buttons & xrButton_Trigger) != (pOffTrackedRemoteOld->Buttons & xrButton_Trigger) && (pOffTrackedRemoteNew->Buttons & xrButton_Trigger)) {
                 vr.menu_right_handed = !vr.menu_right_handed;
             }
         }
 
         //Close the datapad
-        if (secondaryButton2New && !secondaryButton2Old && !sequenzLaeuft) {
+        if (secondaryButton2New && !secondaryButton2Old) {
                 Sys_QueEvent(0, SE_KEY, A_TAB, true, 0, NULL);
         }
 
         //Close the menu
-        if (secondaryButton1New && !secondaryButton1Old && !sequenzLaeuft) {
+        if (secondaryButton1New && !secondaryButton1Old) {
                 Sys_QueEvent(0, SE_KEY, A_ESCAPE, true, 0, NULL);
         }
-#if defined(JKXR_VISIONOS)
-        }
-#endif
 
     }
     else

@@ -143,9 +143,6 @@ static cin_cache		cinTable[MAX_VIDEO_HANDLES];
 static int				currentHandle = -1;
 static int				CL_handle = -1;
 static int				CL_iPlaybackStartTime;
-#if defined(JKXR_VISIONOS)
-static int				CL_iInGameCinematicStartTime = -100000;
-#endif
 
 #if defined(JKXR_VISIONOS)
 // Laeuft gerade ein Vorspanntext?
@@ -1966,19 +1963,6 @@ static void PlayCinematic(const char *arg, const char *s, qboolean qbInGame)
 		}
 
 		qbPlayingInGameCinematic = qbInGame;
-#if defined(JKXR_VISIONOS)
-		// Beginn merken, fuer die Verweigerung in SCR_StopCinematic.
-		//
-		// CL_iPlaybackStartTime taugt dafuer nicht: es wird erst weiter unten
-		// gesetzt, und NUR wenn sich ein Video oeffnen liess (CL_handle >= 0).
-		// Genau deshalb lief die Verweigerung bei spielinternen Sequenzen ins
-		// Leere -- gemessen: eine Szene endete nach rund hundert Millisekunden
-		// durch A_ESCAPE, waehrend dieselbe Verweigerung beim Intro-Video
-		// einwandfrei griff.
-		if ( qbInGame ) {
-			CL_iInGameCinematicStartTime = cls.realtime;
-		}
-#endif
 
 		if ((s && s[0] == '1') || Q_stricmp(arg,"video/end.roq")==0) {
 			bits |= CIN_hold;
@@ -2180,26 +2164,6 @@ void SCR_StopCinematic( qboolean bAllowRefusal /* = qfalse */ )
 		{
 			return;
 		}
-#if defined(JKXR_VISIONOS)
-		// Dieselbe Schonfrist fuer spielinterne Sequenzen.
-		//
-		// Die Bedingung oben verlangt ein gueltiges VIDEO-Handle. Eine Szene,
-		// bei der sich keines oeffnen liess -- im Protokoll stehen mehrere
-		// "playCinematic: ... not found!" -- laeuft trotzdem als
-		// spielinterne Sequenz weiter, faellt aber aus der Verweigerung heraus
-		// und stirbt an der ersten Taste.
-		//
-		// Auf der Brille ist das keine Randerscheinung: die Menuetaste des
-		// rechten Controllers meldet Flanken von selbst, und eine davon genuegt.
-		// Die Entprellung in OpenXrActions.mm faengt das an der Quelle; diese
-		// Zeile ist die zweite Sicherung, unabhaengig davon, woher eine Taste
-		// kommt.
-		if ( qbPlayingInGameCinematic
-			&& cls.realtime < CL_iInGameCinematicStartTime + 1200 )
-		{
-			return;
-		}
-#endif
 	}
 
 	if ( CL_IsRunningInGameCinematic())
@@ -2223,19 +2187,6 @@ void SCR_StopCinematic( qboolean bAllowRefusal /* = qfalse */ )
 		cls.state =  CA_DISCONNECTED;
 	}
 
-#if defined(JKXR_VISIONOS)
-	// MESSPUNKT, wieder zu entfernen.
-	//
-	// Die Sequenzen stehen in einer Warteschlange, und stopCinematicCallCount
-	// entscheidet, ob ein Ueberspringen die wartenden mitnimmt -- der Kommentar
-	// darunter sagt es selbst. Marcel hat nur die ERSTE uebersprungen und danach
-	// waren auch die folgenden weg; das passt auf diesen Zaehler weit besser als
-	// auf einzelne Tastenereignisse.
-	Com_Printf( "[Warteschlange] Zaehler %d · wartend \"%s\" · Textlauf-Hack %d "
-		"· Sequenz laeuft %d\n",
-		stopCinematicCallCount, sInGameCinematicStandingBy,
-		qbTextCrawlFixed ? 1 : 0, qbPlayingInGameCinematic ? 1 : 0 );
-#endif
 	if(sInGameCinematicStandingBy[0] &&
 		qbTextCrawlFixed)
 	{
@@ -2319,34 +2270,6 @@ qboolean CL_IsRunningInGameCinematic(void)
 	return qbPlayingInGameCinematic;
 }
 
-#if defined(JKXR_VISIONOS)
-/*
-=================
-VR_CinematicRunning
-
-Laeuft gerade eine Filmsequenz, gleich welcher Art?
-
-Die VR-Eingabeschicht hatte dafuer nur vr.cin_camera, und das genuegt nicht: es
-meldet die Kamerafahrten des Spielcodes, nicht die abgespielten Sequenzen. Bei
-der Szene nach dem Levelladen steht es auf 0, obwohl CL_IsRunningInGameCinematic
-wahr ist -- gemessen. Sperren, die daran hingen, griffen dort ins Leere.
-=================
-*/
-qboolean VR_CinematicRunning( void )
-{
-	return (qboolean)( cls.state == CA_CINEMATIC
-		|| qbPlayingInGameCinematic
-		|| qbInGameCinematicOnStandBy );
-}
-
-// MESSPUNKT-Hilfe, wieder zu entfernen. Wie lange laeuft die Sequenz schon?
-int CL_SequenzLaufzeit( void )
-{
-	const int seitVideo  = cls.realtime - CL_iPlaybackStartTime;
-	const int seitSequenz = cls.realtime - CL_iInGameCinematicStartTime;
-	return ( seitSequenz < seitVideo ) ? seitSequenz : seitVideo;
-}
-#endif
 
 qboolean CL_InGameCinematicOnStandBy(void)
 {

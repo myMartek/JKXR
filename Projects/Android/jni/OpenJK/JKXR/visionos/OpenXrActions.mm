@@ -26,31 +26,6 @@
 // Von TBXR_Common.mm bereitgestellt.
 extern "C" void TBXR_visionOS_Vibrate(int hand, float amplitude, float seconds);
 
-// Aus der Engine.
-//
-// NICHT extern "C": Com_Printf ist dort C++ (qcommon.h:615), und eine
-// C-Bindung suchte einen Namen, den es nicht gibt. QDECL steht hier nicht,
-// weil q_platform.h in dieser Datei nicht eingebunden ist -- auf arm64 ist das
-// Makro leer, die Signatur stimmt also ueberein.
-void Com_Printf(const char *fmt, ...);
-
-/// Wann die Zuordnung der Controller zuletzt gewechselt hat, 0 = nie.
-static CFTimeInterval gMappingChangedAt = 0.0;
-
-/// Wie lange danach keine Tasten gemeldet werden.
-///
-/// Lang genug, dass der Wechsel abgeschlossen ist, kurz genug, dass ein echter
-/// Druck in dieser Zeit nicht auffaellt -- er wird ohnehin gehalten und kommt
-/// im naechsten Bild durch.
-static const CFTimeInterval BERUHIGUNG = 0.30;
-
-/// Gilt gerade das Beruhigungsfenster?
-static bool mappingBeruhigt(void)
-{
-    return gMappingChangedAt > 0.0 &&
-           (CACurrentMediaTime() - gMappingChangedAt) < BERUHIGUNG;
-}
-
 // Vom App-Ziel bereitgestellt (Sources/Bridge/WorldTracking.m). Liefert das
 // GCDevice einer Hand, dessen Händigkeit ARKit über
 // ar_accessory_get_inherent_chirality bestimmt hat — dieselbe Quelle, aus der
@@ -132,9 +107,7 @@ int handIndexForPath(const std::string &path)
 /// Bildet einen OpenXR-Eingabepfad auf den Namen eines GameController-Elements ab.
 ///
 /// Die Namen im Rumpf sind auf dem Gerät GEMESSEN, nicht geraten --
-/// TBXR_visionOS_DumpInputs gibt sie aus. (Ein früherer Kopf dieser Funktion
-/// behauptete das Gegenteil und stand damit im Widerspruch zu seinem eigenen
-/// Rumpf.)
+/// TBXR_visionOS_DumpInputs gibt sie aus.
 ///
 /// Gesucht wird über `physicalInputProfile` statt über `extendedGamepad`: das
 /// Profil legt alle Elemente als zeichenkettenindizierte Sammlung offen, und ein
@@ -344,42 +317,15 @@ extern "C" void TBXR_visionOS_RefreshControllers(void)
     // eine vertauschte Steuerung eine Vermutung — so steht sie im Protokoll.
     {
         static GCController *gemeldet[2] = { nil, nil };
-        static bool kombiniertGemeldet = false;
-        if (gControllers[0] != gemeldet[0] || gControllers[1] != gemeldet[1] ||
-            gCombinedDevice != kombiniertGemeldet) {
-            const bool ersteZuordnung = (gemeldet[0] == nil && gemeldet[1] == nil);
+        if (gControllers[0] != gemeldet[0] || gControllers[1] != gemeldet[1]) {
             gemeldet[0] = gControllers[0];
             gemeldet[1] = gControllers[1];
-            kombiniertGemeldet = gCombinedDevice;
-
-            // Nach einem Wechsel kurz keine Tasten melden.
-            //
-            // visionOS reicht die Controller in ZWEI Zustaenden heraus: erst ein
-            // kombiniertes MFi-Geraet, und sobald die Zubehoerverfolgung laeuft,
-            // zwei getrennte Spatial Controller mit ganz anderen Elementnamen
-            // (siehe gcNameForInputPath). Beim Umbruch zeigt derselbe
-            // Tastenzustand auf ein anderes Element -- und die Engine sieht eine
-            // FLANKE, obwohl niemand etwas gedrueckt hat.
-            //
-            // Das ist nicht theoretisch: waehrend einer Filmsequenz genuegt eine
-            // einzige solche Flanke, um sie abzubrechen (CL_KeyDownEvent
-            // beendet sie bei JEDER Taste, cl_keys.cpp:1244). Der Umbruch faellt
-            // genau in die Startphase -- Videos und erste Sequenz.
-            //
-            // Beim allerersten Zuordnen ist nichts zu unterdruecken: davor gab
-            // es keinen Zustand, aus dem eine Flanke entstehen koennte.
-            if (!ersteZuordnung) {
-                gMappingChangedAt = CACurrentMediaTime();
-            }
-
-            // Ueber Com_Printf, nicht fprintf: stderr landet nicht in
-            // qconsole.log, und genau dort braucht man diese Zeile.
-            Com_Printf("[TBXR] Haende: links %s (ARKit %s) · rechts %s (ARKit %s)%s\n",
-                       gControllers[0].vendorName.UTF8String ?: "-",
-                       ausArkit[0] ? "ja" : "nein",
-                       gControllers[1].vendorName.UTF8String ?: "-",
-                       ausArkit[1] ? "ja" : "nein",
-                       gCombinedDevice ? " · kombiniertes Geraet" : "");
+            fprintf(stderr, "[TBXR] Haende: links %s (ARKit %s) · rechts %s (ARKit %s)%s\n",
+                    gControllers[0].vendorName.UTF8String ?: "-",
+                    ausArkit[0] ? "ja" : "nein",
+                    gControllers[1].vendorName.UTF8String ?: "-",
+                    ausArkit[1] ? "ja" : "nein",
+                    gCombinedDevice ? " · kombiniertes Geraet" : "");
         }
     }
 }
@@ -516,72 +462,6 @@ extern "C" XrResult xrSyncActions(XrSession, const XrActionsSyncInfo *)
     return XR_SUCCESS;
 }
 
-/// Meldet einen Tastenzustand erst, wenn er sich eine Weile gehalten hat.
-///
-/// Ein Flackern von wenigen Bildern faellt damit weg, ein echter Druck kommt
-/// verzoegert, aber vollstaendig durch -- man haelt ihn ohnehin laenger.
-static bool entprellt(const void *action, int hand, bool roh)
-{
-    // Vier Eintraege genuegen: die Entprellung gilt nur der Menuetaste, und die
-    // gibt es je Hand einmal.
-    struct Eintrag { const void *action; int hand; bool roh; bool stabil; CFTimeInterval seit; };
-    static Eintrag eintraege[4] = {};
-
-    Eintrag *e = nullptr;
-    for (Eintrag &kandidat : eintraege) {
-        if (kandidat.action == action && kandidat.hand == hand) { e = &kandidat; break; }
-        if (kandidat.action == nullptr && !e) { e = &kandidat; }
-    }
-    if (!e) return roh;
-
-    const CFTimeInterval jetzt = CACurrentMediaTime();
-    if (e->action != action || e->hand != hand) {
-        *e = { action, hand, roh, roh, jetzt };
-        return e->stabil;
-    }
-
-    if (roh != e->roh) {
-        e->roh = roh;
-        e->seit = jetzt;
-    } else if (roh != e->stabil && (jetzt - e->seit) >= 0.08) {
-        e->stabil = roh;
-    }
-    return e->stabil;
-}
-
-/// Endet die Bindung dieser Aktion auf den angegebenen Pfad?
-static bool bindungEndetAuf(const void *action, int hand, const char *ende)
-{
-    const std::string *b = bindingForHand(
-        reinterpret_cast<const Action *>(action), hand);
-    if (!b) return false;
-    const size_t len = strlen(ende);
-    return b->size() >= len && b->compare(b->size() - len, len, ende) == 0;
-}
-
-/// Schaltschwelle mit Hysterese: an ab 0,80, aus unter 0,35.
-static bool schmitt(const void *action, int hand, float wert)
-{
-    struct Eintrag { const void *action; int hand; bool an; };
-    static Eintrag eintraege[4] = {};
-
-    Eintrag *e = nullptr;
-    for (Eintrag &kandidat : eintraege) {
-        if (kandidat.action == action && kandidat.hand == hand) { e = &kandidat; break; }
-        if (kandidat.action == nullptr && !e) { e = &kandidat; }
-    }
-    if (!e) return wert > 0.5f;
-
-    e->action = action;
-    e->hand = hand;
-    if (e->an) {
-        if (wert < 0.35f) e->an = false;
-    } else {
-        if (wert >= 0.80f) e->an = true;
-    }
-    return e->an;
-}
-
 extern "C" XrResult xrGetActionStateBoolean(XrSession, const XrActionStateGetInfo *info,
                                             XrActionStateBoolean *state)
 {
@@ -594,33 +474,7 @@ extern "C" XrResult xrGetActionStateBoolean(XrSession, const XrActionStateGetInf
     GCControllerButtonInput *button = buttonFor(action, handForSubaction(action, info->subactionPath));
     if (!button) return XR_SUCCESS;
 
-    // Waehrend der Beruhigung "nicht gedrueckt" melden. Ein Loslassen ist
-    // harmlos -- die Filmsequenz bricht nur bei CL_KeyDownEvent ab.
-    if (mappingBeruhigt()) {
-        state->isActive = XR_TRUE;
-        return XR_SUCCESS;
-    }
-
-    bool gedrueckt = button.pressed;
-
-    // Die Menuetaste entprellen.
-    //
-    // GEMESSEN auf dem Geraet: das Element "Button Menu" des RECHTEN
-    // Sense-Controllers meldet von sich aus Flanken, ohne dass es beruehrt wird
-    // -- im Protokoll als Wechsel 0 -> 2 -> 0 -> 2 binnen weniger Bilder. Diese
-    // Taste liegt auf A_ESCAPE, und eine einzige Flanke beendet eine laufende
-    // Filmsequenz (cl_keys.cpp:1244). Genau daran starben die Szenen nach
-    // hundert Millisekunden.
-    //
-    // Nur diese eine Taste, nicht alle: eine Entprellung kostet Reaktionszeit,
-    // und beim Trigger waere das im Kampf zu spueren. Beim Menue faellt sie
-    // nicht auf.
-    if (bindungEndetAuf(action, handForSubaction(action, info->subactionPath),
-                        "/menu/click")) {
-        gedrueckt = entprellt(action, handForSubaction(action, info->subactionPath), gedrueckt);
-    }
-
-    state->currentState = gedrueckt ? XR_TRUE : XR_FALSE;
+    state->currentState = button.pressed ? XR_TRUE : XR_FALSE;
     state->isActive = XR_TRUE;
     return XR_SUCCESS;
 }
@@ -637,39 +491,7 @@ extern "C" XrResult xrGetActionStateFloat(XrSession, const XrActionStateGetInfo 
     GCControllerButtonInput *button = buttonFor(action, handForSubaction(action, info->subactionPath));
     if (!button) return XR_SUCCESS;
 
-    // Auch den Analogwert: der Trigger wird ueber ihn zur Taste gemacht
-    // (OpenXrInput.cpp:876, Schwelle 0,5).
-    if (mappingBeruhigt()) {
-        state->isActive = XR_TRUE;
-        return XR_SUCCESS;
-    }
-
-    float wert = button.value;
-
-    // Schaltschwelle mit Hysterese fuer den Trigger.
-    //
-    // JKXR macht daraus eine Taste mit EINER Schwelle: IndexTrigger > 0,5
-    // (OpenXrInput.cpp:876). Auf den Sense-Controllern genuegt ein aufliegender
-    // Finger, um sie mehrfach zu ueberqueren -- GEMESSEN waehrend einer
-    // Filmsequenz: 0,649 · 0,435 · 0,823 · 0,075 binnen weniger Bilder. Jede
-    // Ueberquerung ist ein Druck, und ein Druck beendet die Sequenz.
-    //
-    // Zwei getrennte Schwellen loesen das: gedrueckt erst ab 0,80, losgelassen
-    // erst unter 0,35. Ein bewusster Zug erreicht 1,000 und wirkt weiter, ein
-    // aufliegender Finger nicht mehr.
-    //
-    // Zurueckgegeben wird ein Wert, der zur Entscheidung PASST -- die Engine
-    // schwellt bei 0,5, also muss er auf der richtigen Seite liegen. Die
-    // Groessenordnung bleibt erhalten, wo sie es kann.
-    if (bindungEndetAuf(action, handForSubaction(action, info->subactionPath),
-                        "/trigger/value")) {
-        const bool gedrueckt = schmitt(action,
-            handForSubaction(action, info->subactionPath), wert);
-        if (gedrueckt && wert < 0.55f)  wert = 0.55f;
-        if (!gedrueckt && wert > 0.45f) wert = 0.45f;
-    }
-
-    state->currentState = wert;
+    state->currentState = button.value;
     state->isActive = XR_TRUE;
     return XR_SUCCESS;
 }
