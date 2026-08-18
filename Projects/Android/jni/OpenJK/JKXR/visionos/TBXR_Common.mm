@@ -1536,32 +1536,6 @@ void TBXR_FrameSetup()
     TBXR_updateProjections();
     VR_HandleControllerInput();
 
-    // Kommen die Posen bis in die Winkel, aus denen der Menü-Cursor entsteht?
-    // interactWithTouchScreen rechnet aus vr.weaponangles (dominante Hand)
-    // beziehungsweise vr.offhandangles. Bleiben die null, ist die Kette
-    // zwischen xrLocateSpace und JKXRs Eingabelogik unterbrochen.
-    {
-        static int n = 0;
-        if ((++n % 90) == 0) {
-            fprintf(stderr,
-                    "[Winkel] Waffe %.1f %.1f %.1f · Nebenhand %.1f %.1f %.1f · "
-                    "aktiv %d/%d · Menuhand rechts %d\n",
-                    // weaponangles ist vec3_t[ANGLES_COUNT], also ZWEIDIMENSIONAL.
-                    // vr.weaponangles[PITCH] wäre die Zeile ANGLES_DEFAULT als
-                    // float* — mit %f ausgegeben undefiniert. Genau dieser
-                    // Fehler hat eine Messung geliefert, die immer "0.0 0.0 0.0"
-                    // zeigte, obwohl über den Inhalt nichts bekannt war.
-                    vr.weaponangles[ANGLES_DEFAULT][PITCH],
-                    vr.weaponangles[ANGLES_DEFAULT][YAW],
-                    vr.weaponangles[ANGLES_DEFAULT][ROLL],
-                    vr.offhandangles[ANGLES_DEFAULT][PITCH],
-                    vr.offhandangles[ANGLES_DEFAULT][YAW],
-                    vr.offhandangles[ANGLES_DEFAULT][ROLL],
-                    (int)gAppState.TrackedController[0].Active,
-                    (int)gAppState.TrackedController[1].Active,
-                    (int)vr.menu_right_handed);
-        }
-    }
     TBXR_ProcessHaptics();
     gAppState.FrameSetup = true;
 }
