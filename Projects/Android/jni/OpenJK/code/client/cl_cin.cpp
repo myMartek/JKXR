@@ -2216,7 +2216,42 @@ void SCR_StopCinematic( qboolean bAllowRefusal /* = qfalse */ )
 		stopCinematicCallCount = 0;
 	}
 
-	if(stopCinematicCallCount != 2)
+#if defined(JKXR_VISIONOS)
+	// Einen WARTENDEN nicht abraeumen, wenn gar nichts laeuft.
+	//
+	// GEMESSEN, unmittelbar nacheinander:
+	//
+	//   [Sequenz-Anforderung] "jk0101_sw" · cls.state 6 · wartet schon 0
+	//   [Sequenz-Verworfen]   "jk0101_sw" · Zaehler 0 · verweigerbar war 0
+	//
+	// Der Spielcode fordert die Sequenz an, waehrend cls.state noch CA_PRIMED
+	// (6) ist -- das Spiel ist nicht spielbereit, also legt CL_PlayInGameCinematic_f
+	// sie in die Warteschlange, damit SCR_DrawCinematic sie startet, sobald es
+	// so weit ist. Genau dazwischen raeumt der Ladeweg sie ab: ein
+	// SCR_StopCinematic OHNE Verweigerungs-Flag (CL_Disconnect, cl_main.cpp:262),
+	// also nicht ueber eine Taste. Die Sequenz startet danach nie.
+	//
+	// Die Bedingung ist bewusst eng: NUR wenn nichts laeuft und nichts
+	// abzubrechen ist. Ein Stopp, der eine laufende Sequenz beendet, raeumt den
+	// Wartenden weiter mit ab -- dort ist er gewollt, denn wer ueberspringt,
+	// will die Kette los sein.
+	//
+	// Der Zaehler stopCinematicCallCount bleibt unberuehrt. Er gehoert zum
+	// Textlauf-Hack darueber, und dessen drei Zweige sind heikel genug.
+	const qboolean nurWartender =
+		(qboolean)( sInGameCinematicStandingBy[0]
+			&& !qbPlayingInGameCinematic
+			&& !( CL_handle >= 0 && CL_handle < MAX_VIDEO_HANDLES ) );
+	if ( nurWartender ) {
+		Com_Printf( "[Sequenz] Wartender \"%s\" bleibt erhalten\n",
+			sInGameCinematicStandingBy );
+	}
+#endif
+	if(stopCinematicCallCount != 2
+#if defined(JKXR_VISIONOS)
+		&& !nurWartender
+#endif
+		)
 	{
 #if defined(JKXR_VISIONOS)
 		// MESSPUNKT, wieder zu entfernen.
