@@ -505,6 +505,19 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 			CL_CGameRendering( stereoFrame );
 			break;
 		case CA_ACTIVE:
+#if defined(JKXR_VISIONOS)
+			// Eine Sequenz nachholen, die waehrend des Ladens angefordert wurde.
+			//
+			// Sie geht dort in die Warteschlange der Engine und wird abgeraeumt,
+			// bevor dieser Zweig sie starten kann -- Begruendung und Messung bei
+			// JKXR_StartAngeforderteSequenz in cl_cin.cpp. Der Aufruf steht VOR
+			// der Abfrage darunter, damit die nachgeholte Sequenz im selben Bild
+			// gezeichnet wird.
+			{
+				extern void JKXR_StartAngeforderteSequenz( void );
+				JKXR_StartAngeforderteSequenz();
+			}
+#endif
 			if (CL_IsRunningInGameCinematic() || CL_InGameCinematicOnStandBy())
 			{
 				SCR_DrawCinematic();

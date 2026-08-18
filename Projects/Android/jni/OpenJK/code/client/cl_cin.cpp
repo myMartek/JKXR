@@ -2097,9 +2097,68 @@ void CL_PlayCinematic_f(void)
 	PlayCinematic(arg,s,qfalse);
 }
 
+#if defined(JKXR_VISIONOS)
+// Eine zweite, unantastbare Notiz fuer eine angeforderte Sequenz.
+//
+// GEMESSEN: der Spielcode fordert die Sequenz an, waehrend cls.state noch
+// CA_PRIMED ist. Sie geht damit in die Warteschlange der Engine
+// (sInGameCinematicStandingBy), die SCR_DrawCinematic in CA_ACTIVE starten
+// wuerde -- nur wird sie vorher abgeraeumt, erst vom Ladeweg und dann von einer
+// Taste. Sie wird also nicht abgebrochen, sondern nie gestartet.
+//
+// Die Warteschlange gegen diese Stopps zu verteidigen, wurde ausprobiert und
+// war falsch: SCR_StopCinematic wird aus dem Ladeweg, vom Disconnect und von
+// Tasten gerufen, mit ganz verschiedener Absicht, und der Code unterscheidet
+// sie nicht. Zu streng gefasst kam die Taste durch; zu weit gefasst wurde der
+// Wartende nie mehr abgeraeumt und das Intro lief in eine Endlosschleife.
+//
+// Diese Notiz fasst nichts davon an. Kein Stopp kennt sie, sie wird beim
+// Starten sofort verbraucht, und wenn die Warteschlange der Engine ausnahmsweise
+// ueberlebt, tritt sie zurueck.
+static char sJKXR_AngeforderteSequenz[MAX_QPATH] = {0};
+
+/*
+=================
+JKXR_StartAngeforderteSequenz
+
+Aus SCR_DrawScreenField gerufen, sobald cls.state CA_ACTIVE erreicht.
+=================
+*/
+void JKXR_StartAngeforderteSequenz( void )
+{
+	if ( !sJKXR_AngeforderteSequenz[0] ) {
+		return;
+	}
+
+	// Genau einmal, und zwar VOR dem Starten leeren: PlayCinematic laeuft tief
+	// und kann ueber Umwege wieder hier landen.
+	char name[MAX_QPATH];
+	Q_strncpyz( name, sJKXR_AngeforderteSequenz, sizeof( name ) );
+	sJKXR_AngeforderteSequenz[0] = 0;
+
+	// Zuruecktreten, wenn die Engine ihre eigene Warteschlange noch hat oder
+	// bereits etwas laeuft -- sonst liefe die Sequenz zweimal.
+	if ( CL_InGameCinematicOnStandBy() || CL_IsRunningInGameCinematic() ) {
+		return;
+	}
+
+	Com_Printf( "Sequenz \"%s\" nachgeholt.\n", name );
+	PlayCinematic( name, NULL, qtrue );
+}
+#endif
+
 void CL_PlayInGameCinematic_f(void)
 {
 	const char *arg = Cmd_Argv( 1 );
+#if defined(JKXR_VISIONOS)
+	// Zusaetzlich merken, solange das Spiel nicht spielbereit ist. Der
+	// gewoehnliche Weg darunter bleibt unveraendert; diese Notiz greift nur,
+	// wenn er verloren geht.
+	if ( cls.state != CA_ACTIVE && arg && arg[0] ) {
+		Q_strncpyz( sJKXR_AngeforderteSequenz, arg,
+			sizeof( sJKXR_AngeforderteSequenz ) );
+	}
+#endif
 	if (cls.state == CA_ACTIVE)
 	{
 		PlayCinematic(arg,NULL,qtrue);
