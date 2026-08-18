@@ -4395,10 +4395,35 @@ static void CG_Draw2D( void )
 		const float uebersteh_x = fabs( vr->off_center_fov_x ) * SCREEN_WIDTH + 8.0f;
 		const float uebersteh_y = fabs( vr->off_center_fov_y ) * SCREEN_HEIGHT
 		                        + fabs( cg_hudYOffset.value ) + 8.0f;
-		CG_DrawPic( -uebersteh_x, -uebersteh_y,
-		            SCREEN_WIDTH  + 2.0f * uebersteh_x,
-		            SCREEN_HEIGHT + 2.0f * uebersteh_y,
-		            cgi_R_RegisterShader( "gfx/2d/jsense" ));
+		const float bildX = -uebersteh_x;
+		const float bildY = -uebersteh_y;
+		const float bildB = SCREEN_WIDTH  + 2.0f * uebersteh_x;
+		const float bildH = SCREEN_HEIGHT + 2.0f * uebersteh_y;
+
+		CG_DrawPic( bildX, bildY, bildB, bildH, cgi_R_RegisterShader( "gfx/2d/jsense" ));
+
+		// Ringsherum schwarz, wie Marcel es vorgeschlagen hat.
+		//
+		// Rechnen hat hier zweimal nicht gereicht: erst die ganze Flaeche statt
+		// des eingerueckten Rechtecks, dann der Uebersteh fuer den Versatz aus
+		// CG_AdjustFrom640 -- beides half nicht, es blieb ein Streifen Welt am
+		// Rand. Was da noch dazwischenfunkt, weiss ich nicht; vier schwarze
+		// Kaesten wissen es auch nicht und brauchen es nicht. Sie folgen
+		// derselben Abbildung wie das Sichtbild, liegen also immer genau an
+		// dessen Kante, und reichen eine volle Flaechenbreite nach aussen --
+		// weiter, als irgendetwas verschoben werden kann.
+		//
+		// Nicht ueber die Mitte fuellen: durch das Sichtbild ist die Welt zu
+		// sehen, es ist grossenteils durchsichtig.
+		{
+			vec4_t schwarz = { 0, 0, 0, 1 };
+			const float weit = SCREEN_WIDTH;
+			CG_FillRect( bildX - weit, bildY - weit, weit, bildH + 2.0f*weit, schwarz );
+			CG_FillRect( bildX + bildB, bildY - weit, weit, bildH + 2.0f*weit, schwarz );
+			CG_FillRect( bildX - weit, bildY - weit, bildB + 2.0f*weit, weit, schwarz );
+			CG_FillRect( bildX - weit, bildY + bildH, bildB + 2.0f*weit, weit, schwarz );
+		}
+
 		cg.drawingHUD = CG_HUD_SCALED;
 		CG_DrawHealthBars();
 
@@ -4485,6 +4510,17 @@ static void CG_Draw2D( void )
 				CG_FillRect(0, 480 - yOffset, 640, yOffset, color);
 			}
 		}
+
+		// Zurueckstellen, sonst zeichnet das gesamte HUD danach falsch.
+		//
+		// Der Block oben schaltet auf CG_HUD_NORMAL, um die Raender in
+		// Vollbildmassen schwarz zu fuellen, und stellte nie zurueck. Alles
+		// Weitere -- Gesundheit, Munition, Machtanzeige, Namen am Fadenkreuz --
+		// lief damit ebenfalls in CG_HUD_NORMAL: ohne cg_hudScale, also
+		// verschoben und in falscher Groesse, und vor allem ohne cg_hudStereo,
+		// also fuer beide Augen gleich. Genau das hat Marcel beobachtet, sobald
+		// Machtgespuer an war; beim Zielfernrohr galt es genauso.
+		cg.drawingHUD = CG_HUD_SCALED;
 	}
 
 	// don't draw any status if dead

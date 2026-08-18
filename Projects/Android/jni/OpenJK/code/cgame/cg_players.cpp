@@ -4539,7 +4539,22 @@ void CG_AddForceSightShell( refEntity_t *ent, centity_t *cent )
 	jkxrSichtHuellen++;
 #endif
 	ent->customShader = cgs.media.forceShell;
-	ent->renderfx &= ~RF_RGB_TINT;
+	// RF_RGB_TINT SETZEN, nicht loeschen.
+	//
+	// Die Huelle erscheint, aber farblos: Marcel sieht die beweglichen Dinge
+	// durch die Wand, nur eben nicht gelb. Die Farbe unten in shaderRGBA wirkt
+	// naemlich nur, wenn der Shader sie ueberhaupt fragt -- und der hier
+	// benutzte tut es nicht. cg_weapons.cpp nimmt gfx/misc/forceprotect;
+	// powerups/forceshell steht direkt darueber auskommentiert, und
+	// powerups/sightshell wird zwei Zeilen weiter geladen und nirgends
+	// verwendet. Mit einem Ersatz-Shader bleibt das Loeschen dieser Fahne
+	// wirkungslos gegen nichts.
+	//
+	// Gesetzt erzwingt sie im Renderer CGEN_ENTITY (tr_shade.cpp) -- dann gilt
+	// shaderRGBA, egal was der Shader vorsieht. Das ist der Sinn der ganzen
+	// Faerberei hier unten: gelb fuer Beeinflussbares, blau fuer Markiertes,
+	// rot und gruen fuer Feind und Freund.
+	ent->renderfx |= RF_RGB_TINT;
 	// See through walls.
 	ent->renderfx |= (RF_MORELIGHT|RF_NODEPTH);
 
