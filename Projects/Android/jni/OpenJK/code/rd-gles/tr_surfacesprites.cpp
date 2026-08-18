@@ -210,7 +210,7 @@ static void R_SurfaceSpriteFrameUpdate(void)
 	{
 		static cvar_t *reichweite = NULL;
 		if ( !reichweite ) {
-			reichweite = ri.Cvar_Get( "r_surfaceSpriteRange", "1.0", CVAR_ARCHIVE );
+			reichweite = ri.Cvar_Get( "r_surfaceSpriteRange", "2.0", CVAR_ARCHIVE );
 		}
 		if ( reichweite && reichweite->value > 0.0f ) {
 			rangescalefactor *= reichweite->value;
