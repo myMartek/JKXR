@@ -29,6 +29,23 @@ targets:
     platform: visionOS
     sources:
       - path: Sources
+      # Die VR-Zusatzdateien werden MITGELIEFERT.
+      #
+      # Sie gehoeren zum Port, nicht zum gekauften Spiel: Waffenmodelle,
+      # Shader, HUD-Teile. Wer die App aus TestFlight bekommt, hat keine
+      # Bezugsquelle dafuer -- die drei Dateien lagen bisher nur im Repo, und
+      # jeder Tester haette danach fragen muessen.
+      #
+      # Referenziert statt kopiert, damit es die 24 MB nur einmal im Baum gibt
+      # und die Fassung im Installer und die in der App nicht auseinanderlaufen.
+      # z_vr_assets_base.pk3 ist fuer beide Spiele dieselbe Datei (gleiche
+      # Pruefsumme), deshalb nur einmal.
+      - path: ../../JKXR-PCVR-Installer/JKA/base/z_vr_assets_base.pk3
+        buildPhase: resources
+      - path: ../../JKXR-PCVR-Installer/JKA/base/z_vr_assets_jka.pk3
+        buildPhase: resources
+      - path: ../../JKXR-PCVR-Installer/JKO/base/z_vr_assets_jko.pk3
+        buildPhase: resources
     dependencies:
       # ANGLE, gebaut aus angle/out/xros (patch-angle-visionos.py) mit
       # Foveation-Unterstützung im Metal-Backend (patch-angle-foveation.py).

@@ -32,19 +32,39 @@ enum Spiel: Int32, CaseIterable, Identifiable {
         }
     }
 
-    /// Was in `base/` liegen muss. Die z_vr_assets-Dateien stammen aus JKXR,
-    /// die assets aus dem jeweiligen Spiel.
+    /// Was aus der gekauften Installation kommen muss.
+    ///
+    /// Nur diese. Die z_vr_assets-Dateien gehoeren zum Port und liegen im
+    /// App-Bundle; `AssetStore.legeMitgelieferteAb` legt sie beim Start selbst
+    /// in `base/`. Sie hier aufzuzaehlen hiesse, nach etwas zu fragen, das
+    /// schon da ist.
     var erwarteteDateien: String {
         switch self {
         case .academy:
-            return "assets0.pk3 bis assets3.pk3 aus einer Jedi-Academy-Installation, "
-                 + "dazu z_vr_assets_base.pk3 und z_vr_assets_jka.pk3."
+            return "assets0.pk3 bis assets3.pk3 aus einer Jedi-Academy-Installation."
         case .outcast:
             return "assets0.pk3, assets1.pk3, assets2.pk3 und assets5.pk3 aus einer "
-                 + "Jedi-Outcast-Installation, dazu z_vr_assets_base.pk3 und "
-                 + "z_vr_assets_jko.pk3."
+                 + "Jedi-Outcast-Installation."
         }
     }
+
+    /// Die Dateien, die die App selbst mitbringt.
+    ///
+    /// z_vr_assets_base.pk3 ist fuer beide Spiele dieselbe (gleiche
+    /// Pruefsumme), deshalb liegt sie nur einmal im Bundle.
+    var mitgelieferteDateien: [String] {
+        switch self {
+        case .academy: return ["z_vr_assets_base", "z_vr_assets_jka"]
+        case .outcast: return ["z_vr_assets_base", "z_vr_assets_jko"]
+        }
+    }
+
+    /// Woran erkennbar ist, dass die gekauften Dateien da sind.
+    ///
+    /// Nicht "irgendeine pk3": seit die App ihre eigenen mitbringt, liegt immer
+    /// eine da, und "irgendeine" hiesse ab sofort immer "bereit" -- der
+    /// Spielen-Knopf fuehrte dann in eine Engine, die nichts findet.
+    var pflichtDatei: String { "assets0.pk3" }
 }
 
 /// Fenster vor dem Start.
@@ -287,6 +307,7 @@ enum AssetStore {
         for spiel in Spiel.allCases {
             try? fm.createDirectory(at: baseDirectory(spiel),
                                     withIntermediateDirectories: true)
+            legeMitgelieferteAb(spiel)
 
             let readme = documentsDirectory
                 .appendingPathComponent(spiel.ordner)
@@ -301,6 +322,10 @@ enum AssetStore {
 
                 Sie lassen sich hier hineinkopieren oder im Fenster der App
                 ueber "Dateien auswaehlen" einlesen.
+
+                Die z_vr_assets-Dateien muessen NICHT besorgt werden: sie
+                gehoeren zum Port, liegen in der App und werden beim Start
+                selbst hier abgelegt.
 
                 Spielstaende und Konfiguration liegen NICHT hier, sondern unter
                 Library/Application Support (OpenJK fuer Academy, OpenJO fuer
@@ -350,7 +375,50 @@ enum AssetStore {
         let files = (try? FileManager.default
             .contentsOfDirectory(atPath: baseDirectory(spiel).path)) ?? []
         let pk3 = files.filter { $0.lowercased().hasSuffix(".pk3") }
-        return pk3.isEmpty ? .missing : .ready(names: pk3)
+
+        // Nach der Pflichtdatei fragen, nicht nach "irgendeiner pk3".
+        //
+        // Seit die App ihre eigenen mitbringt, liegt immer eine da. Die alte
+        // Pruefung haette ab sofort auf jedem frischen Geraet "bereit"
+        // gemeldet, und der Spielen-Knopf haette in eine Engine gefuehrt, die
+        // nichts findet.
+        let vorhanden = pk3.contains { $0.lowercased() == spiel.pflichtDatei }
+        return vorhanden ? .ready(names: pk3) : .missing
+    }
+
+    /// Die VR-Zusatzdateien aus dem Bundle nach `base/` legen.
+    ///
+    /// Sie gehoeren zum Port und nicht zum gekauften Spiel; wer die App aus
+    /// TestFlight bekommt, hat keine Bezugsquelle dafuer. Also bringt die App
+    /// sie mit und legt sie selbst ab -- fuer den Nutzer bleibt genau eine
+    /// Aufgabe, naemlich die gekauften Dateien.
+    ///
+    /// Kopiert wird, wenn nichts da ist ODER die Groesse abweicht. Das faengt
+    /// den Fall ab, dass eine spaetere Fassung der App neue Zusatzdateien
+    /// mitbringt: ein blosses "existiert schon" liesse die alte liegen, und der
+    /// Fehler waere von aussen nicht zu sehen.
+    private static func legeMitgelieferteAb(_ spiel: Spiel) {
+        let fm = FileManager.default
+        for name in spiel.mitgelieferteDateien {
+            guard let quelle = Bundle.main.url(forResource: name, withExtension: "pk3") else {
+                print("[JKXR] \(name).pk3 fehlt im Bundle")
+                continue
+            }
+            let ziel = baseDirectory(spiel).appendingPathComponent("\(name).pk3")
+
+            let groesseQuelle = (try? quelle.resourceValues(forKeys: [.fileSizeKey]))?.fileSize
+            let groesseZiel   = (try? ziel.resourceValues(forKeys: [.fileSizeKey]))?.fileSize
+            if groesseZiel != nil, groesseZiel == groesseQuelle { continue }
+
+            do {
+                try? fm.removeItem(at: ziel)
+                try fm.copyItem(at: quelle, to: ziel)
+                print("[JKXR] \(name).pk3 nach \(spiel.ordner)/base gelegt")
+            } catch {
+                print("[JKXR] \(name).pk3 liess sich nicht ablegen: "
+                    + "\(error.localizedDescription)")
+            }
+        }
     }
 
     static func copyIntoBase(_ source: URL, _ spiel: Spiel) -> CopyResult {
