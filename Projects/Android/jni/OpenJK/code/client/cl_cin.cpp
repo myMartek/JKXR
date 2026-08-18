@@ -2238,9 +2238,20 @@ void SCR_StopCinematic( qboolean bAllowRefusal /* = qfalse */ )
 	//
 	// Der Zaehler stopCinematicCallCount bleibt unberuehrt. Er gehoert zum
 	// Textlauf-Hack darueber, und dessen drei Zweige sind heikel genug.
+	// Massgeblich ist allein das VIDEO-HANDLE, nicht qbPlayingInGameCinematic.
+	//
+	// Die erste Fassung fragte auch dieses Flag ab und war damit zu streng: es
+	// haengt nach, wenn eine vorige Sequenz beendet wurde, waehrend laengst
+	// nichts mehr auf dem Schirm ist. Gemessen genau so -- der Wartende
+	// ueberlebte den Ladeweg und wurde einen Augenblick spaeter doch verworfen,
+	// diesmal ueber eine Taste (verweigerbar war 1), obwohl es nichts zu
+	// beenden gab.
+	//
+	// CL_handle ist die einzige Groesse, die sagt "ein Video laeuft". Ist keines
+	// offen, gibt es auch nichts abzubrechen -- dann einen Wartenden zu
+	// verwerfen, kann nie richtig sein.
 	const qboolean nurWartender =
 		(qboolean)( sInGameCinematicStandingBy[0]
-			&& !qbPlayingInGameCinematic
 			&& !( CL_handle >= 0 && CL_handle < MAX_VIDEO_HANDLES ) );
 	if ( nurWartender ) {
 		Com_Printf( "[Sequenz] Wartender \"%s\" bleibt erhalten\n",
