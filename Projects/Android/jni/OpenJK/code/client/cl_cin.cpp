@@ -2130,17 +2130,28 @@ void JKXR_StartAngeforderteSequenz( void )
 		return;
 	}
 
+	// Nur in CA_ACTIVE nachholen. Frueher waere es genau der Fehler, den der
+	// Warteschlangen-Mechanismus vermeiden soll.
+	if ( cls.state != CA_ACTIVE ) {
+		return;
+	}
+
+	// Zuruecktreten OHNE die Notiz zu verlieren, wenn die Engine ihre eigene
+	// Warteschlange noch hat oder bereits etwas laeuft -- sonst liefe die
+	// Sequenz zweimal.
+	//
+	// Die erste Fassung leerte das Feld VOR dieser Pruefung und verlor es damit
+	// stillschweigend, sobald die Bedingung einmal zutraf. Jetzt bleibt es
+	// stehen, bis es wirklich gestartet wurde.
+	if ( CL_InGameCinematicOnStandBy() || CL_IsRunningInGameCinematic() ) {
+		return;
+	}
+
 	// Genau einmal, und zwar VOR dem Starten leeren: PlayCinematic laeuft tief
 	// und kann ueber Umwege wieder hier landen.
 	char name[MAX_QPATH];
 	Q_strncpyz( name, sJKXR_AngeforderteSequenz, sizeof( name ) );
 	sJKXR_AngeforderteSequenz[0] = 0;
-
-	// Zuruecktreten, wenn die Engine ihre eigene Warteschlange noch hat oder
-	// bereits etwas laeuft -- sonst liefe die Sequenz zweimal.
-	if ( CL_InGameCinematicOnStandBy() || CL_IsRunningInGameCinematic() ) {
-		return;
-	}
 
 	Com_Printf( "Sequenz \"%s\" nachgeholt.\n", name );
 	PlayCinematic( name, NULL, qtrue );
