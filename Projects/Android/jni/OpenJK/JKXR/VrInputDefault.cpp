@@ -295,10 +295,42 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
 				(rightTrackedRemoteState_new.Buttons & xrButton_Trigger) != 0;
 			const bool wurfNeu = TBXR_visionOS_GamepadButton("Button X");
 
-			if (schlagNeu != schlagAlt) sendButtonAction("+attack", schlagNeu);
+			if (schlagNeu != schlagAlt) {
+				sendButtonAction("+attack", schlagNeu);
+				// Beim Druck, nicht beim Loslassen: der Bogen soll mit dem
+				// Schlag beginnen.
+				if (schlagNeu) TBXR_visionOS_GamepadSwing();
+			}
 			if (wurfNeu != wurfAlt)     sendButtonAction("+altattack", wurfNeu);
 			schlagAlt = schlagNeu;
 			wurfAlt = wurfNeu;
+		}
+
+		// WAFFENWECHSEL MIT DEM STEUERKREUZ, solange R1 gehalten wird.
+		//
+		// Das Waffenrad taugt am Gamepad nicht: es wird durch Zeigen bedient
+		// und folgt damit dem Kopf. R1 gehalten und links/rechts blättert
+		// stattdessen durch das, was man hat -- derselbe Weg wie am PC.
+		//
+		// R1 als Umschalter, damit das Steuerkreuz sonst frei bleibt.
+		{
+			static int dpadAlt = 0;
+			int dx = 0, dy = 0;
+			TBXR_visionOS_GamepadDpad(&dx, &dy);
+			const bool r1 = TBXR_visionOS_GamepadButton("Right Shoulder");
+			const bool l1 = TBXR_visionOS_GamepadButton("Left Shoulder");
+			if (dx != dpadAlt && dx != 0)
+			{
+				// R1 blaettert durch die Waffen, L1 durch die Kraefte.
+				//
+				// Das Kraft-Rad haengt wie das Waffenrad am Zeigen, und die
+				// LINKE Hand gibt es am Gamepad ueberhaupt nicht -- es liesse
+				// sich also nicht einmal oeffnen. Die klassischen Befehle des
+				// Spiels tun dasselbe ohne Rad.
+				if (r1)      sendButtonActionSimple(dx > 0 ? "weapnext" : "weapprev");
+				else if (l1) sendButtonActionSimple(dx > 0 ? "forcenext" : "forceprev");
+			}
+			dpadAlt = dx;
 		}
 
 		pauseAlt = pauseNeu;

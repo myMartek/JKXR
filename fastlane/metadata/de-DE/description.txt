@@ -9,7 +9,9 @@ FÜR DAS HEADSET GEBAUT
 
 STEUERUNG
 
-Die PlayStation-VR2-Sense-Controller werden einzeln verfolgt, jeder mit eigener Position, Ausrichtung und Händigkeit. Gewöhnliche MFi- und PlayStation-Gamepads gehen ebenfalls, für eine Sitzung im Sitzen ohne Bewegungssteuerung.
+Die PlayStation-VR2-Sense-Controller werden einzeln verfolgt, jeder mit eigener Position, Ausrichtung und Händigkeit — so sind die Spiele gedacht.
+
+Ein gewöhnliches Gamepad geht als Rückfall, ohne Bewegungssteuerung: gezielt wird mit dem Blick, der linke Stick führt den Zeiger im Menü, der rechte dreht, und eine Schultertaste zusammen mit dem Steuerkreuz blättert durch Waffen und Kräfte.
 
 ZWEI SPIELE IN EINER APP
 

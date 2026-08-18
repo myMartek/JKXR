@@ -32,6 +32,8 @@ void menuGamepadNavigation(const ovrInputStateTrackedRemote *linksNeu,
                            const ovrInputStateTrackedRemote *rechtsAlt);
 extern "C" bool TBXR_visionOS_GamepadFallback(void);
 extern "C" bool TBXR_visionOS_GamepadButton(const char *name);
+extern "C" void TBXR_visionOS_GamepadDpad(int *x, int *y);
+extern "C" void TBXR_visionOS_GamepadSwing(void);
 #endif
 
 #endif //vrcommon_h

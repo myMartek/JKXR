@@ -9,7 +9,9 @@ BUILT FOR THE HEADSET
 
 CONTROLS
 
-The PlayStation VR2 Sense controllers are tracked individually, each with its own position, orientation and handedness. Ordinary MFi and PlayStation gamepads work too, for a seated session without motion control.
+The PlayStation VR2 Sense controllers are tracked individually, each with its own position, orientation and handedness — that is the way the games are meant to be played.
+
+An ordinary gamepad works as a fallback, without motion control: you aim by looking, the left stick drives the pointer in menus, the right one turns, and holding a shoulder button with the d-pad cycles weapons and powers.
 
 TWO GAMES IN ONE APP
 

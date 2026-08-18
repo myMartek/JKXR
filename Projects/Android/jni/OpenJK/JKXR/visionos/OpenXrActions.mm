@@ -22,6 +22,7 @@
 
 #import <ARKit/ARKit.h>
 #import <GameController/GameController.h>
+#import <QuartzCore/QuartzCore.h>
 
 // Von TBXR_Common.mm bereitgestellt.
 extern "C" void TBXR_visionOS_Vibrate(int hand, float amplitude, float seconds);
@@ -116,6 +117,61 @@ extern "C" bool TBXR_visionOS_GamepadFallback(void)
 /// Gamepads. Auf dem DualSense meldet das GameController-Framework sie als
 /// "Button Menu" (Options, rechts) und "Button Options" (Create, links) -- die
 /// Namen sind vertauschter, als einem lieb ist, gemessen im Dump beim Start.
+/// Das Steuerkreuz als zwei Stufen, -1/0/1 je Achse.
+///
+/// Eigener Zugang, weil das Steuerkreuz im OpenXR-Aktionssatz nicht vorkommt:
+/// die Sense-Controller haben keines.
+/// Beginn des letzten Schwungs, oder -1.
+static double gSchwungStart = -1.0;
+
+/// Einen Schlag auslösen.
+///
+/// In VR IST der Arm die Animation: das Lichtschwert wird dort gezeichnet, wo
+/// die Hand ist, und eine Angriffsanimation gibt es deshalb gar nicht. Am
+/// Gamepad steht die Pose still -- der Schlag trifft (+attack setzt Schaden),
+/// die Klinge bewegt sich aber keinen Millimeter. Auf dem Geraet beobachtet.
+///
+/// Also wird der Schwung hier erzeugt: ein zeitabhaengiger Anteil auf der
+/// Griffpose, der die Klinge in einem Bogen herunterfuehrt und zurueckkehrt.
+extern "C" void TBXR_visionOS_GamepadSwing(void)
+{
+    gSchwungStart = CACurrentMediaTime();
+}
+
+extern "C" void TBXR_visionOS_GamepadDpad(int *x, int *y)
+{
+    if (x) *x = 0;
+    if (y) *y = 0;
+    if (!gGamepadRueckfall) return;
+    GCController *c = gControllers[0];
+    if (!c) return;
+    // Ueber die vier EINZELTASTEN, nicht ueber die dpads-Sammlung.
+    //
+    // Die Namen stehen woertlich da, weil es fuer sie keine GCInput-Konstanten
+    // gibt (GCInputDirectionPadLeft existiert nicht). Sie stammen aus dem Dump
+    // beim Start, sind also gemessen und nicht geraten.
+    //
+    // Der DualSense meldet sein Steuerkreuz als "Direction Pad Left" und so
+    // fort -- nachgesehen im Dump beim Start. Ob es zusaetzlich als Achsenpaar
+    // unter GCInputDirectionPad erscheint, ist geraeteabhaengig; war es nicht
+    // da, lieferte diese Funktion stumm Null, und weder Waffen- noch
+    // Kraftwechsel taten irgendetwas.
+    GCPhysicalInputProfile *profil = c.physicalInputProfile;
+    GCControllerDirectionPad *d = profil.dpads[GCInputDirectionPad];
+    if (d) {
+        if (x) *x = d.right.pressed ? 1 : (d.left.pressed ? -1 : 0);
+        if (y) *y = d.up.pressed ? 1 : (d.down.pressed ? -1 : 0);
+        return;
+    }
+
+    GCControllerButtonInput *links  = profil.buttons[@"Direction Pad Left"];
+    GCControllerButtonInput *rechts = profil.buttons[@"Direction Pad Right"];
+    GCControllerButtonInput *hoch   = profil.buttons[@"Direction Pad Up"];
+    GCControllerButtonInput *runter = profil.buttons[@"Direction Pad Down"];
+    if (x) *x = (rechts && rechts.pressed) ? 1 : ((links && links.pressed) ? -1 : 0);
+    if (y) *y = (hoch && hoch.pressed) ? 1 : ((runter && runter.pressed) ? -1 : 0);
+}
+
 extern "C" bool TBXR_visionOS_GamepadButton(const char *name)
 {
     if (!gGamepadRueckfall || !name) return false;
@@ -654,14 +710,37 @@ static bool poseAusKopf(XrSpaceLocation *location, bool griff)
     // Aufrecht gehalten sind es rund achtzig Grad mehr.
     static const float GRIFF_STEILER = 80.0f * (float)M_PI / 180.0f;
 
+    // Der laufende Schwung, als zusaetzlicher Ausschlag auf der Griffpose.
+    //
+    // Hin in gut sechzig Prozent der Zeit, zurueck im Rest -- ein Schlag holt
+    // nicht aus, er faellt. Die Glaettung (smoothstep) nimmt den Knick am
+    // Anfang und am Ende; linear sieht es aus wie ein Schieberegler.
+    float schwungPitch = 0.0f, schwungYaw = 0.0f;
+    if (griff && gSchwungStart > 0.0) {
+        static const double DAUER = 0.35;   // Sekunden
+        const double t = (CACurrentMediaTime() - gSchwungStart) / DAUER;
+        if (t >= 1.0) {
+            gSchwungStart = -1.0;
+        } else {
+            float e = (t < 0.6) ? (float)(t / 0.6) : (float)(1.0 - (t - 0.6) / 0.4);
+            e = e * e * (3.0f - 2.0f * e);
+            schwungPitch = -110.0f * (float)M_PI / 180.0f * e;
+            schwungYaw   =   55.0f * (float)M_PI / 180.0f * e;
+        }
+    }
+
     const simd_quatf kopf = simd_quaternion(q[0], q[1], q[2], q[3]);
     // Nach RECHTS multipliziert, also im Bezugssystem des Kopfes: eine Drehung
     // um dessen eigene X-Achse neigt nach oben, unabhaengig davon, wohin er
     // gerade schaut. Andersherum waere es eine Drehung um die Weltachse und
     // wuerde beim Umsehen kippen.
-    const simd_quatf gezielt =
-        simd_normalize(simd_mul(kopf, simd_quaternion(NEIGUNG + (griff ? GRIFF_STEILER : 0.0f),
-                                                      simd_make_float3(1, 0, 0))));
+    // Erst quer (Y), dann steil (X) -- beides im Bezugssystem des Kopfes, sonst
+    // kippt der Bogen mit der Blickrichtung.
+    simd_quatf gezielt = simd_mul(kopf, simd_quaternion(schwungYaw, simd_make_float3(0, 1, 0)));
+    gezielt = simd_normalize(simd_mul(
+        gezielt,
+        simd_quaternion(NEIGUNG + (griff ? GRIFF_STEILER : 0.0f) + schwungPitch,
+                        simd_make_float3(1, 0, 0))));
 
     // Versatz im Bezugssystem des Kopfes, nicht der Welt: die Waffe soll beim
     // Umsehen an ihrem Platz neben der Schulter bleiben und nicht um einen
