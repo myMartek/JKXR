@@ -1831,12 +1831,42 @@ void ClientTimerActions( gentity_t *ent, int msec ) {
 ClientIntermissionThink
 ====================
 */
+#if defined(JKXR_VISIONOS)
+// Wahr, sobald das erste Bild einer Kamerafahrt den Bezugszustand gesetzt hat.
+// Zurueckgesetzt wird es unten, wenn die Fahrt vorbei ist.
+qboolean jkxrKameraBezugSteht = qfalse;
+#endif
+
 static qboolean ClientCinematicThink( gclient_t *client ) {
 	client->ps.eFlags &= ~EF_FIRING;
 
 	// swap button actions
 	client->oldbuttons = client->buttons;
 	client->buttons = client->usercmd.buttons;
+
+#if defined(JKXR_VISIONOS)
+	// Das ERSTE Bild einer Kamerafahrt stellt nur den Bezug her.
+	//
+	// Die Bedingung darunter verlangt eine frische Druckflanke: gedrueckt UND
+	// gegenueber dem Vorbild veraendert. Beim ersten Aufruf gibt es aber keinen
+	// Vorzustand -- oldbuttons ist 0 --, und ein Knopf, der schon vorher
+	// gedrueckt war, sieht damit aus wie eben erst gedrueckt.
+	//
+	// GEMESSEN und von Marcel erklaert: der Trigger, mit dem im Hauptmenue das
+	// Spiel gestartet wird, haengt als BUTTON_USE nach. Beim ersten Bild der
+	// Kamerafahrt wertet das Spiel ihn als Ueberspringen-Wunsch und schaltet
+	// G_StartCinematicSkip ein -- timescale 100, und die Fahrt ist in einer
+	// Zehntelsekunde vorbei. Sie wurde also nie abgebrochen, sondern im
+	// Zeitraffer abgespielt.
+	//
+	// Ein Bild auszulassen kostet nichts: wer wirklich ueberspringen will,
+	// drueckt waehrend der Fahrt, und dann steht der Bezug laengst.
+	if ( !jkxrKameraBezugSteht ) {
+		jkxrKameraBezugSteht = qtrue;
+		client->oldbuttons = client->buttons;
+		return qfalse;
+	}
+#endif
 	if ( client->buttons & ( BUTTON_USE ) & ( client->oldbuttons ^ client->buttons ) ) {
 		return( qtrue );
 	}
@@ -4354,41 +4384,12 @@ void G_HeldByMonster( gentity_t *ent, usercmd_t **ucmd )
 // yes...   so stop skipping...
 void G_StopCinematicSkip( void )
 {
-#if defined(JKXR_VISIONOS)
-	Com_Printf( "[Zeitraffer] G_StopCinematicSkip\n" );
-#endif
 	gi.cvar_set("skippingCinematic", "0");
 	gi.cvar_set("timescale", "1");
 }
 
 void G_StartCinematicSkip( void )
 {
-#if defined(JKXR_VISIONOS)
-	// MESSPUNKT, wieder zu entfernen.
-	//
-	// Hier beginnt der Zeitraffer: timescale 100. Eine gescriptete Kamerafahrt
-	// ist damit in einem Hundertstel ihrer Dauer vorbei und sieht aus wie
-	// uebersprungen. Es gibt genau ZWEI Aufrufer -- ClientCinematicThink (eine
-	// frische +use-Flanke des Spielers) und Svcmd_ExitView_f (das Kommando
-	// "exitview"). Welcher es ist, war bisher nicht zu sehen.
-	Com_Printf( "[Zeitraffer] G_StartCinematicSkip · in_camera %d · ABGESCHALTET\n",
-		in_camera ? 1 : 0 );
-
-	// PROBEWEISE ABGESCHALTET.
-	//
-	// Der Messpunkt zeigt, dass der Zeitraffer ausgeloest wird, und mangels der
-	// Meldung des Kommandowegs kommt er aus ClientCinematicThink -- also aus
-	// einer frischen Druckflanke von BUTTON_USE (g_active.cpp:1840).
-	//
-	// Bevor daran etwas geaendert wird, die Halbierung: laeuft die Kamerafahrt
-	// mit abgeschaltetem Zeitraffer vollstaendig durch, ist dieser Zweig
-	// nachweislich die Ursache. Laeuft sie trotzdem nicht, liegt es woanders und
-	// die ganze Richtung ist ausgeraeumt.
-	//
-	// Kosten in dieser Fassung: gescriptete Kamerafahrten lassen sich nicht mehr
-	// ueberspringen. Nur zum Ausprobieren.
-	return;
-#endif
 
 	if (cinematicSkipScript[0])
 	{
@@ -4981,6 +4982,10 @@ extern cvar_t	*g_skippingcin;
 		}
 		else
 		{
+#if defined(JKXR_VISIONOS)
+			// Fahrt vorbei: der naechste Beginn stellt seinen Bezug neu her.
+			jkxrKameraBezugSteht = qfalse;
+#endif
 			if ( g_skippingcin->integer )
 			{//We're skipping the cinematic and it's over now
 				gi.cvar_set("timescale", "1");

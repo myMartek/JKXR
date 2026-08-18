@@ -141,10 +141,6 @@ extern cvar_t	*g_skippingcin;
 	exitViewDebounce = level.time + 500;
 	if ( in_camera )
 	{//see if we need to exit an in-game cinematic
-#if defined(JKXR_VISIONOS)
-		// MESSPUNKT, wieder zu entfernen. Der zweite der beiden Aufrufer.
-		Com_Printf( "[Zeitraffer] ueber das Kommando \"exitview\"\n" );
-#endif
 		if ( g_skippingcin->integer )	// already doing cinematic skip?
 		{// yes...   so stop skipping...
 			G_StopCinematicSkip();
