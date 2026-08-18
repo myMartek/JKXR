@@ -2345,6 +2345,30 @@ void SCR_StopCinematic( qboolean bAllowRefusal /* = qfalse */ )
 		stopCinematicCallCount = 0;
 	}
 
+#if defined(JKXR_VISIONOS)
+	// Raeumt der LADEWEG eine laufende Spielsequenz ab, sie fuer danach vormerken.
+	//
+	// Im Originalspiel laeuft das Laden PARALLEL zu den Sequenzen -- sie
+	// verdecken es, und sichtbar wird der Ladeschirm nur, wenn man ein Video
+	// ueberspringt. Genau dann rutscht alles nach vorn, und der Kartenwechsel
+	// faellt mitten in die naechste Sequenz statt davor. CL_MapLoading ruft
+	// dabei SCR_StopCinematic ohne Verweigerungs-Flag, und die Sequenz ist weg.
+	//
+	// Gemessen: "ja01" oeffnet sauber (Handle 6), ist rund hundert Millisekunden
+	// zu sehen, und dann folgt "Server: yavin1b". Die Pause hilft nicht -- der
+	// Wechsel kommt aus dem Kommandopuffer, sv_paused stand dabei auf 1.
+	//
+	// Also nicht den Ladeweg aufhalten, sondern die Sequenz danach fortsetzen.
+	// Der Standby-Mechanismus tut genau das und wird von SCR_DrawCinematic in
+	// CA_ACTIVE eingeloest -- er wird hier nur wiederbefuellt, NACHDEM ihn der
+	// Abbau geleert hat.
+	char merkeSequenz[MAX_QPATH] = {0};
+	if ( !bAllowRefusal
+		&& qbPlayingInGameCinematic
+		&& CL_handle >= 0 && CL_handle < MAX_VIDEO_HANDLES ) {
+		Q_strncpyz( merkeSequenz, cinTable[CL_handle].fileName, sizeof( merkeSequenz ) );
+	}
+#endif
 	if(stopCinematicCallCount != 2)
 	{
 #if defined(JKXR_VISIONOS)
@@ -2360,6 +2384,16 @@ void SCR_StopCinematic( qboolean bAllowRefusal /* = qfalse */ )
 		sInGameCinematicStandingBy[0]=0;
 		Cvar_SetValue( "cl_paused", 0 );
 	}
+#if defined(JKXR_VISIONOS)
+	// Jetzt wiedereintragen: der Block darueber hat den Standby geleert.
+	if ( merkeSequenz[0] && !qbInGameCinematicOnStandBy ) {
+		Q_strncpyz( sInGameCinematicStandingBy, merkeSequenz,
+			sizeof( sInGameCinematicStandingBy ) );
+		qbInGameCinematicOnStandBy = qtrue;
+		Com_Printf( "[Sequenz] \"%s\" wird nach dem Laden fortgesetzt\n",
+			merkeSequenz );
+	}
+#endif
 	if (cls.state != CA_DISCONNECTED)	// cut down on needless calls to music code
 	{
 		S_RestartMusic();	//restart the level music
