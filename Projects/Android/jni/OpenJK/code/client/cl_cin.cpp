@@ -1923,6 +1923,9 @@ static qboolean CIN_HardwareReadyToPlayVideos(void)
 // Die zweite Notiz. Vor PlayCinematic deklariert, weil beide sie brauchen:
 // dort verfaellt sie, weiter unten wird sie gesetzt und eingeloest.
 static char sJKXR_AngeforderteSequenz[MAX_QPATH] = {0};
+
+// Wahr, waehrend SCR_RunCinematic eine durchgelaufene Sequenz beendet.
+static qboolean sJKXR_NatuerlichesEnde = qfalse;
 #endif
 
 static void PlayCinematic(const char *arg, const char *s, qboolean qbInGame)
@@ -2287,7 +2290,19 @@ void SCR_RunCinematic (void)
 
 		if (CL_IsRunningInGameCinematic() && Status == FMV_IDLE  && !cinTable[CL_handle].holdAtEnd)
 		{
+#if defined(JKXR_VISIONOS)
+			// Das ist das NATUERLICHE Ende, kein Abbruch durch den Ladeweg.
+			//
+			// Beide gehen durch SCR_StopCinematic ohne Verweigerungs-Flag und
+			// waeren sonst nicht zu unterscheiden -- die Wiedervorlage dort
+			// haette eine durchgelaufene Sequenz erneut angesetzt. Genau so war
+			// es zu sehen: die Szene lief zweimal hintereinander.
+			sJKXR_NatuerlichesEnde = qtrue;
+#endif
 			SCR_StopCinematic();	// change ROQ from FMV_IDLE to FMV_EOF, and clear some other vars
+#if defined(JKXR_VISIONOS)
+			sJKXR_NatuerlichesEnde = qfalse;
+#endif
 		}
 	}
 }
@@ -2364,6 +2379,7 @@ void SCR_StopCinematic( qboolean bAllowRefusal /* = qfalse */ )
 	// Abbau geleert hat.
 	char merkeSequenz[MAX_QPATH] = {0};
 	if ( !bAllowRefusal
+		&& !sJKXR_NatuerlichesEnde
 		&& qbPlayingInGameCinematic
 		&& CL_handle >= 0 && CL_handle < MAX_VIDEO_HANDLES ) {
 		Q_strncpyz( merkeSequenz, cinTable[CL_handle].fileName, sizeof( merkeSequenz ) );
