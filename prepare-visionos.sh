@@ -46,6 +46,12 @@ JOBS="$(sysctl -n hw.ncpu 2>/dev/null || echo 8)"
 # GLX). Ein Alias ohne Ziel laesst den Linker scheitern.
 if [ ! -f build-visionos/gl4es/lib/libGL.a ]; then
     say "gl4es bauen (fehlt auf diesem Rechner)"
+    # Das Verzeichnis anlegen, bevor jemand hineinschreibt. Auf einem
+    # Entwicklungsrechner steht es laengst da; auf einem frischen Klon ist es
+    # gitignoriert und damit nicht vorhanden, und patch-gl4es-darwin.py bricht
+    # dann beim OEFFNEN seiner Ausgabedatei ab -- mit einem FileNotFoundError,
+    # der nach einer fehlenden Eingabe aussieht statt nach einem fehlenden Ordner.
+    mkdir -p build-visionos
     python3 patch-gl4es-darwin.py Projects/Android/jni/SupportLibs/gl4es \
         build-visionos/gl4es-aliases.txt
 
