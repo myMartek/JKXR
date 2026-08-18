@@ -207,6 +207,14 @@ static int R_ComputeLOD( trRefEntity_t *ent ) {
 		radius = RadiusFromBounds( frame->bounds[0], frame->bounds[1] );
 	}
 
+#if defined(JKXR_VISIONOS)
+	// Dieselbe Entscheidung wie bei den Ghoul2-Modellen, aus demselben Grund.
+	if ( r_lodForceBest->integer )
+	{
+		return 0;
+	}
+#endif
+
 	if ( ( projectedRadius = ProjectRadius( radius, ent->e.origin ) ) != 0 )
 	{
 		flod = 1.0f - projectedRadius * r_lodscale->value;

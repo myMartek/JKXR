@@ -314,23 +314,6 @@ void G2API_SetTime(int currentTime,int clock)
 	G2TimeBases[clock]=currentTime;
 	if (G2TimeBases[1]>G2TimeBases[0]+200)
 	{
-#if defined(JKXR_VISIONOS)
-		// MESSPUNKT, wieder zu entfernen.
-		//
-		// Ghoul2 fuehrt zwei Uhren. Laeuft die des cgame mehr als 200 ms vor,
-		// wird sie verworfen und die Serveruhr gilt. Ein Uebergang, der mit
-		// cg.time beginnt und danach gegen die Serveruhr ausgewertet wird,
-		// faengt in der Zukunft an -- er beginnt nie.
-		{
-			static int letzteMeldung = 0;
-			if ( abs( G2TimeBases[0] - letzteMeldung ) > 1000 )
-			{
-				letzteMeldung = G2TimeBases[0];
-				Com_Printf( "[Uhr] cgame %d laeuft vor Server %d — zurueck auf Serverzeit\n",
-					G2TimeBases[1], G2TimeBases[0] );
-			}
-		}
-#endif
 		G2TimeBases[1]=0; // use server time instead
 		return;
 	}
