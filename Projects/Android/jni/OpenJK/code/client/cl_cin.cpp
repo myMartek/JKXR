@@ -2223,6 +2223,19 @@ void SCR_StopCinematic( qboolean bAllowRefusal /* = qfalse */ )
 		cls.state =  CA_DISCONNECTED;
 	}
 
+#if defined(JKXR_VISIONOS)
+	// MESSPUNKT, wieder zu entfernen.
+	//
+	// Die Sequenzen stehen in einer Warteschlange, und stopCinematicCallCount
+	// entscheidet, ob ein Ueberspringen die wartenden mitnimmt -- der Kommentar
+	// darunter sagt es selbst. Marcel hat nur die ERSTE uebersprungen und danach
+	// waren auch die folgenden weg; das passt auf diesen Zaehler weit besser als
+	// auf einzelne Tastenereignisse.
+	Com_Printf( "[Warteschlange] Zaehler %d · wartend \"%s\" · Textlauf-Hack %d "
+		"· Sequenz laeuft %d\n",
+		stopCinematicCallCount, sInGameCinematicStandingBy,
+		qbTextCrawlFixed ? 1 : 0, qbPlayingInGameCinematic ? 1 : 0 );
+#endif
 	if(sInGameCinematicStandingBy[0] &&
 		qbTextCrawlFixed)
 	{
