@@ -102,6 +102,36 @@ int		rightvectorcount;
 trRefEntity_t *ssLastEntityDrawn=NULL;
 vec3_t	ssViewOrigin, ssViewRight, ssViewUp;
 
+#if defined(JKXR_VISIONOS)
+// MESSPUNKT, wieder zu entfernen.
+//
+// Das Gras blendet nach Marcels Beobachtung verkehrt herum ein: die fernen
+// Bueschel erscheinen zuerst. Die entscheidende Frage ist, ob die nahe
+// Bodenflaeche ueberhaupt bis zur Sprite-Rechnung durchkommt. Deshalb zwei
+// getrennte Spannweiten je Bild -- die der ANGEBOTENEN Flaeche und die der
+// TATSAECHLICH gezeichneten Bueschel:
+//
+//   nahe Flaeche + nur ferne Bueschel  -> die Alpha-Rechnung verwirft sie
+//   gar keine nahe Flaeche             -> die Ursache liegt vorher, beim Sieben
+static int   ssZaehlAus = 0, ssZaehlDrin = 0;
+static float ssMinFlaeche = 1.0e9f, ssMaxFlaeche = 0.0f;
+static float ssMinGezeichnet = 1.0e9f, ssMaxGezeichnet = 0.0f;
+static float ssSchnitt = 0.0f, ssBlende = 0.0f;
+
+static void ssMessFlaeche( float d )
+{
+	if ( d < ssMinFlaeche ) ssMinFlaeche = d;
+	if ( d > ssMaxFlaeche ) ssMaxFlaeche = d;
+}
+
+static void ssMessGezeichnet( float d )
+{
+	ssZaehlDrin++;
+	if ( d < ssMinGezeichnet ) ssMinGezeichnet = d;
+	if ( d > ssMaxGezeichnet ) ssMaxGezeichnet = d;
+}
+#endif
+
 
 static void R_SurfaceSpriteFrameUpdate(void)
 {
@@ -163,10 +193,16 @@ static void R_SurfaceSpriteFrameUpdate(void)
 #if defined(JKXR_VISIONOS)
 	// Regler fuer die Sichtweite der Oberflaechensprites.
 	//
-	// Die Rechnung darueber verkuerzt sie im Headset systematisch: sie teilt
-	// durch den Tangens des halben Sichtfelds, und unsere rund 105 Grad gegen
-	// die 90 des Entwurfs ergeben etwa ein Viertel weniger Reichweite. Gras
-	// verschwindet dadurch naeher am Spieler als am Bildschirm.
+	// Die Rechnung darueber greift bei uns NICHT ein, anders als zuerst
+	// vermutet: sie eicht sich auf das zuerst gezeichnete Sichtfeld, und das
+	// sind im Headset 120 Grad. standardfovx wird also 120, stimmt mit fov_x
+	// ueberein, und der Faktor bleibt 1,0 -- auf dem Geraet nachgemessen.
+	// Gras reicht damit genau so weit wie am Bildschirm.
+	//
+	// Genau das ist zu kurz. Bei 120 Grad steht dieselbe Weltstrecke auf einem
+	// Bruchteil der Winkelbreite; was am Monitor den halben Bildschirm fuellt,
+	// ist hier ein Streifen. Die im Shader hinterlegten Entfernungen sind fuer
+	// einen Monitor gewaehlt.
 	//
 	// Ein Faktor statt einer festen Zahl, weil die Kosten sichtbar sind: jedes
 	// zusaetzliche Grasbueschel ist Geometrie, und was hier bequem aussieht,
@@ -183,24 +219,24 @@ static void R_SurfaceSpriteFrameUpdate(void)
 
 	// MESSPUNKT, wieder zu entfernen.
 	//
-	// Das Gras blendet verkehrt herum ein: die fernen Bueschel erscheinen
-	// zuerst. Die Alpha-Rechnung selbst stimmt (nah = 1, fern = 0), also wird
-	// von einem falschen PUNKT aus gemessen. ssViewOrigin wird nur erneuert,
-	// wenn sich die Entitaet aendert -- und das Zuruecksetzen dafuer steht
-	// hinter dem Zeitvergleich am Anfang dieser Funktion, der in VR die meisten
-	// Bilder ueberspringt.
+	// Einmal je Sekunde die Spannweiten des letzten Bildes, dann zuruecksetzen.
+	// "Flaeche" ist, was die Sprite-Rechnung angeboten bekommt, "Gras", was sie
+	// daraus zeichnet. Klaffen die unteren Enden auseinander, verwirft die
+	// Alpha-Rechnung das Nahe; liegen sie beieinander, kommt das Nahe schon gar
+	// nicht erst an.
 	{
 		static int letzteMeldung = 0;
 		if ( backEnd.refdef.time - letzteMeldung > 1000 ) {
 			letzteMeldung = backEnd.refdef.time;
-			ri.Printf( PRINT_ALL, "[Sprites] Auge bei %.0f %.0f %.0f · Bezug %.0f %.0f %.0f "
-				"· Abstand %.0f · fov %.1f/%.1f · Faktor %.2f\n",
-				backEnd.viewParms.ori.origin[0], backEnd.viewParms.ori.origin[1],
-				backEnd.viewParms.ori.origin[2],
-				ssViewOrigin[0], ssViewOrigin[1], ssViewOrigin[2],
-				Distance( backEnd.viewParms.ori.origin, ssViewOrigin ),
+			ri.Printf( PRINT_ALL, "[Sprites] Flaeche %.0f..%.0f · Gras %.0f..%.0f · %d gezeichnet, %d verworfen "
+				"· Blende %.0f Schnitt %.0f · fov %.1f/%.1f · Faktor %.2f\n",
+				ssMinFlaeche, ssMaxFlaeche, ssMinGezeichnet, ssMaxGezeichnet,
+				ssZaehlDrin, ssZaehlAus, ssBlende, ssSchnitt,
 				backEnd.refdef.fov_x, standardfovx, rangescalefactor );
 		}
+		ssMinFlaeche = ssMinGezeichnet = 1.0e9f;
+		ssMaxFlaeche = ssMaxGezeichnet = 0.0f;
+		ssZaehlDrin = ssZaehlAus = 0;
 	}
 #endif
 
@@ -620,6 +656,9 @@ static void RB_DrawVerticalSurfaceSprites( shaderStage_t *stage, shaderCommands_
 
 	assert(cutdist2 != fadedist2);
 	float inv_fadediff = 1.0/(cutdist2-fadedist2);
+#if defined(JKXR_VISIONOS)
+	ssSchnitt = cutdist; ssBlende = fadedist;
+#endif
 
 	// The faderange is the fraction amount it takes for these sprites to fade out, assuming an ideal fade range of 250
 	float faderange = FADE_RANGE/(cutdist-fadedist);
@@ -634,6 +673,9 @@ static void RB_DrawVerticalSurfaceSprites( shaderStage_t *stage, shaderCommands_
 	{
 		VectorSubtract(ssViewOrigin, input->xyz[curvert], dist);
 		SSVertAlpha[curvert] = 1.0 - (VectorLengthSquared(dist) - fadedist2) * inv_fadediff;
+#if defined(JKXR_VISIONOS)
+		ssMessFlaeche( sqrtf( VectorLengthSquared( dist ) ) );
+#endif
 	}
 
 	// Wind only needs initialization once per tess.
@@ -799,6 +841,9 @@ static void RB_DrawVerticalSurfaceSprites( shaderStage_t *stage, shaderCommands_
 
 				// Find where the alpha is relative to the fadestart, and calc the real alpha to draw at.
 				alpha = 1.0 - ((thisspritesfadestart-alphapos)/faderange);
+#if defined(JKXR_VISIONOS)
+				if ( alpha <= 0.0f ) ssZaehlAus++;
+#endif
 				if (alpha > 0.0)
 				{
 					if (alpha > 1.0)
@@ -820,6 +865,9 @@ static void RB_DrawVerticalSurfaceSprites( shaderStage_t *stage, shaderCommands_
 					VectorScale(v1, fa, curpoint);
 					VectorMA(curpoint, fb, v2, curpoint);
 					VectorMA(curpoint, fc, v3, curpoint);
+#if defined(JKXR_VISIONOS)
+					ssMessGezeichnet( Distance( ssViewOrigin, curpoint ) );
+#endif
 
 					light = l1*fa + l2*fb + l3*fc;
 					if (SSAdditiveTransparency)
