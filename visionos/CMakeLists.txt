@@ -146,10 +146,6 @@ if(BUILD_ENGINE)
         target_compile_definitions(${renderer} PRIVATE JKXR_VISIONOS=1)
         target_link_libraries(${client} PUBLIC sigc libzip libpng libminizip)
         target_compile_definitions(${client} PRIVATE JKXR_VISIONOS=1)
-        # VORUEBERGEHEND: frisches Heimatverzeichnis zum Ausprobieren, siehe
-        # sys_unix.cpp. Diese Zeile entfernen, um wieder OpenJK/OpenJO zu
-        # benutzen.
-        target_compile_definitions(${client} PRIVATE JKXR_FRISCHES_HEIM=1)
 
         # -fno-common, sonst trägt der Teil-Link nicht.
         #
