@@ -3117,6 +3117,11 @@ static void CG_DrawCrosshair3D(int type) // 0 - force, 1 - weapons
 
 			refEntity_t wirbel = ent;
 			wirbel.customShader = cgs.media.forceCoronaShader;
+			// Vor allem anderen. Der Wirbel ist zweieinhalbmal so gross wie
+			// das Fadenkreuz und sitzt am selben Punkt -- also auf der
+			// getroffenen Oberflaeche. Ohne das hier verschwindet sein Rand
+			// in der Wand, sobald man schraeg auf etwas zeigt.
+			wirbel.renderfx |= RF_NODEPTH;
 			wirbel.radius = ent.radius * 2.5f;
 			wirbel.shaderRGBA[0] = (byte)(  51 * puls );
 			wirbel.shaderRGBA[1] = (byte)( 128 * puls );
@@ -4361,14 +4366,26 @@ static void CG_Draw2D( void )
 		//indicate this with sight cone thingy
 		cg.drawingHUD = CG_HUD_OTHER;
 		CG_DrawVignette(true);
-		// Ueber die ganze Flaeche statt 50,40,540,400.
+		// Ueber die ganze Flaeche und darueber hinaus, statt 50,40,540,400.
 		//
 		// Das eingerueckte Rechteck ist eine Monitor-Entscheidung: es laesst
 		// ringsum acht Prozent frei, und am Bildschirm faellt der Rand kaum
 		// auf. Im Headset sind dieselben acht Prozent ein breiter Streifen am
-		// Rand des Blickfelds, in dem die Welt unbehandelt weiterlaeuft --
-		// das Sichtbild endet mit einer harten Kante mitten im Bild.
-		CG_DrawPic( 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, cgi_R_RegisterShader( "gfx/2d/jsense" ));
+		// Rand des Blickfelds, in dem die Welt unbehandelt weiterlaeuft.
+		//
+		// Die ganze Flaeche allein genuegt aber nicht, und das war mein erster
+		// Fehlschluss: CG_AdjustFrom640 VERSCHIEBT die 640x480-Flaeche noch --
+		// um off_center_fov mal Flaeche fuer die unsymmetrischen Sichtfelder
+		// der beiden Augen, dazu um cg_hudYOffset. Was auf der einen Seite
+		// hinausgeschoben wird, fehlt auf der anderen. Also so viel groesser
+		// zeichnen, wie ueberhaupt verschoben werden kann.
+		const float uebersteh_x = fabs( vr->off_center_fov_x ) * SCREEN_WIDTH + 8.0f;
+		const float uebersteh_y = fabs( vr->off_center_fov_y ) * SCREEN_HEIGHT
+		                        + fabs( cg_hudYOffset.value ) + 8.0f;
+		CG_DrawPic( -uebersteh_x, -uebersteh_y,
+		            SCREEN_WIDTH  + 2.0f * uebersteh_x,
+		            SCREEN_HEIGHT + 2.0f * uebersteh_y,
+		            cgi_R_RegisterShader( "gfx/2d/jsense" ));
 		cg.drawingHUD = CG_HUD_SCALED;
 		CG_DrawHealthBars();
 
@@ -4381,17 +4398,33 @@ static void CG_Draw2D( void )
 		// erst gerufen -- dann liegt es an den Bedingungen davor (Sichtkegel,
 		// Machtstufe, EF_FORCE_VISIBLE) und nicht am Zeichnen.
 		{
-			extern int jkxrSichtHuellen;
+			extern int jkxrSichtHuellen, jkxrSichtGefragt, jkxrSichtJa;
 			static int letzteMeldung = 0;
 			if ( cg.time - letzteMeldung > 1000 )
 			{
 				letzteMeldung = cg.time;
-				CG_Printf( "[Sicht] Stufe %d · %d Huellen · Schale %d · Wirbel %d · Hinweis %d\n",
-					cg.snap->ps.forcePowerLevel[FP_SEE], jkxrSichtHuellen,
-					cgs.media.forceShell, cgs.media.forceCoronaShader,
-					(int)cg_forceCrosshair );
+
+				// Traegt ueberhaupt etwas in der Welt die Fahne, an der die
+				// Huelle fuer Bewegliches haengt? CG_Mover fragt nur danach,
+				// ohne Sichtkegel und ohne Machtstufe -- wenn hier 0 steht,
+				// kann dort nichts entstehen.
+				int mitFahne = 0, beweglich = 0;
+				for ( int i = 0; i < cg.snap->numEntities; i++ )
+				{
+					const entityState_t *es = &cg.snap->entities[i];
+					if ( es->eFlags & EF_FORCE_VISIBLE ) mitFahne++;
+					if ( es->eType == ET_MOVER ) beweglich++;
+				}
+
+				CG_Printf( "[Sicht] Stufe %d/%d · %d Huellen · %d von %d Sichtproben ja "
+					"· %d mit Fahne, %d beweglich · Versatz %.3f/%.3f\n",
+					g_entities[0].client ? g_entities[0].client->ps.forcePowerLevel[FP_SEE] : -1,
+					cg.snap->ps.forcePowerLevel[FP_SEE],
+					jkxrSichtHuellen, jkxrSichtJa, jkxrSichtGefragt,
+					mitFahne, beweglich,
+					vr->off_center_fov_x, vr->off_center_fov_y );
 			}
-			jkxrSichtHuellen = 0;
+			jkxrSichtHuellen = jkxrSichtGefragt = jkxrSichtJa = 0;
 		}
 #endif
 	}

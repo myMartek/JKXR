@@ -4445,7 +4445,21 @@ CG_PlayerCanSeeCent
 tests force sight level
 ===============
 */
+#if defined(JKXR_VISIONOS)
+// MESSPUNKT, wieder zu entfernen: eine zaehlende Huelle um die Sichtprobe.
+static qboolean CG_PlayerCanSeeCentIntern( centity_t *cent );
 qboolean CG_PlayerCanSeeCent( centity_t *cent )
+{
+	extern int jkxrSichtGefragt, jkxrSichtJa;
+	jkxrSichtGefragt++;
+	const qboolean ja = CG_PlayerCanSeeCentIntern( cent );
+	if ( ja ) jkxrSichtJa++;
+	return ja;
+}
+static qboolean CG_PlayerCanSeeCentIntern( centity_t *cent )
+#else
+qboolean CG_PlayerCanSeeCent( centity_t *cent )
+#endif
 {//return true if this cent is in view
 	//NOTE: this is similar to the func SV_PlayerCanSeeEnt in sv_snapshot
 	if ( (cent->currentState.eFlags&EF_FORCE_VISIBLE) )
@@ -4515,8 +4529,9 @@ Adds the special effect
 */
 extern void CG_AddHealthBarEnt( int entNum );
 #if defined(JKXR_VISIONOS)
-// MESSPUNKT, wieder zu entfernen: wie viele Huellen je Bild entstehen.
-int jkxrSichtHuellen = 0;
+// MESSPUNKT, wieder zu entfernen: wie viele Huellen je Bild entstehen und wie
+// oft der Sichtkegel gefragt wurde.
+int jkxrSichtHuellen = 0, jkxrSichtGefragt = 0, jkxrSichtJa = 0;
 #endif
 void CG_AddForceSightShell( refEntity_t *ent, centity_t *cent )
 {
