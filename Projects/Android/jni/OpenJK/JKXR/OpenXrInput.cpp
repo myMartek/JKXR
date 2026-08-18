@@ -497,6 +497,15 @@ void TBXR_InitActions( void )
         
         //Menu Button
         bindings[currBinding++] = ActionSuggestedBinding(backAction, menuClickPath[SIDE_LEFT]);
+#if defined(JKXR_VISIONOS)
+        // Rechts gibt es beim echten Touch-Controller keine Menuetaste -- dort
+        // sitzt die Systemtaste, und das Profil kennt den Pfad gar nicht; ihn
+        // dort vorzuschlagen liesse die ganze Bindungsliste scheitern. Die
+        // Sense-Controller der Vision Pro haben die Taste auf BEIDEN Seiten,
+        // und unsere OpenXR-Nachbildung meldet sich als Touch-Profil. Ohne
+        // diese Zeile bliebe die rechte Pille tot -- so war es bisher.
+        bindings[currBinding++] = ActionSuggestedBinding(backAction, menuClickPath[SIDE_RIGHT]);
+#endif
         
         //
         bindings[currBinding++] = ActionSuggestedBinding(squeezeAction, squeezeValuePath[SIDE_LEFT]);

@@ -238,8 +238,27 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
     }
 
     //Menu button
-	handleTrackedControllerButton(&leftTrackedRemoteState_new, &leftTrackedRemoteState_old, xrButton_Enter, A_ESCAPE);
+    //
+    // Rechts die Pause wie bisher, links das Datapad -- die Uebersicht mit
+    // Auftraegen, Waffen, Ausruestung und Machtkraeften. Sie war ueber die
+    // Steuerung ueberhaupt nicht erreichbar: das Spiel kennt dafuer nur den
+    // Konsolenbefehl "datapad", der am Bildschirm auf einer Taste liegt und in
+    // VR nirgends lag. Zwei Tasten mit derselben Wirkung waren eine
+    // verschenkte.
+    //
+    // Solange ein Menue offen ist, schickt auch die linke Taste ESCAPE. Sonst
+    // liesse sich das Datapad mit genau der Taste, die es geoeffnet hat, nicht
+    // wieder schliessen, und im Hauptmenue laege eine Taste tot.
 	handleTrackedControllerButton(&rightTrackedRemoteState_new, &rightTrackedRemoteState_old, xrButton_Enter, A_ESCAPE);
+	if (VR_UseScreenLayer())
+	{
+		handleTrackedControllerButton(&leftTrackedRemoteState_new, &leftTrackedRemoteState_old, xrButton_Enter, A_ESCAPE);
+	}
+	else if ((leftTrackedRemoteState_new.Buttons & xrButton_Enter) &&
+	        !(leftTrackedRemoteState_old.Buttons & xrButton_Enter))
+	{
+		sendButtonActionSimple("datapad");
+	}
 
     static float menuYaw = 0;
     if (VR_UseScreenLayer() && !vr.misc_camera)
