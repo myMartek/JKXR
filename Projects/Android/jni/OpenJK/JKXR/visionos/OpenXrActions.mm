@@ -479,6 +479,44 @@ extern "C" XrResult xrGetActionStateBoolean(XrSession, const XrActionStateGetInf
     return XR_SUCCESS;
 }
 
+/// Schaltschwelle mit Hysterese: an ab 0,80, aus unter 0,35.
+///
+/// JKXR macht aus dem Trigger eine Taste mit EINER Schwelle (IndexTrigger > 0,5,
+/// OpenXrInput.cpp:876). Ein einzelner Zug erzeugt damit beim Loslassen mehrere
+/// Flanken, weil der Wert die 0,5 mehrfach kreuzt -- und jede Flanke ist ein
+/// Tastendruck.
+///
+/// GEMESSEN, weshalb das zaehlt: die Sequenz nach den Videos starb an einem
+/// solchen Nachschlag. Im Protokoll steht "[Wiedervorlage] abgelehnt ·
+/// verweigerbar 1", also ein Stopp ueber CL_KeyDownEvent, unmittelbar nachdem
+/// die Szene geoeffnet hatte -- ausgeloest vom Loslassen des Zuges, mit dem das
+/// vorige Video uebersprungen wurde.
+///
+/// Nur der Trigger, nicht alle Tasten: eine Hysterese kostet nichts, wo sie
+/// nicht gebraucht wird, aber sie soll auch nichts verzoegern, wo sie es nicht
+/// muss.
+static bool schmitt(const void *action, int hand, float wert)
+{
+    struct Eintrag { const void *action; int hand; bool an; };
+    static Eintrag eintraege[4] = {};
+
+    Eintrag *e = nullptr;
+    for (Eintrag &kandidat : eintraege) {
+        if (kandidat.action == action && kandidat.hand == hand) { e = &kandidat; break; }
+        if (kandidat.action == nullptr && !e) { e = &kandidat; }
+    }
+    if (!e) return wert > 0.5f;
+
+    e->action = action;
+    e->hand = hand;
+    if (e->an) {
+        if (wert < 0.35f) e->an = false;
+    } else {
+        if (wert >= 0.80f) e->an = true;
+    }
+    return e->an;
+}
+
 extern "C" XrResult xrGetActionStateFloat(XrSession, const XrActionStateGetInfo *info,
                                           XrActionStateFloat *state)
 {
@@ -491,7 +529,24 @@ extern "C" XrResult xrGetActionStateFloat(XrSession, const XrActionStateGetInfo 
     GCControllerButtonInput *button = buttonFor(action, handForSubaction(action, info->subactionPath));
     if (!button) return XR_SUCCESS;
 
-    state->currentState = button.value;
+    float wert = button.value;
+
+    // Der Trigger bekommt die Hysterese, alles andere nicht. Zurueckgegeben wird
+    // ein Wert, der zur Entscheidung PASST -- die Engine schwellt bei 0,5, also
+    // muss er auf der richtigen Seite liegen.
+    {
+        const int handIdx = handForSubaction(action, info->subactionPath);
+        const std::string *bindung = bindingForHand(action, handIdx);
+        const bool istTrigger = bindung && bindung->size() >= 14 &&
+            bindung->compare(bindung->size() - 14, 14, "/trigger/value") == 0;
+        if (istTrigger) {
+            const bool gedrueckt = schmitt(action, handIdx, wert);
+            if (gedrueckt && wert < 0.55f)  wert = 0.55f;
+            if (!gedrueckt && wert > 0.45f) wert = 0.45f;
+        }
+    }
+
+    state->currentState = wert;
     state->isActive = XR_TRUE;
     return XR_SUCCESS;
 }
