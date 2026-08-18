@@ -2100,6 +2100,16 @@ void CL_PlayCinematic_f(void)
 void CL_PlayInGameCinematic_f(void)
 {
 	const char *arg = Cmd_Argv( 1 );
+#if defined(JKXR_VISIONOS)
+	// MESSPUNKT, wieder zu entfernen.
+	//
+	// Die eine offene Frage vor dem Eingriff: landet die Sequenz ueberhaupt in
+	// der Warteschlange, und wenn ja, warum? Sie tut es nur, wenn cls.state
+	// nicht CA_ACTIVE ist. Steht hier CA_ACTIVE (7), ist die Warteschlange gar
+	// nicht das Thema und der Fehler liegt woanders.
+	Com_Printf( "[Sequenz-Anforderung] \"%s\" · cls.state %d · wartet schon %d\n",
+		arg ? arg : "?", cls.state, qbInGameCinematicOnStandBy ? 1 : 0 );
+#endif
 	if (cls.state == CA_ACTIVE)
 	{
 		PlayCinematic(arg,NULL,qtrue);
@@ -2208,6 +2218,18 @@ void SCR_StopCinematic( qboolean bAllowRefusal /* = qfalse */ )
 
 	if(stopCinematicCallCount != 2)
 	{
+#if defined(JKXR_VISIONOS)
+		// MESSPUNKT, wieder zu entfernen.
+		//
+		// Genau hier verschwand im Protokoll "jk0101_sw", und zwar ohne
+		// vorangehendes Tastenereignis. Die Meldung nennt, ob ueberhaupt einer
+		// wartete -- sonst ist sie stumm und das Protokoll bleibt lesbar.
+		if ( sInGameCinematicStandingBy[0] ) {
+			Com_Printf( "[Sequenz-Verworfen] \"%s\" · Zaehler %d · verweigerbar war %d\n",
+				sInGameCinematicStandingBy, stopCinematicCallCount,
+				bAllowRefusal ? 1 : 0 );
+		}
+#endif
 		qbPlayingInGameCinematic = qfalse;
 		qbInGameCinematicOnStandBy = qfalse;
 		sInGameCinematicStandingBy[0]=0;
