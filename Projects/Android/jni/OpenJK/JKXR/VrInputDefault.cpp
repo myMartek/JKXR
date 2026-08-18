@@ -126,25 +126,6 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
     static int cinCameraTimestamp = -1;
     if (vr.cin_camera && cinCameraTimestamp == -1) {
         cinCameraTimestamp = Sys_Milliseconds();
-#if defined(JKXR_VISIONOS)
-        // Den Tastenzustand loesen, sobald eine Kamerafahrt beginnt.
-        //
-        // Das Ueberspringen einer gescripteten Fahrt ist kein Abbruch, sondern
-        // ein ZEITRAFFER: G_StartCinematicSkip setzt timescale auf 100
-        // (g_active.cpp:4361). Eine zehn Sekunden lange Fahrt ist damit in einer
-        // Zehntelsekunde vorbei -- genau das war zu sehen, und es sah aus wie
-        // ein Ueberspringen.
-        //
-        // Ausgeloest wird es von ClientCinematicThink, und das prueft den
-        // GEHALTENEN Zustand der Taste, nicht eine Flanke. Wer mit dem Trigger
-        // das vorige Video ueberspringt und ihn dabei noch haelt, startet den
-        // Zeitraffer in dem Augenblick, in dem die Fahrt beginnt.
-        //
-        // Die Schonfrist unten (cinCameraTimestamp + 1000) hilft dagegen nicht:
-        // sie gilt fuer Flanken, waehrend hier ein bereits gesetzter Zustand
-        // nachwirkt. Deshalb wird er hier einmal ausdruecklich geloest.
-        sendButtonAction("+use", 0);
-#endif
     }
     else if (!vr.cin_camera) {
         cinCameraTimestamp = -1;

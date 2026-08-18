@@ -4354,12 +4354,26 @@ void G_HeldByMonster( gentity_t *ent, usercmd_t **ucmd )
 // yes...   so stop skipping...
 void G_StopCinematicSkip( void )
 {
+#if defined(JKXR_VISIONOS)
+	Com_Printf( "[Zeitraffer] G_StopCinematicSkip\n" );
+#endif
 	gi.cvar_set("skippingCinematic", "0");
 	gi.cvar_set("timescale", "1");
 }
 
 void G_StartCinematicSkip( void )
 {
+#if defined(JKXR_VISIONOS)
+	// MESSPUNKT, wieder zu entfernen.
+	//
+	// Hier beginnt der Zeitraffer: timescale 100. Eine gescriptete Kamerafahrt
+	// ist damit in einem Hundertstel ihrer Dauer vorbei und sieht aus wie
+	// uebersprungen. Es gibt genau ZWEI Aufrufer -- ClientCinematicThink (eine
+	// frische +use-Flanke des Spielers) und Svcmd_ExitView_f (das Kommando
+	// "exitview"). Welcher es ist, war bisher nicht zu sehen.
+	Com_Printf( "[Zeitraffer] G_StartCinematicSkip · in_camera %d\n",
+		in_camera ? 1 : 0 );
+#endif
 
 	if (cinematicSkipScript[0])
 	{
