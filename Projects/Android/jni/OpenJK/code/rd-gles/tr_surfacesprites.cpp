@@ -102,35 +102,6 @@ int		rightvectorcount;
 trRefEntity_t *ssLastEntityDrawn=NULL;
 vec3_t	ssViewOrigin, ssViewRight, ssViewUp;
 
-#if defined(JKXR_VISIONOS)
-// MESSPUNKT, wieder zu entfernen.
-//
-// Das Gras blendet nach Marcels Beobachtung verkehrt herum ein: die fernen
-// Bueschel erscheinen zuerst. Die entscheidende Frage ist, ob die nahe
-// Bodenflaeche ueberhaupt bis zur Sprite-Rechnung durchkommt. Deshalb zwei
-// getrennte Spannweiten je Bild -- die der ANGEBOTENEN Flaeche und die der
-// TATSAECHLICH gezeichneten Bueschel:
-//
-//   nahe Flaeche + nur ferne Bueschel  -> die Alpha-Rechnung verwirft sie
-//   gar keine nahe Flaeche             -> die Ursache liegt vorher, beim Sieben
-static int   ssZaehlAus = 0, ssZaehlDrin = 0;
-static float ssMinFlaeche = 1.0e9f, ssMaxFlaeche = 0.0f;
-static float ssMinGezeichnet = 1.0e9f, ssMaxGezeichnet = 0.0f;
-static float ssSchnitt = 0.0f, ssBlende = 0.0f;
-
-static void ssMessFlaeche( float d )
-{
-	if ( d < ssMinFlaeche ) ssMinFlaeche = d;
-	if ( d > ssMaxFlaeche ) ssMaxFlaeche = d;
-}
-
-static void ssMessGezeichnet( float d )
-{
-	ssZaehlDrin++;
-	if ( d < ssMinGezeichnet ) ssMinGezeichnet = d;
-	if ( d > ssMaxGezeichnet ) ssMaxGezeichnet = d;
-}
-#endif
 
 
 static void R_SurfaceSpriteFrameUpdate(void)
@@ -204,40 +175,32 @@ static void R_SurfaceSpriteFrameUpdate(void)
 	// ist hier ein Streifen. Die im Shader hinterlegten Entfernungen sind fuer
 	// einen Monitor gewaehlt.
 	//
-	// Ein Faktor statt einer festen Zahl, weil die Kosten sichtbar sind: jedes
-	// zusaetzliche Grasbueschel ist Geometrie, und was hier bequem aussieht,
-	// entscheidet sich auf dem Geraet.
+	// Der Faktor heilt nebenbei eine zweite Schwaeche, und deshalb steht er auf
+	// 4 und nicht knapp darueber, wo es gerade reicht. Alpha wird nicht je
+	// Bueschel gerechnet, sondern an den ECKEN des Bodendreiecks und dann
+	// linear dazwischen verteilt (alphapos = a1*fa + a2*fb + a3*fc), waehrend
+	// der wahre Verlauf mit dem QUADRAT der Entfernung faellt. Eine ferne Ecke
+	// traegt dadurch einen weit negativen Wert und zieht ueber die Mischung
+	// auch nahes Gras mit weg -- gemessen in Yavin, wo die Bodenflaechen bis
+	// 3189 Einheiten reichen:
+	//
+	//     Faktor 1 (Schnitt  665): Ecke bei 3189 traegt -50,6  -- Gras fehlt nah
+	//     Faktor 2 (Schnitt 1330): Ecke bei 3189 traegt -10,9  -- Gras steht
+	//     Faktor 4 (Schnitt 2660): Ecke bei 3189 traegt  -1,0  -- kein Rest
+	//
+	// Ein Regler und keine feste Zahl, weil die Kosten sichtbar sind: die
+	// gezeichnete Flaeche waechst mit dem Quadrat des Faktors, und jedes
+	// Bueschel ist Geometrie. Was vertretbar ist, entscheidet sich am Geraet.
 	{
 		static cvar_t *reichweite = NULL;
 		if ( !reichweite ) {
-			reichweite = ri.Cvar_Get( "r_surfaceSpriteRange", "2.0", CVAR_ARCHIVE );
+			reichweite = ri.Cvar_Get( "r_surfaceSpriteRange", "4.0", CVAR_ARCHIVE );
 		}
 		if ( reichweite && reichweite->value > 0.0f ) {
 			rangescalefactor *= reichweite->value;
 		}
 	}
 
-	// MESSPUNKT, wieder zu entfernen.
-	//
-	// Einmal je Sekunde die Spannweiten des letzten Bildes, dann zuruecksetzen.
-	// "Flaeche" ist, was die Sprite-Rechnung angeboten bekommt, "Gras", was sie
-	// daraus zeichnet. Klaffen die unteren Enden auseinander, verwirft die
-	// Alpha-Rechnung das Nahe; liegen sie beieinander, kommt das Nahe schon gar
-	// nicht erst an.
-	{
-		static int letzteMeldung = 0;
-		if ( backEnd.refdef.time - letzteMeldung > 1000 ) {
-			letzteMeldung = backEnd.refdef.time;
-			ri.Printf( PRINT_ALL, "[Sprites] Flaeche %.0f..%.0f · Gras %.0f..%.0f · %d gezeichnet, %d verworfen "
-				"· Blende %.0f Schnitt %.0f · fov %.1f/%.1f · Faktor %.2f\n",
-				ssMinFlaeche, ssMaxFlaeche, ssMinGezeichnet, ssMaxGezeichnet,
-				ssZaehlDrin, ssZaehlAus, ssBlende, ssSchnitt,
-				backEnd.refdef.fov_x, standardfovx, rangescalefactor );
-		}
-		ssMinFlaeche = ssMinGezeichnet = 1.0e9f;
-		ssMaxFlaeche = ssMaxGezeichnet = 0.0f;
-		ssZaehlDrin = ssZaehlAus = 0;
-	}
 #endif
 
 	// Create a set of four right vectors so that vertical sprites aren't always facing the same way.
@@ -656,9 +619,6 @@ static void RB_DrawVerticalSurfaceSprites( shaderStage_t *stage, shaderCommands_
 
 	assert(cutdist2 != fadedist2);
 	float inv_fadediff = 1.0/(cutdist2-fadedist2);
-#if defined(JKXR_VISIONOS)
-	ssSchnitt = cutdist; ssBlende = fadedist;
-#endif
 
 	// The faderange is the fraction amount it takes for these sprites to fade out, assuming an ideal fade range of 250
 	float faderange = FADE_RANGE/(cutdist-fadedist);
@@ -673,9 +633,6 @@ static void RB_DrawVerticalSurfaceSprites( shaderStage_t *stage, shaderCommands_
 	{
 		VectorSubtract(ssViewOrigin, input->xyz[curvert], dist);
 		SSVertAlpha[curvert] = 1.0 - (VectorLengthSquared(dist) - fadedist2) * inv_fadediff;
-#if defined(JKXR_VISIONOS)
-		ssMessFlaeche( sqrtf( VectorLengthSquared( dist ) ) );
-#endif
 	}
 
 	// Wind only needs initialization once per tess.
@@ -841,9 +798,6 @@ static void RB_DrawVerticalSurfaceSprites( shaderStage_t *stage, shaderCommands_
 
 				// Find where the alpha is relative to the fadestart, and calc the real alpha to draw at.
 				alpha = 1.0 - ((thisspritesfadestart-alphapos)/faderange);
-#if defined(JKXR_VISIONOS)
-				if ( alpha <= 0.0f ) ssZaehlAus++;
-#endif
 				if (alpha > 0.0)
 				{
 					if (alpha > 1.0)
@@ -865,9 +819,6 @@ static void RB_DrawVerticalSurfaceSprites( shaderStage_t *stage, shaderCommands_
 					VectorScale(v1, fa, curpoint);
 					VectorMA(curpoint, fb, v2, curpoint);
 					VectorMA(curpoint, fc, v3, curpoint);
-#if defined(JKXR_VISIONOS)
-					ssMessGezeichnet( Distance( ssViewOrigin, curpoint ) );
-#endif
 
 					light = l1*fa + l2*fb + l3*fc;
 					if (SSAdditiveTransparency)
