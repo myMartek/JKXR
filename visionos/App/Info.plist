@@ -46,7 +46,7 @@
 	    Nutzer, was die Suche zusätzlich in die Irre führt.
 	-->
 	<key>NSAccessoryTrackingUsageDescription</key>
-	<string>Jedi Knight XR verfolgt die Position deiner Controller, damit deine Hände im Spiel dort sind, wo du sie tatsächlich hältst.</string>
+	<string>Jedi Knight XR tracks your controllers so that your hands appear in the game where you are actually holding them.</string>
 
 	<key>UIFileSharingEnabled</key>
 	<true/>

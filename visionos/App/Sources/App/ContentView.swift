@@ -2,6 +2,28 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
+/// Zwei Sprachen, Englisch als Vorgabe.
+///
+/// Kein Localizable-Katalog, sondern beide Fassungen nebeneinander im Aufruf.
+/// Das Fenster hat ein knappes Dutzend Saetze, und nebeneinander bleiben sie
+/// beim Aendern zusammen -- eine getrennte Tabelle waere fuer diese Menge mehr
+/// Buchhaltung als Nutzen, und ein fehlender Eintrag faellt dort erst im
+/// Headset auf.
+///
+/// Deutsch nur, wenn das Geraet deutsch spricht. Gefragt wird nach
+/// preferredLanguages und nicht nach der Region: wer in Deutschland ein
+/// englisches System fuehrt, will Englisch.
+enum Sprache {
+    static let deutsch: Bool = {
+        (Locale.preferredLanguages.first ?? "en").hasPrefix("de")
+    }()
+
+    /// Erst Englisch, dann Deutsch — in der Reihenfolge der Vorgabe.
+    static func t(_ english: String, _ deutsch: String) -> String {
+        Self.deutsch ? deutsch : english
+    }
+}
+
 /// Welches der beiden Spiele.
 ///
 /// Die Rohwerte müssen zu `JKXR_visionOS_SpielArt` in JKXR_visionOS_Spiel.h
@@ -108,9 +130,14 @@ struct ContentView: View {
     /// Der Rohwert wird gespeichert, nicht der Fall: AppStorage kann nur
     /// einfache Typen, und der Rohwert ist ohnehin die Zahl, die auch die
     /// C-Seite kennt.
-    @AppStorage("jkxr.letztesSpiel") private var letztesSpiel: Int = Int(Spiel.academy.rawValue)
+    @AppStorage("jkxr.letztesSpiel") private var letztesSpiel: Int = Int(Spiel.outcast.rawValue)
 
-    @State private var spiel: Spiel = .academy
+    /// Outcast beim ersten Start.
+    ///
+    /// Es steht in der Auswahl vorn, weil es das aeltere Spiel ist, und wer den
+    /// Port zum ersten Mal einrichtet, faengt sinnvollerweise dort an. Nach der
+    /// ersten Wahl entscheidet ohnehin letztesSpiel.
+    @State private var spiel: Spiel = .outcast
     @State private var assets: AssetStatus = .missing
     @State private var importing = false
     @State private var progress: String?
@@ -124,7 +151,7 @@ struct ContentView: View {
             // Die Auswahl steht ganz oben und nicht neben dem Spielen-Knopf:
             // sie entscheidet, worauf sich alles darunter bezieht — Dateiliste,
             // Pfad und Anleitung.
-            Picker("Spiel", selection: $spiel) {
+            Picker(Sprache.t("Game", "Spiel"), selection: $spiel) {
                 ForEach(Spiel.allCases) { s in
                     Text(s.name).tag(s)
                 }
@@ -134,22 +161,25 @@ struct ContentView: View {
 
             switch assets {
             case .ready(let names):
-                Label("\(names.count) pk3-Dateien in \(spiel.ordner)/base/",
+                Label(Sprache.t("\(names.count) pk3 files in \(spiel.ordner)/base/",
+                                "\(names.count) pk3-Dateien in \(spiel.ordner)/base/"),
                       systemImage: "checkmark.circle")
                     .foregroundStyle(.green)
                 Text(names.sorted().joined(separator: ", "))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Button("\(spiel.name) spielen") {
+                Button(Sprache.t("Play \(spiel.name)", "\(spiel.name) spielen")) {
                     Task { await startGame() }
                 }
                 .buttonStyle(.borderedProminent)
 
             case .missing:
-                Label("Spieldateien für \(spiel.name) fehlen",
+                Label(Sprache.t("Game files for \(spiel.name) are missing",
+                                "Spieldateien für \(spiel.name) fehlen"),
                       systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.orange)
-                Text("Benötigt werden \(spiel.erwarteteDateien)")
+                Text(Sprache.t("Required: \(spiel.requiredFilesEnglish)",
+                     "Benötigt werden \(spiel.erwarteteDateien)"))
                     .font(.callout)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 460)
@@ -164,9 +194,9 @@ struct ContentView: View {
             Divider().frame(maxWidth: 460)
 
             HStack(spacing: 12) {
-                Button("Dateien auswählen…") { importing = true }
-                Button("In Dateien öffnen") { AssetStore.revealInFiles(spiel) }
-                Button("Erneut prüfen") { assets = AssetStore.status(spiel) }
+                Button(Sprache.t("Choose files…", "Dateien auswählen…")) { importing = true }
+                Button(Sprache.t("Open in Files", "In Dateien öffnen")) { AssetStore.revealInFiles(spiel) }
+                Button(Sprache.t("Check again", "Erneut prüfen")) { assets = AssetStore.status(spiel) }
             }
             .font(.callout)
 
@@ -215,7 +245,8 @@ struct ContentView: View {
             case .success(let urls):
                 Task { await copy(urls) }
             case .failure(let error):
-                progress = "Auswahl fehlgeschlagen: \(error.localizedDescription)"
+                progress = Sprache.t("Selection failed: \(error.localizedDescription)",
+                                     "Auswahl fehlgeschlagen: \(error.localizedDescription)")
             }
         }
     }
@@ -256,9 +287,11 @@ struct ContentView: View {
             // statt vermuten.
             dismissWindow()
         case .userCancelled:
-            progress = "Der Immersive Space wurde abgebrochen."
+            progress = Sprache.t("The immersive space was cancelled.",
+                                 "Der Immersive Space wurde abgebrochen.")
         case .error:
-            progress = "Der Immersive Space ließ sich nicht öffnen."
+            progress = Sprache.t("The immersive space could not be opened.",
+                                 "Der Immersive Space ließ sich nicht öffnen.")
         @unknown default:
             break
         }
@@ -269,8 +302,11 @@ struct ContentView: View {
     private func copy(_ urls: [URL]) async {
         let ziel = spiel
         for (index, url) in urls.enumerated() {
-            progress = "Kopiere \(url.lastPathComponent) (\(index + 1)/\(urls.count)) "
-                     + "nach \(ziel.ordner)…"
+            progress = Sprache.t(
+                "Copying \(url.lastPathComponent) (\(index + 1)/\(urls.count)) "
+                    + "to \(ziel.ordner)…",
+                "Kopiere \(url.lastPathComponent) (\(index + 1)/\(urls.count)) "
+                    + "nach \(ziel.ordner)…")
             let result = await Task.detached { AssetStore.copyIntoBase(url, ziel) }.value
             if case .failure(let message) = result {
                 progress = message

@@ -1,6 +1,8 @@
 name: JKXR
 
 options:
+  developmentLanguage: en
+  knownRegions: [en, de]
   bundleIdPrefix: de.martek
   createIntermediateGroups: true
   deploymentTarget:
@@ -46,6 +48,14 @@ targets:
         buildPhase: resources
       - path: ../../JKXR-PCVR-Installer/JKO/base/z_vr_assets_jko.pk3
         buildPhase: resources
+      # Die Berechtigungstexte. Sie erscheinen VOR dem Fenster, also noch bevor
+      # jemand die Oberflaeche zu sehen bekommt -- deutsch auf einem englischen
+      # Geraet waere der erste Eindruck. Die Grundfassung in Info.plist ist
+      # englisch; de.lproj gilt nur, wenn das Geraet deutsch spricht.
+      - path: en.lproj/InfoPlist.strings
+        buildPhase: resources
+      - path: de.lproj/InfoPlist.strings
+        buildPhase: resources
     dependencies:
       # ANGLE, gebaut aus angle/out/xros (patch-angle-visionos.py) mit
       # Foveation-Unterstützung im Metal-Backend (patch-angle-foveation.py).
@@ -72,7 +82,7 @@ targets:
         # Ohne Zweckangabe verweigert visionOS den ARKit-Provider, und zwar
         # wortlos — die Anfrage erreicht den Nutzer gar nicht erst.
         INFOPLIST_KEY_NSWorldSensingUsageDescription: >-
-          Kopf- und Controllerposition für das Spiel im Immersive Space.
+          Head and controller position for playing in the immersive space.
 
         # Erzeugt UIApplicationSceneManifest mit UIApplicationSupportsMultipleScenes.
         # Ohne diesen Eintrag weiß visionOS nicht, dass die App neben dem Fenster

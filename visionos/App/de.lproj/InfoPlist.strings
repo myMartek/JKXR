@@ -1,0 +1,6 @@
+/* Erscheint, wenn die App die Zubehörverfolgung anfragt. Ohne sie wird dem
+   Provider die Freigabe verweigert und ar_session_run scheitert. */
+"NSAccessoryTrackingUsageDescription" = "Jedi Knight XR verfolgt die Position deiner Controller, damit deine Hände im Spiel dort sind, wo du sie tatsächlich hältst.";
+
+/* Erscheint, wenn die App die Umgebungserfassung anfragt (Kopf- und Controllerpose). */
+"NSWorldSensingUsageDescription" = "Kopf- und Controllerposition für das Spiel im Immersive Space.";
