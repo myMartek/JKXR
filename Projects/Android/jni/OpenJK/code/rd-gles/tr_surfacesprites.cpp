@@ -160,6 +160,50 @@ static void R_SurfaceSpriteFrameUpdate(void)
 		}
 	}
 
+#if defined(JKXR_VISIONOS)
+	// Regler fuer die Sichtweite der Oberflaechensprites.
+	//
+	// Die Rechnung darueber verkuerzt sie im Headset systematisch: sie teilt
+	// durch den Tangens des halben Sichtfelds, und unsere rund 105 Grad gegen
+	// die 90 des Entwurfs ergeben etwa ein Viertel weniger Reichweite. Gras
+	// verschwindet dadurch naeher am Spieler als am Bildschirm.
+	//
+	// Ein Faktor statt einer festen Zahl, weil die Kosten sichtbar sind: jedes
+	// zusaetzliche Grasbueschel ist Geometrie, und was hier bequem aussieht,
+	// entscheidet sich auf dem Geraet.
+	{
+		static cvar_t *reichweite = NULL;
+		if ( !reichweite ) {
+			reichweite = ri.Cvar_Get( "r_surfaceSpriteRange", "1.0", CVAR_ARCHIVE );
+		}
+		if ( reichweite && reichweite->value > 0.0f ) {
+			rangescalefactor *= reichweite->value;
+		}
+	}
+
+	// MESSPUNKT, wieder zu entfernen.
+	//
+	// Das Gras blendet verkehrt herum ein: die fernen Bueschel erscheinen
+	// zuerst. Die Alpha-Rechnung selbst stimmt (nah = 1, fern = 0), also wird
+	// von einem falschen PUNKT aus gemessen. ssViewOrigin wird nur erneuert,
+	// wenn sich die Entitaet aendert -- und das Zuruecksetzen dafuer steht
+	// hinter dem Zeitvergleich am Anfang dieser Funktion, der in VR die meisten
+	// Bilder ueberspringt.
+	{
+		static int letzteMeldung = 0;
+		if ( backEnd.refdef.time - letzteMeldung > 1000 ) {
+			letzteMeldung = backEnd.refdef.time;
+			ri.Printf( PRINT_ALL, "[Sprites] Auge bei %.0f %.0f %.0f · Bezug %.0f %.0f %.0f "
+				"· Abstand %.0f · fov %.1f/%.1f · Faktor %.2f\n",
+				backEnd.viewParms.ori.origin[0], backEnd.viewParms.ori.origin[1],
+				backEnd.viewParms.ori.origin[2],
+				ssViewOrigin[0], ssViewOrigin[1], ssViewOrigin[2],
+				Distance( backEnd.viewParms.ori.origin, ssViewOrigin ),
+				backEnd.refdef.fov_x, standardfovx, rangescalefactor );
+		}
+	}
+#endif
+
 	// Create a set of four right vectors so that vertical sprites aren't always facing the same way.
 	// First generate a HORIZONTAL forward vector (important).
 	CrossProduct(ssViewRight, up, ssfwdvector);
