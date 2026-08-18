@@ -3144,6 +3144,70 @@ CG_ScanForCrosshairEntity
 */
 extern Vehicle_t *G_IsRidingVehicle( gentity_t *ent );
 extern float forcePushPullRadius[];
+
+/*
+=================
+CG_MoverIsForceUsable
+
+Ist diese Tuer oder dieser Block mit Schieben oder Ziehen zu bewegen, und ist er
+nah genug dafuer?
+
+Herausgezogen aus CG_ScanForCrosshairEntity, wo diese Frage bisher als
+eingebauter Block stand. Sie wird jetzt an zwei Stellen gebraucht: fuer den
+blauen Wirbel am Fadenkreuz wie bisher und fuer die Huelle, die waehrend
+Machtgespuer zeigt, WORAN man ueberhaupt etwas hat. Zwei Fassungen derselben
+Bedingung waeren zwei Fassungen zum Auseinanderlaufen.
+=================
+*/
+qboolean CG_MoverIsForceUsable( gentity_t *ent, float dist )
+{
+	if ( !ent || !cg_entities[0].gent || !cg_entities[0].gent->client )
+	{
+		return qfalse;
+	}
+
+	const playerState_t *ps = &cg_entities[0].gent->client->ps;
+
+	// Die bessere der beiden Reichweiten -- wer weiter ziehen als schieben
+	// kann, darf auch weiter sehen, woran er ziehen koennte.
+	const int besser = ( ps->forcePowerLevel[FP_PULL] > ps->forcePowerLevel[FP_PUSH] )
+	                 ? ps->forcePowerLevel[FP_PULL] : ps->forcePowerLevel[FP_PUSH];
+
+	if ( !Q_stricmp( "func_door", ent->classname ) )
+	{//it's a func_door
+		if ( !(ent->spawnflags & 2/*MOVER_FORCE_ACTIVATE*/) )
+		{
+			return qfalse;
+		}
+		if ( !ps->forcePowerLevel[FP_PULL] && !ps->forcePowerLevel[FP_PUSH] )
+		{//player has neither push nor pull
+			return qfalse;
+		}
+		return (qboolean)( forcePushPullRadius[besser] >= dist );
+	}
+
+	if ( !Q_stricmp( "func_static", ent->classname ) )
+	{//it's a func_static
+		const qboolean schiebbar = (qboolean)!!( ent->spawnflags & 1/*F_PUSH*/ );
+		const qboolean ziehbar   = (qboolean)!!( ent->spawnflags & 2/*F_PULL*/ );
+
+		if ( schiebbar && ziehbar )
+		{
+			return (qboolean)( forcePushPullRadius[besser] >= dist );
+		}
+		if ( schiebbar )
+		{
+			return (qboolean)( forcePushPullRadius[ps->forcePowerLevel[FP_PUSH]] >= dist );
+		}
+		if ( ziehbar )
+		{
+			return (qboolean)( forcePushPullRadius[ps->forcePowerLevel[FP_PULL]] >= dist );
+		}
+	}
+
+	return qfalse;
+}
+
 static void CG_ScanForCrosshairEntity( qboolean scanAll )
 {
 	trace_t		trace;
@@ -3205,60 +3269,9 @@ static void CG_ScanForCrosshairEntity( qboolean scanAll )
 				// No?  Check for force-push/pullable doors and func_statics
 				else if ( traceEnt->s.eType == ET_MOVER )
 				{//hit a mover
-					if ( !Q_stricmp( "func_door", traceEnt->classname ) )
-					{//it's a func_door
-						if ( traceEnt->spawnflags & 2/*MOVER_FORCE_ACTIVATE*/ )
-						{//it's force-usable
-							if ( cg_entities[0].gent->client->ps.forcePowerLevel[FP_PULL] || cg_entities[0].gent->client->ps.forcePowerLevel[FP_PUSH] )
-							{//player has push or pull
-								float maxRange;
-								if ( cg_entities[0].gent->client->ps.forcePowerLevel[FP_PULL] > cg_entities[0].gent->client->ps.forcePowerLevel[FP_PUSH] )
-								{//use the better range
-									maxRange = forcePushPullRadius[cg_entities[0].gent->client->ps.forcePowerLevel[FP_PULL]];
-								}
-								else
-								{//use the better range
-									maxRange = forcePushPullRadius[cg_entities[0].gent->client->ps.forcePowerLevel[FP_PUSH]];
-								}
-								if ( maxRange >= trace.fraction * 2048 )
-								{//actually close enough to use one of our force powers on it
-									cg_forceCrosshair = qtrue;
-								}
-							}
-						}
-					}
-					else if ( !Q_stricmp( "func_static", traceEnt->classname ) )
-					{//it's a func_static
-						if ( (traceEnt->spawnflags & 1/*F_PUSH*/) && (traceEnt->spawnflags & 2/*F_PULL*/) )
-						{//push or pullable
-							float maxRange;
-							if ( cg_entities[0].gent->client->ps.forcePowerLevel[FP_PULL] > cg_entities[0].gent->client->ps.forcePowerLevel[FP_PUSH] )
-							{//use the better range
-								maxRange = forcePushPullRadius[cg_entities[0].gent->client->ps.forcePowerLevel[FP_PULL]];
-							}
-							else
-							{//use the better range
-								maxRange = forcePushPullRadius[cg_entities[0].gent->client->ps.forcePowerLevel[FP_PUSH]];
-							}
-							if ( maxRange >= trace.fraction * 2048 )
-							{//actually close enough to use one of our force powers on it
-								cg_forceCrosshair = qtrue;
-							}
-						}
-						else if ( (traceEnt->spawnflags & 1/*F_PUSH*/) )
-						{//pushable only
-							if ( forcePushPullRadius[cg_entities[0].gent->client->ps.forcePowerLevel[FP_PUSH]] >= trace.fraction * 2048 )
-							{//actually close enough to use force push on it
-								cg_forceCrosshair = qtrue;
-							}
-						}
-						else if ( (traceEnt->spawnflags & 2/*F_PULL*/) )
-						{//pullable only
-							if ( forcePushPullRadius[cg_entities[0].gent->client->ps.forcePowerLevel[FP_PULL]] >= trace.fraction * 2048 )
-							{//actually close enough to use force pull on it
-								cg_forceCrosshair = qtrue;
-							}
-						}
+					if ( CG_MoverIsForceUsable( traceEnt, trace.fraction * 2048 ) )
+					{
+						cg_forceCrosshair = qtrue;
 					}
 				}
 			}

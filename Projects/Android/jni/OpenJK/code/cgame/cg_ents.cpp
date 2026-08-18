@@ -36,6 +36,17 @@ extern void CG_AddSaberBlade( centity_t *cent, centity_t *scent, refEntity_t *sa
 extern void CG_CheckSaberInWater( centity_t *cent, centity_t *scent, int saberNum, int modelIndex, vec3_t origin, vec3_t angles );
 extern void CG_ForcePushBlur( const vec3_t org, qboolean darkSide = qfalse );
 extern void CG_AddForceSightShell( refEntity_t *ent, centity_t *cent );
+
+// Waehrend Machtgespuer soll zu sehen sein, WORAN man ueberhaupt etwas hat.
+//
+// Bisher bekam Bewegliches die Huelle nur mit EF_FORCE_VISIBLE, einer Fahne,
+// die das Spiel nur an wenigen eigens dafuer gesetzten Dingen fuehrt -- im
+// Trainingsraum an keinem einzigen (gemessen: 0 von 11 beweglichen). Die
+// Machtstufe hilft dort auch nicht weiter: CG_PlayerCanSeeCent weist unterhalb
+// von Stufe 2 alles ab, was kein Spieler ist, und wird von CG_Mover ohnehin
+// nicht gefragt. Also die Frage stellen, um die es geht -- laesst sich das
+// Ding schieben oder ziehen, und bin ich nah genug dafuer.
+extern qboolean CG_MoverIsForceUsable( gentity_t *ent, float dist );
 extern qboolean CG_PlayerCanSeeCent( centity_t *cent );
 extern cvar_t	*debug_subdivision;
 
@@ -1399,8 +1410,9 @@ Ghoul2 Insert End
 
 	if ((cg.snap->ps.forcePowersActive & (1 << FP_SEE))
 		&& cg.snap->ps.clientNum != cent->currentState.number
-		&& (s1->eFlags&EF_FORCE_VISIBLE) )
-	{//so player can see func_breakables
+		&& ((s1->eFlags&EF_FORCE_VISIBLE)
+			|| CG_MoverIsForceUsable( cent->gent, Distance( cg.refdef.vieworg, cent->lerpOrigin ) )) )
+	{//so player can see func_breakables -- und was sich schieben oder ziehen laesst
 		CG_AddForceSightShell( &ent, cent );
 	}
 }
