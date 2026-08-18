@@ -2100,16 +2100,6 @@ void CL_PlayCinematic_f(void)
 void CL_PlayInGameCinematic_f(void)
 {
 	const char *arg = Cmd_Argv( 1 );
-#if defined(JKXR_VISIONOS)
-	// MESSPUNKT, wieder zu entfernen.
-	//
-	// Die eine offene Frage vor dem Eingriff: landet die Sequenz ueberhaupt in
-	// der Warteschlange, und wenn ja, warum? Sie tut es nur, wenn cls.state
-	// nicht CA_ACTIVE ist. Steht hier CA_ACTIVE (7), ist die Warteschlange gar
-	// nicht das Thema und der Fehler liegt woanders.
-	Com_Printf( "[Sequenz-Anforderung] \"%s\" · cls.state %d · wartet schon %d\n",
-		arg ? arg : "?", cls.state, qbInGameCinematicOnStandBy ? 1 : 0 );
-#endif
 	if (cls.state == CA_ACTIVE)
 	{
 		PlayCinematic(arg,NULL,qtrue);
@@ -2216,66 +2206,8 @@ void SCR_StopCinematic( qboolean bAllowRefusal /* = qfalse */ )
 		stopCinematicCallCount = 0;
 	}
 
-#if defined(JKXR_VISIONOS)
-	// Einen WARTENDEN nicht abraeumen, wenn gar nichts laeuft.
-	//
-	// GEMESSEN, unmittelbar nacheinander:
-	//
-	//   [Sequenz-Anforderung] "jk0101_sw" · cls.state 6 · wartet schon 0
-	//   [Sequenz-Verworfen]   "jk0101_sw" · Zaehler 0 · verweigerbar war 0
-	//
-	// Der Spielcode fordert die Sequenz an, waehrend cls.state noch CA_PRIMED
-	// (6) ist -- das Spiel ist nicht spielbereit, also legt CL_PlayInGameCinematic_f
-	// sie in die Warteschlange, damit SCR_DrawCinematic sie startet, sobald es
-	// so weit ist. Genau dazwischen raeumt der Ladeweg sie ab: ein
-	// SCR_StopCinematic OHNE Verweigerungs-Flag (CL_Disconnect, cl_main.cpp:262),
-	// also nicht ueber eine Taste. Die Sequenz startet danach nie.
-	//
-	// Die Bedingung ist bewusst eng: NUR wenn nichts laeuft und nichts
-	// abzubrechen ist. Ein Stopp, der eine laufende Sequenz beendet, raeumt den
-	// Wartenden weiter mit ab -- dort ist er gewollt, denn wer ueberspringt,
-	// will die Kette los sein.
-	//
-	// Der Zaehler stopCinematicCallCount bleibt unberuehrt. Er gehoert zum
-	// Textlauf-Hack darueber, und dessen drei Zweige sind heikel genug.
-	// Massgeblich ist allein das VIDEO-HANDLE, nicht qbPlayingInGameCinematic.
-	//
-	// Die erste Fassung fragte auch dieses Flag ab und war damit zu streng: es
-	// haengt nach, wenn eine vorige Sequenz beendet wurde, waehrend laengst
-	// nichts mehr auf dem Schirm ist. Gemessen genau so -- der Wartende
-	// ueberlebte den Ladeweg und wurde einen Augenblick spaeter doch verworfen,
-	// diesmal ueber eine Taste (verweigerbar war 1), obwohl es nichts zu
-	// beenden gab.
-	//
-	// CL_handle ist die einzige Groesse, die sagt "ein Video laeuft". Ist keines
-	// offen, gibt es auch nichts abzubrechen -- dann einen Wartenden zu
-	// verwerfen, kann nie richtig sein.
-	const qboolean nurWartender =
-		(qboolean)( sInGameCinematicStandingBy[0]
-			&& !( CL_handle >= 0 && CL_handle < MAX_VIDEO_HANDLES ) );
-	if ( nurWartender ) {
-		Com_Printf( "[Sequenz] Wartender \"%s\" bleibt erhalten\n",
-			sInGameCinematicStandingBy );
-	}
-#endif
-	if(stopCinematicCallCount != 2
-#if defined(JKXR_VISIONOS)
-		&& !nurWartender
-#endif
-		)
+	if(stopCinematicCallCount != 2)
 	{
-#if defined(JKXR_VISIONOS)
-		// MESSPUNKT, wieder zu entfernen.
-		//
-		// Genau hier verschwand im Protokoll "jk0101_sw", und zwar ohne
-		// vorangehendes Tastenereignis. Die Meldung nennt, ob ueberhaupt einer
-		// wartete -- sonst ist sie stumm und das Protokoll bleibt lesbar.
-		if ( sInGameCinematicStandingBy[0] ) {
-			Com_Printf( "[Sequenz-Verworfen] \"%s\" · Zaehler %d · verweigerbar war %d\n",
-				sInGameCinematicStandingBy, stopCinematicCallCount,
-				bAllowRefusal ? 1 : 0 );
-		}
-#endif
 		qbPlayingInGameCinematic = qfalse;
 		qbInGameCinematicOnStandBy = qfalse;
 		sInGameCinematicStandingBy[0]=0;
