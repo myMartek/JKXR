@@ -3159,6 +3159,37 @@ Machtgespuer zeigt, WORAN man ueberhaupt etwas hat. Zwei Fassungen derselben
 Bedingung waeren zwei Fassungen zum Auseinanderlaufen.
 =================
 */
+/*
+=================
+CG_ForceReachDist
+
+Wie weit ist dieses Ding wirklich weg?
+
+Nicht ueber lerpOrigin: bei Brush-Entitaeten steht dort (0,0,0), und Raven hat
+den Unglauben darueber in CG_Ents als Kommentar hinterlassen ("FIXME: why are
+these always 0, 0, 0???!"). Gemessen wird deshalb zum naechsten Punkt des
+Koerpers -- was fuer eine Tuer oder eine lange Platte ohnehin richtiger ist als
+ein Mittelpunkt: nah genug zum Schieben heisst nah an der Platte, nicht nah an
+ihrer Mitte.
+=================
+*/
+float CG_ForceReachDist( const gentity_t *ent )
+{
+	if ( !ent )
+	{
+		return 1.0e9f;
+	}
+
+	vec3_t naechster;
+	for ( int i = 0; i < 3; i++ )
+	{
+		naechster[i] = cg.refdef.vieworg[i];
+		if ( naechster[i] < ent->absmin[i] )      naechster[i] = ent->absmin[i];
+		else if ( naechster[i] > ent->absmax[i] ) naechster[i] = ent->absmax[i];
+	}
+	return Distance( cg.refdef.vieworg, naechster );
+}
+
 qboolean CG_MoverIsForceUsable( gentity_t *ent, float dist )
 {
 	if ( !ent || !cg_entities[0].gent || !cg_entities[0].gent->client )
@@ -4379,42 +4410,29 @@ static void CG_Draw2D( void )
 		//indicate this with sight cone thingy
 		cg.drawingHUD = CG_HUD_OTHER;
 		CG_DrawVignette(true);
-		// Ueber die ganze Flaeche und darueber hinaus, statt 50,40,540,400.
+		// Das urspruengliche Rechteck, und ringsherum schwarz.
 		//
-		// Das eingerueckte Rechteck ist eine Monitor-Entscheidung: es laesst
-		// ringsum acht Prozent frei, und am Bildschirm faellt der Rand kaum
-		// auf. Im Headset sind dieselben acht Prozent ein breiter Streifen am
-		// Rand des Blickfelds, in dem die Welt unbehandelt weiterlaeuft.
+		// Zwei Anlaeufe mit Rechnen sind gescheitert -- erst die ganze Flaeche
+		// statt der eingerueckten 50,40,540,400, dann ein Uebersteh fuer den
+		// gemessenen Versatz von 0,131 aus CG_AdjustFrom640. Beide machten es
+		// schlimmer: die Strahlen wandern nach aussen, der schwarze Rand wird
+		// schmaler, und am Ende steht ein Streifen Strahlen dort, wo gar nichts
+		// mehr zu sehen sein sollte.
 		//
-		// Die ganze Flaeche allein genuegt aber nicht, und das war mein erster
-		// Fehlschluss: CG_AdjustFrom640 VERSCHIEBT die 640x480-Flaeche noch --
-		// um off_center_fov mal Flaeche fuer die unsymmetrischen Sichtfelder
-		// der beiden Augen, dazu um cg_hudYOffset. Was auf der einen Seite
-		// hinausgeschoben wird, fehlt auf der anderen. Also so viel groesser
-		// zeichnen, wie ueberhaupt verschoben werden kann.
-		const float uebersteh_x = fabs( vr->off_center_fov_x ) * SCREEN_WIDTH + 8.0f;
-		const float uebersteh_y = fabs( vr->off_center_fov_y ) * SCREEN_HEIGHT
-		                        + fabs( cg_hudYOffset.value ) + 8.0f;
-		const float bildX = -uebersteh_x;
-		const float bildY = -uebersteh_y;
-		const float bildB = SCREEN_WIDTH  + 2.0f * uebersteh_x;
-		const float bildH = SCREEN_HEIGHT + 2.0f * uebersteh_y;
-
-		CG_DrawPic( bildX, bildY, bildB, bildH, cgi_R_RegisterShader( "gfx/2d/jsense" ));
-
-		// Ringsherum schwarz, wie Marcel es vorgeschlagen hat.
-		//
-		// Rechnen hat hier zweimal nicht gereicht: erst die ganze Flaeche statt
-		// des eingerueckten Rechtecks, dann der Uebersteh fuer den Versatz aus
-		// CG_AdjustFrom640 -- beides half nicht, es blieb ein Streifen Welt am
-		// Rand. Was da noch dazwischenfunkt, weiss ich nicht; vier schwarze
-		// Kaesten wissen es auch nicht und brauchen es nicht. Sie folgen
-		// derselben Abbildung wie das Sichtbild, liegen also immer genau an
-		// dessen Kante, und reichen eine volle Flaechenbreite nach aussen --
-		// weiter, als irgendetwas verschoben werden kann.
+		// Marcels Vorschlag von Anfang an war der richtige. Das eingerueckte
+		// Rechteck bleibt, wie es gedacht war -- die Strahlen enden dort, wo
+		// die Vorlage sie enden laesst --, und was ausserhalb liegt, wird
+		// schwarz. Die vier Kaesten folgen derselben Abbildung wie das
+		// Sichtbild, liegen also immer genau an dessen Kante, und reichen eine
+		// volle Flaechenbreite nach aussen: weiter, als irgendetwas verschoben
+		// werden kann.
 		//
 		// Nicht ueber die Mitte fuellen: durch das Sichtbild ist die Welt zu
 		// sehen, es ist grossenteils durchsichtig.
+		const float bildX = 50.0f, bildY = 40.0f, bildB = 540.0f, bildH = 400.0f;
+
+		CG_DrawPic( bildX, bildY, bildB, bildH, cgi_R_RegisterShader( "gfx/2d/jsense" ));
+
 		{
 			vec4_t schwarz = { 0, 0, 0, 1 };
 			const float weit = SCREEN_WIDTH;

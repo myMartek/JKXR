@@ -47,6 +47,7 @@ extern void CG_AddForceSightShell( refEntity_t *ent, centity_t *cent );
 // nicht gefragt. Also die Frage stellen, um die es geht -- laesst sich das
 // Ding schieben oder ziehen, und bin ich nah genug dafuer.
 extern qboolean CG_MoverIsForceUsable( gentity_t *ent, float dist );
+extern float CG_ForceReachDist( const gentity_t *ent );
 extern qboolean CG_PlayerCanSeeCent( centity_t *cent );
 extern cvar_t	*debug_subdivision;
 
@@ -1411,7 +1412,7 @@ Ghoul2 Insert End
 	if ((cg.snap->ps.forcePowersActive & (1 << FP_SEE))
 		&& cg.snap->ps.clientNum != cent->currentState.number
 		&& ((s1->eFlags&EF_FORCE_VISIBLE)
-			|| CG_MoverIsForceUsable( cent->gent, Distance( cg.refdef.vieworg, cent->lerpOrigin ) )) )
+			|| CG_MoverIsForceUsable( cent->gent, CG_ForceReachDist( cent->gent ) )) )
 	{//so player can see func_breakables -- und was sich schieben oder ziehen laesst
 		CG_AddForceSightShell( &ent, cent );
 	}
