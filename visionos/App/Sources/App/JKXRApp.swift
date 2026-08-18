@@ -96,6 +96,7 @@ struct JKXRLayerConfiguration: CompositorLayerConfiguration {
 @main
 struct JKXRApp: App {
     @State private var engineHost: EngineHost?
+    @State private var demoWelt: DemoWelt?
 
     var body: some Scene {
         WindowGroup {
@@ -105,9 +106,25 @@ struct JKXRApp: App {
 
         ImmersiveSpace(id: "game") {
             CompositorLayer(configuration: JKXRLayerConfiguration()) { layerRenderer in
-                let host = EngineHost(layerRenderer)
-                engineHost = host
-                host.start()
+                // Die Weiche fuer das App-Review.
+                //
+                // Ohne die gekauften Spieldateien kommt die Engine nicht bis zu
+                // einem Bild -- schon ihr Hauptmenue braucht Schriften und
+                // Grafiken aus assets0.pk3. Wer die Pruefdatei eingespielt hat,
+                // bekommt deshalb nicht die Engine, sondern eine kleine Welt,
+                // die die App selbst zeichnet (DemoWelt.swift).
+                //
+                // Zwei getrennte Wege, mit Absicht: was in der Demo schiefgeht,
+                // kann dem Spiel nichts anhaben, und umgekehrt.
+                if Laufmodus.demo {
+                    let welt = DemoWelt(layerRenderer)
+                    demoWelt = welt
+                    welt?.start()
+                } else {
+                    let host = EngineHost(layerRenderer)
+                    engineHost = host
+                    host.start()
+                }
             }
         }
         .immersionStyle(selection: .constant(.full), in: .full)

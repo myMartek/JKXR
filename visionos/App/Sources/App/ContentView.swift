@@ -173,6 +173,24 @@ struct ContentView: View {
                 }
                 .buttonStyle(.borderedProminent)
 
+            case .demo:
+                Label(Sprache.t("Demo file recognised — review mode",
+                                "Demo-Datei erkannt — Prüfmodus"),
+                      systemImage: "checkmark.seal")
+                    .foregroundStyle(.blue)
+                Text(Sprache.t(
+                        "No game data is present. \"Play\" opens the small demo "
+                            + "world built into the app.",
+                        "Es liegen keine Spieldaten vor. „Spielen“ öffnet die "
+                            + "kleine Demo-Welt, die die App selbst mitbringt."))
+                    .font(.callout)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 460)
+                Button(Sprache.t("Play demo world", "Demo-Welt starten")) {
+                    Task { await startGame(demo: true) }
+                }
+                .buttonStyle(.borderedProminent)
+
             case .missing:
                 Label(Sprache.t("Game files for \(spiel.name) are missing",
                                 "Spieldateien für \(spiel.name) fehlen"),
@@ -229,11 +247,22 @@ struct ContentView: View {
             // JKXR_AUTO_START=1 starten; im normalen App-Start ist die Variable
             // nicht gesetzt und das Fenster verhält sich unverändert.
             if !didAutoStart,
-               ProcessInfo.processInfo.environment["JKXR_AUTO_START"] == "1",
-               case .ready = assets {
-                didAutoStart = true
-                print("[JKXR] Diagnose-Autostart des Immersive Space")
-                await startGame()
+               ProcessInfo.processInfo.environment["JKXR_AUTO_START"] == "1" {
+                // Auch der Demo-Fall, sonst laesst sich die Pruefdatei nur mit
+                // aufgesetzter Brille testen -- und genau dieser Weg ist der,
+                // den ein Pruefer geht.
+                switch assets {
+                case .ready:
+                    didAutoStart = true
+                    print("[JKXR] Diagnose-Autostart des Immersive Space")
+                    await startGame()
+                case .demo:
+                    didAutoStart = true
+                    print("[JKXR] Diagnose-Autostart der Demo-Welt")
+                    await startGame(demo: true)
+                case .missing:
+                    break
+                }
             }
         }
         // Der verlässliche Weg. Das Navigieren in der Dateien-App hängt davon
@@ -261,7 +290,12 @@ struct ContentView: View {
     /// Audio-Kategorie: visionos_snd.mm benutzt seit dieser Änderung Playback
     /// statt Ambient. Ambient ist an den Vordergrundzustand gebunden und
     /// verstummt, sobald nur noch der Immersive Space offen ist.
-    private func startGame() async {
+    private func startGame(demo: Bool = false) async {
+        // Vor dem Oeffnen setzen, wie die Spielwahl auch: der CompositorLayer
+        // wird beim Oeffnen aufgebaut und entscheidet dort sofort, welcher der
+        // beiden Wege laeuft.
+        Laufmodus.demo = demo
+
         // ZUERST die Wahl setzen, dann den Space öffnen.
         //
         // Der CompositorLayer wird beim Öffnen aufgebaut und startet den
@@ -320,6 +354,8 @@ struct ContentView: View {
 
 enum AssetStatus {
     case ready(names: [String])
+    /// Die Pruefdatei fuers App-Review liegt da, echte Spieldateien nicht.
+    case demo
     case missing
 }
 
@@ -442,7 +478,13 @@ enum AssetStore {
         // gemeldet, und der Spielen-Knopf haette in eine Engine gefuehrt, die
         // nichts findet.
         let vorhanden = pk3.contains { $0.lowercased() == spiel.pflichtDatei }
-        return vorhanden ? .ready(names: pk3) : .missing
+        if vorhanden { return .ready(names: pk3) }
+
+        // Echte Spieldateien haben Vorrang, deshalb erst hier. Wer das Spiel
+        // besitzt, soll es spielen und nicht in einer Demo landen, bloss weil
+        // die Datei noch danebenliegt.
+        if DemoDatei.vorhanden(in: baseDirectory(spiel)) { return .demo }
+        return .missing
     }
 
     /// Die VR-Zusatzdateien aus dem Bundle nach `base/` legen.
@@ -486,8 +528,15 @@ enum AssetStore {
         let scoped = source.startAccessingSecurityScopedResource()
         defer { if scoped { source.stopAccessingSecurityScopedResource() } }
 
-        let destination = baseDirectory(spiel)
-            .appendingPathComponent(source.lastPathComponent)
+        // Die Pruefdatei bekommt IMMER ihren kanonischen Namen.
+        //
+        // Sie wird heruntergeladen, und ein Browser haengt beim zweiten Versuch
+        // gern eine Zahl an ("jkxr-demo-1.pk3"). Erkannt wird sie am Hash, also
+        // ist der Name frei -- aber die spaetere Pruefung sucht sie unter einem
+        // festen Namen, und zwei Kopien nebeneinander waeren nur Verwirrung.
+        let name = DemoDatei.istDemodatei(source) ? DemoDatei.dateiname
+                                                  : source.lastPathComponent
+        let destination = baseDirectory(spiel).appendingPathComponent(name)
         do {
             try? FileManager.default.removeItem(at: destination)
             try FileManager.default.copyItem(at: source, to: destination)

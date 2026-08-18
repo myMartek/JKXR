@@ -14,19 +14,36 @@ To run a game, the user copies in the data files (.pk3) of the PC release they
 own. The app offers no way to obtain them, links to no source for them, and
 downloads nothing.
 
-FOR THIS REVIEW
+FOR THIS REVIEW — A DEMO FILE YOU CAN USE
 
-We cannot supply game data, so here is a recorded session instead. It shows the
-launcher window, the file import, both titles starting, and the immersive world
-with motion control:
+We cannot supply game data, but we made you a file that works instead:
+
+    https://www.martek.de/downloads/jkxr-demo.pk3
+
+Download it on the Mac driving the headset, then in the app window press
+"Choose files…", pick it, and press "Play demo world".
+
+It works for BOTH titles — import it under whichever one is selected.
+
+To be exact about what that file is: it carries no game content at all. It is
+an identification key, written by us and distributed by us. The app recognises
+it by its SHA-256 and, instead of loading a game, opens a small demo world it
+carries itself — a grid floor with pillars and blocks at known distances, drawn
+per eye with head tracking. It is not the game, and it is not derived from one.
+Its purpose is to let you see the spatial rendering and try the app without a
+copy of the original.
+
+A recorded session of the actual game, for comparison — launcher, file import,
+both titles, and the immersive world with motion control:
 
     https://youtu.be/8QBxBHDyUBM
 
 WHAT WORKS WITHOUT GAME DATA
 
 The launcher window works fully: the title picker, the file import, the status
-display naming the missing file, and "Open in Files". Only starting a game
-needs the data — the app says so plainly and does not crash.
+display naming the missing file, and "Open in Files". With the demo file, the
+immersive space works too. Only the games themselves need the purchased data —
+the app says so plainly and does not crash.
 
 If you do have a copy of the PC originals (the early-2000s SW:JK titles, sold
 on the usual PC storefronts), the app takes their .pk3 files directly; no
@@ -35,7 +52,8 @@ conversion, no patching.
 HOW THE FILES ARE HANDLED
 
 "Choose files…" opens the system document picker. Chosen files are copied into
-the app's own container, into a folder per title, and are checked by name. They
+the app's own container, into a folder per title, and are checked by name (the
+demo file above by hash instead). They
 are never uploaded, shared or transmitted: the app opens no network connection,
 has no server, no accounts and no analytics.
 

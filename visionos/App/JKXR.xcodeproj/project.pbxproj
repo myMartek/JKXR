@@ -16,6 +16,7 @@
 		78CA5C5899D378FF4C88CE1D /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47635BCC2BCC1CC1C5751D4 /* ContentView.swift */; };
 		78D555D5C95FDB660899D176 /* libEGL.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 63D4B8E4A26A48D82F8DCE60 /* libEGL.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		84B1859DAB6D978E19FDDC56 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 9A6CAA3C243A1F831B8EC237 /* InfoPlist.strings */; };
+		865C43888C7B6CA9FAE9E36A /* DemoWelt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 459383A965334C7B186876B1 /* DemoWelt.swift */; };
 		8D3854770BF2383E1D7A9D46 /* z_vr_assets_jko.pk3 in Resources */ = {isa = PBXBuildFile; fileRef = 6EC6D290FF5C38BB4AE6F1E0 /* z_vr_assets_jko.pk3 */; };
 		AC868F8DEF90BEA3B0B633BF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FED42145EED052145A239D27 /* Assets.xcassets */; };
 		BCEEB8B7CE0E2A32AC9FF1E8 /* EngineHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06BB71B3A0F665691FF899FB /* EngineHost.swift */; };
@@ -45,6 +46,7 @@
 		12FC913F54114EA867076FDC /* JKXRApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JKXRApp.swift; sourceTree = "<group>"; };
 		33D840871EDE1EC635691BD3 /* AngleBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AngleBridge.h; sourceTree = "<group>"; };
 		40E4386F40A16FF2D112B627 /* WorldTracking.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WorldTracking.m; sourceTree = "<group>"; };
+		459383A965334C7B186876B1 /* DemoWelt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoWelt.swift; sourceTree = "<group>"; };
 		63D4B8E4A26A48D82F8DCE60 /* libEGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = libEGL.framework; path = Frameworks/libEGL.framework; sourceTree = "<group>"; };
 		6EC6D290FF5C38BB4AE6F1E0 /* z_vr_assets_jko.pk3 */ = {isa = PBXFileReference; path = z_vr_assets_jko.pk3; sourceTree = "<group>"; };
 		6F7B01FB19B5941154702D36 /* JKXR-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "JKXR-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -180,6 +182,7 @@
 			isa = PBXGroup;
 			children = (
 				E47635BCC2BCC1CC1C5751D4 /* ContentView.swift */,
+				459383A965334C7B186876B1 /* DemoWelt.swift */,
 				06BB71B3A0F665691FF899FB /* EngineHost.swift */,
 				12FC913F54114EA867076FDC /* JKXRApp.swift */,
 			);
@@ -291,6 +294,7 @@
 			files = (
 				40BC6F5041D521B791E3FE53 /* AngleBridge.c in Sources */,
 				78CA5C5899D378FF4C88CE1D /* ContentView.swift in Sources */,
+				865C43888C7B6CA9FAE9E36A /* DemoWelt.swift in Sources */,
 				BCEEB8B7CE0E2A32AC9FF1E8 /* EngineHost.swift in Sources */,
 				FE04998D8653339058EDA0AB /* JKXRApp.swift in Sources */,
 				D7D7EF00F6C052A3F2BCC96C /* SpielWahl.c in Sources */,
