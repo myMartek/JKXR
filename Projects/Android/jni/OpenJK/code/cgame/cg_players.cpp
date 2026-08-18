@@ -4445,21 +4445,7 @@ CG_PlayerCanSeeCent
 tests force sight level
 ===============
 */
-#if defined(JKXR_VISIONOS)
-// MESSPUNKT, wieder zu entfernen: eine zaehlende Huelle um die Sichtprobe.
-static qboolean CG_PlayerCanSeeCentIntern( centity_t *cent );
 qboolean CG_PlayerCanSeeCent( centity_t *cent )
-{
-	extern int jkxrSichtGefragt, jkxrSichtJa;
-	jkxrSichtGefragt++;
-	const qboolean ja = CG_PlayerCanSeeCentIntern( cent );
-	if ( ja ) jkxrSichtJa++;
-	return ja;
-}
-static qboolean CG_PlayerCanSeeCentIntern( centity_t *cent )
-#else
-qboolean CG_PlayerCanSeeCent( centity_t *cent )
-#endif
 {//return true if this cent is in view
 	//NOTE: this is similar to the func SV_PlayerCanSeeEnt in sv_snapshot
 	if ( (cent->currentState.eFlags&EF_FORCE_VISIBLE) )
@@ -4528,33 +4514,10 @@ Adds the special effect
 ===============
 */
 extern void CG_AddHealthBarEnt( int entNum );
-#if defined(JKXR_VISIONOS)
-// MESSPUNKT, wieder zu entfernen: wie viele Huellen je Bild entstehen und wie
-// oft der Sichtkegel gefragt wurde.
-int jkxrSichtHuellen = 0, jkxrSichtGefragt = 0, jkxrSichtJa = 0;
-#endif
 void CG_AddForceSightShell( refEntity_t *ent, centity_t *cent )
 {
-#if defined(JKXR_VISIONOS)
-	jkxrSichtHuellen++;
-#endif
 	ent->customShader = cgs.media.forceShell;
-	// RF_RGB_TINT SETZEN, nicht loeschen.
-	//
-	// Die Huelle erscheint, aber farblos: Marcel sieht die beweglichen Dinge
-	// durch die Wand, nur eben nicht gelb. Die Farbe unten in shaderRGBA wirkt
-	// naemlich nur, wenn der Shader sie ueberhaupt fragt -- und der hier
-	// benutzte tut es nicht. cg_weapons.cpp nimmt gfx/misc/forceprotect;
-	// powerups/forceshell steht direkt darueber auskommentiert, und
-	// powerups/sightshell wird zwei Zeilen weiter geladen und nirgends
-	// verwendet. Mit einem Ersatz-Shader bleibt das Loeschen dieser Fahne
-	// wirkungslos gegen nichts.
-	//
-	// Gesetzt erzwingt sie im Renderer CGEN_ENTITY (tr_shade.cpp) -- dann gilt
-	// shaderRGBA, egal was der Shader vorsieht. Das ist der Sinn der ganzen
-	// Faerberei hier unten: gelb fuer Beeinflussbares, blau fuer Markiertes,
-	// rot und gruen fuer Feind und Freund.
-	ent->renderfx |= RF_RGB_TINT;
+	ent->renderfx &= ~RF_RGB_TINT;
 	// See through walls.
 	ent->renderfx |= (RF_MORELIGHT|RF_NODEPTH);
 

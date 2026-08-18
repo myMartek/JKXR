@@ -307,7 +307,24 @@ void JKXR_visionOS_Ortho(GLfloat left, GLfloat right, GLfloat bottom,
 #define qglPixelZoom glPixelZoom
 #define qglPointSize glPointSize
 #define qglPolygonMode glPolygonMode
+#if defined(JKXR_VISIONOS)
+// Auch der Tiefenversatz gehoert zur Reversed-Z-Naht.
+//
+// r_offsetfactor und r_offsetunits stehen auf -1 und -2. Bei gewoehnlicher
+// Tiefe (0 nah, 1 fern) zieht das eine aufgeklebte Flaeche NACH VORN, damit
+// Zeichen, Einschusslocher und Symbole nicht mit der Wand dahinter streiten.
+// Bei umgekehrter Tiefe (1 nah, 0 fern) bedeutet dasselbe Vorzeichen "nach
+// hinten" -- die Flaeche sinkt in die Wand und faellt durch den Tiefentest.
+//
+// Sichtbar war das an den orangen Glyphen des Machtgespuers: rift.shader
+// setzt fuer sie polygonOffset, sie wurden nachweislich gezeichnet (gemessen
+// ueber SURF_FORCESIGHT) und waren trotzdem nicht da. Es betrifft aber jede
+// aufgeklebte Flaeche im Spiel, nicht nur diese.
+void JKXR_visionOS_PolygonOffset(GLfloat factor, GLfloat units);
+#define qglPolygonOffset JKXR_visionOS_PolygonOffset
+#else
 #define qglPolygonOffset glPolygonOffset
+#endif
 #define qglPolygonStipple glPolygonStipple
 #define qglPopAttrib glPopAttrib
 #define qglPopClientAttrib glPopClientAttrib

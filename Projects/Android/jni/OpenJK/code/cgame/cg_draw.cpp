@@ -3159,37 +3159,6 @@ Machtgespuer zeigt, WORAN man ueberhaupt etwas hat. Zwei Fassungen derselben
 Bedingung waeren zwei Fassungen zum Auseinanderlaufen.
 =================
 */
-/*
-=================
-CG_ForceReachDist
-
-Wie weit ist dieses Ding wirklich weg?
-
-Nicht ueber lerpOrigin: bei Brush-Entitaeten steht dort (0,0,0), und Raven hat
-den Unglauben darueber in CG_Ents als Kommentar hinterlassen ("FIXME: why are
-these always 0, 0, 0???!"). Gemessen wird deshalb zum naechsten Punkt des
-Koerpers -- was fuer eine Tuer oder eine lange Platte ohnehin richtiger ist als
-ein Mittelpunkt: nah genug zum Schieben heisst nah an der Platte, nicht nah an
-ihrer Mitte.
-=================
-*/
-float CG_ForceReachDist( const gentity_t *ent )
-{
-	if ( !ent )
-	{
-		return 1.0e9f;
-	}
-
-	vec3_t naechster;
-	for ( int i = 0; i < 3; i++ )
-	{
-		naechster[i] = cg.refdef.vieworg[i];
-		if ( naechster[i] < ent->absmin[i] )      naechster[i] = ent->absmin[i];
-		else if ( naechster[i] > ent->absmax[i] ) naechster[i] = ent->absmax[i];
-	}
-	return Distance( cg.refdef.vieworg, naechster );
-}
-
 qboolean CG_MoverIsForceUsable( gentity_t *ent, float dist )
 {
 	if ( !ent || !cg_entities[0].gent || !cg_entities[0].gent->client )
@@ -4445,44 +4414,6 @@ static void CG_Draw2D( void )
 		cg.drawingHUD = CG_HUD_SCALED;
 		CG_DrawHealthBars();
 
-#if defined(JKXR_VISIONOS)
-		// MESSPUNKT, wieder zu entfernen.
-		//
-		// Marcel vermisst die Markierung an beeinflussbaren Dingen. Die einzige
-		// Stelle, die waehrend Machtgespür etwas an Objekte zeichnet, ist
-		// CG_AddForceSightShell. Bleibt der Zaehler auf 0, wird sie gar nicht
-		// erst gerufen -- dann liegt es an den Bedingungen davor (Sichtkegel,
-		// Machtstufe, EF_FORCE_VISIBLE) und nicht am Zeichnen.
-		{
-			extern int jkxrSichtHuellen, jkxrSichtGefragt, jkxrSichtJa;
-			static int letzteMeldung = 0;
-			if ( cg.time - letzteMeldung > 1000 )
-			{
-				letzteMeldung = cg.time;
-
-				// Traegt ueberhaupt etwas in der Welt die Fahne, an der die
-				// Huelle fuer Bewegliches haengt? CG_Mover fragt nur danach,
-				// ohne Sichtkegel und ohne Machtstufe -- wenn hier 0 steht,
-				// kann dort nichts entstehen.
-				int mitFahne = 0, beweglich = 0;
-				for ( int i = 0; i < cg.snap->numEntities; i++ )
-				{
-					const entityState_t *es = &cg.snap->entities[i];
-					if ( es->eFlags & EF_FORCE_VISIBLE ) mitFahne++;
-					if ( es->eType == ET_MOVER ) beweglich++;
-				}
-
-				CG_Printf( "[Sicht] Stufe %d/%d · %d Huellen · %d von %d Sichtproben ja "
-					"· %d mit Fahne, %d beweglich · Versatz %.3f/%.3f\n",
-					g_entities[0].client ? g_entities[0].client->ps.forcePowerLevel[FP_SEE] : -1,
-					cg.snap->ps.forcePowerLevel[FP_SEE],
-					jkxrSichtHuellen, jkxrSichtJa, jkxrSichtGefragt,
-					mitFahne, beweglich,
-					vr->off_center_fov_x, vr->off_center_fov_y );
-			}
-			jkxrSichtHuellen = jkxrSichtGefragt = jkxrSichtJa = 0;
-		}
-#endif
 	}
 	else if ( cg_debugHealthBars.integer )
 	{

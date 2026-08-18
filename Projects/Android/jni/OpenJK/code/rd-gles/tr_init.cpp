@@ -1300,6 +1300,29 @@ void JKXR_visionOS_DepthFunc( GLenum func )
 }
 
 /*
+** JKXR_visionOS_PolygonOffset
+**
+** Das Vorzeichen umdrehen, solange in die Augen gezeichnet wird.
+**
+** Der Versatz schiebt eine aufgeklebte Flaeche um einen Tiefenbetrag, damit
+** sie nicht mit dem Untergrund streitet. Welche Richtung "naeher" ist, haengt
+** an der Tiefenachse -- und die steht bei uns auf dem Kopf. Ohne die Umkehr
+** sinkt jedes Zeichen, jedes Symbol, jedes Einschussloch in die Wand und
+** faellt durch den Tiefentest.
+**
+** Der Flachbild-Zwischenpuffer rechnet gewoehnlich, dort bleibt es, wie es ist
+** -- dieselbe Unterscheidung wie bei Tiefenfunktion, -bereich und Loeschwert.
+*/
+void JKXR_visionOS_PolygonOffset( GLfloat factor, GLfloat units )
+{
+	if ( JKXR_visionOS_FlatTarget() ) {
+		glPolygonOffset( factor, units );
+	} else {
+		glPolygonOffset( -factor, -units );
+	}
+}
+
+/*
 ** Der Tiefenbereich wird gespiegelt UND vertauscht: (n,f) -> (1-f, 1-n).
 **
 ** Nur so bleibt die Reihenfolge innerhalb des Bereichs erhalten:

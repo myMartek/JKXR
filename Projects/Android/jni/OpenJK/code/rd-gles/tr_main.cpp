@@ -1347,28 +1347,6 @@ void R_AddDrawSurf( const surfaceType_t *surface, const jk_shader_t *shader, int
 		fogIndex = tr.world->numfogs;
 	}
 
-#if defined(JKXR_VISIONOS)
-	// MESSPUNKT, wieder zu entfernen.
-	//
-	// Zaehlt, wie viele Flaechen nur mit Machtgespür sichtbar waeren und wie
-	// viele davon durchkommen. Beantwortet die Frage, ob RDF_ForceSightOn den
-	// Renderer ueberhaupt erreicht -- gesetzt wird es in cg_draw.cpp direkt vor
-	// cgi_R_RenderScene, aber ob es den Weg ueberlebt, ist bisher Annahme.
-	if ( shader->surfaceFlags & SURF_FORCESIGHT )
-	{
-		static int letzteMeldung = 0, gesehen = 0, verdeckt = 0;
-		gesehen++;
-		if ( !(tr.refdef.rdflags & RDF_ForceSightOn) ) verdeckt++;
-		if ( tr.refdef.time - letzteMeldung > 1000 )
-		{
-			letzteMeldung = tr.refdef.time;
-			ri.Printf( PRINT_ALL, "[Sicht] %d Machtflaechen, %d verdeckt · Fahne %d\n",
-				gesehen, verdeckt, (tr.refdef.rdflags & RDF_ForceSightOn) ? 1 : 0 );
-			gesehen = verdeckt = 0;
-		}
-	}
-#endif
-
 	if ( (shader->surfaceFlags & SURF_FORCESIGHT) && !(tr.refdef.rdflags & RDF_ForceSightOn) )
 	{	//if shader is only seen with ForceSight and we don't have ForceSight on, then don't draw
 		return;
