@@ -37,6 +37,17 @@ Projects/Android/.cxx/*
 # content", der Build laeuft trotzdem durch, und die App hat einfach kein
 # Programmsymbol.
 !visionos/App/Sources/Resources/Assets.xcassets/**/Contents.json
+# Und die oberste dazu: ** verlangt mindestens eine Ordnerebene, die
+# Contents.json direkt in Assets.xcassets faellt also durch die Regel darueber.
+!visionos/App/Sources/Resources/Assets.xcassets/Contents.json
+
+# Ebenso die Merkmalslisten von ANGLE.
+#
+# gen_features.py liegt daneben und erzeugt aus ihnen die autogen-Header, die
+# wir uebersetzen. Ohne die json ist der Generator ein Werkzeug ohne Werkstoff:
+# die Header liessen sich nicht neu erzeugen, und beim naechsten ANGLE-Stand
+# waere nicht nachzusehen, was sich geaendert hat.
+!spikes/s4-angle/angle-include/platform/*_features.json
 *.bin
 .gradle/*
 Projects/Android/.gradle/*
