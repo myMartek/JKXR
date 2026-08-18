@@ -2795,35 +2795,6 @@ static void CG_DrawCrosshair( vec3_t worldPoint )
 		x -= 320;//????
 		y -= 240;//????
 
-		// Die Bildmitte liegt nicht in der Mitte.
-		//
-		// CG_WorldCoordToScreenCoordFloat rechnet mit einem symmetrischen
-		// Sichtfeld: Blickachse durch 320/240, links so weit wie rechts. Im
-		// Headset stimmt das nicht -- die beiden Augen bekommen je einen
-		// schiefen Kegel. Das uebrige HUD zieht das in CG_AdjustFrom640 nach;
-		// dieses Fadenkreuz nicht, denn es geht mit cgi_R_DrawStretchPic direkt
-		// an der Anpassung vorbei.
-		//
-		// Waagerecht ist die Schiefe je Auge gespiegelt. Was fehlt, ist deshalb
-		// nicht bloss ein Versatz, sondern der Augenabstand des Fadenkreuzes.
-		//
-		// Den Betrag NICHT vom HUD borgen. CG_AdjustFrom640 rechnet
-		// off_center_fov mal 640 -- das ist eine Setzregel fuer eine flache
-		// Tafel, keine Umrechnung von Winkeln. Hier geht es um einen Punkt in
-		// der Welt, und der muss durch dieselbe Abbildung wie die Rechnung
-		// darueber: ein Winkel wird ueber seinen Tangens, geteilt durch den
-		// Tangens des halben Sichtfelds, zu einem Abstand von der Mitte. Mit
-		// den gemessenen 0,131 sind das 24 Einheiten statt 84 -- der geborgte
-		// Betrag schoss um das Dreieinhalbfache ueber die Deckung hinaus, und
-		// aus zu wenig Augenabstand wurde zu viel: linkes Auge weit links,
-		// rechtes weit rechts, nicht mehr zu verschmelzen.
-		if ( (!vr->cin_camera || vr->immersive_cinematics) && !vr->using_screen_layer )
-		{
-			const float px = tan( cg.refdef.fov_x * (M_PI/360.0f) );
-			const float py = tan( cg.refdef.fov_y * (M_PI/360.0f) );
-			if ( px > 0.0f ) x += 320.0f * tanf( vr->off_center_fov_x ) / px;
-			if ( py > 0.0f ) y -= 240.0f * tanf( vr->off_center_fov_y ) / py;
-		}
 	}
 	else
 	{
@@ -3041,7 +3012,20 @@ static void CG_DrawCrosshair3D(int type) // 0 - force, 1 - weapons
 		return;
 	}
 
-	if ( type == 1 && (cg.snap->ps.weapon == WP_NONE ||
+	// Sitze ich an einem ferngesteuerten Geschuetz?
+	//
+	// Direkt aus dem Zustand statt ueber vr->remote_turret: das wird an anderer
+	// Stelle gesetzt, und die Reihenfolge waere hier nur zu hoffen.
+	const qboolean amGeschuetz = (qboolean)(
+		cg.snap->ps.viewEntity > 0 && cg.snap->ps.viewEntity < ENTITYNUM_WORLD
+		&& !Q_stricmp( "misc_panel_turret", g_entities[cg.snap->ps.viewEntity].classname ) );
+
+	if ( type == 0 && amGeschuetz )
+	{//am Geschuetz gibt es keine Machtkraefte
+		return;
+	}
+
+	if ( type == 1 && !amGeschuetz && (cg.snap->ps.weapon == WP_NONE ||
 					   cg.snap->ps.weapon == WP_SABER ||
 					   cg.snap->ps.weapon == WP_MELEE ||
 					   cg.snap->ps.weapon == WP_THERMAL ))
@@ -3080,6 +3064,20 @@ static void CG_DrawCrosshair3D(int type) // 0 - force, 1 - weapons
 	if (type == 0)
 	{
 		BG_CalculateVROffHandPosition(origin, weaponangles);
+	}
+	else if (amGeschuetz)
+	{
+		// Genau der Strahl, an dem das Spiel selbst den Einschlag festmacht:
+		// von der Muendung entlang der Blickwinkel des Spielers, wie in
+		// CG_ScanForCrosshairEntity. Frueher wurde das Ergebnis flach in die
+		// 640x480-Flaeche gerechnet und als Bild gesetzt -- das kann die Tiefe
+		// nicht treffen. Als Sprite an der getroffenen Stelle stellt sich die
+		// Frage nicht mehr: beide Augen sehen denselben Punkt der Welt.
+		extern void CalcMuzzlePoint( gentity_t *const ent, vec3_t forward, vec3_t right, vec3_t up, vec3_t muzzlePoint, float lead_in );
+		vec3_t d_f, d_rt, d_up;
+		VectorCopy(cg_entities[0].lerpAngles, weaponangles);
+		AngleVectors(weaponangles, d_f, d_rt, d_up);
+		CalcMuzzlePoint( &g_entities[0], d_f, d_rt, d_up, origin, 0 );
 	}
 	else
 	{
@@ -3383,11 +3381,8 @@ static void CG_ScanForCrosshairEntity( qboolean scanAll )
 		return;
 	}
 */
-	//draw crosshair at endpoint
-	if (vr->remote_turret)
-	{
-		CG_DrawCrosshair(trace.endpos);
-	}
+	// Das Fadenkreuz am Geschuetz zeichnet CG_DrawCrosshair3D als Sprite im
+	// Raum. Der flache Weg von hier aus traf die Tiefe nicht.
 
 	g_crosshairEntNum = trace.entityNum;
 	g_crosshairEntDist = 4096*trace.fraction;
