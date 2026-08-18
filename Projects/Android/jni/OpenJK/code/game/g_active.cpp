@@ -4371,8 +4371,23 @@ void G_StartCinematicSkip( void )
 	// uebersprungen. Es gibt genau ZWEI Aufrufer -- ClientCinematicThink (eine
 	// frische +use-Flanke des Spielers) und Svcmd_ExitView_f (das Kommando
 	// "exitview"). Welcher es ist, war bisher nicht zu sehen.
-	Com_Printf( "[Zeitraffer] G_StartCinematicSkip · in_camera %d\n",
+	Com_Printf( "[Zeitraffer] G_StartCinematicSkip · in_camera %d · ABGESCHALTET\n",
 		in_camera ? 1 : 0 );
+
+	// PROBEWEISE ABGESCHALTET.
+	//
+	// Der Messpunkt zeigt, dass der Zeitraffer ausgeloest wird, und mangels der
+	// Meldung des Kommandowegs kommt er aus ClientCinematicThink -- also aus
+	// einer frischen Druckflanke von BUTTON_USE (g_active.cpp:1840).
+	//
+	// Bevor daran etwas geaendert wird, die Halbierung: laeuft die Kamerafahrt
+	// mit abgeschaltetem Zeitraffer vollstaendig durch, ist dieser Zweig
+	// nachweislich die Ursache. Laeuft sie trotzdem nicht, liegt es woanders und
+	// die ganze Richtung ist ausgeraeumt.
+	//
+	// Kosten in dieser Fassung: gescriptete Kamerafahrten lassen sich nicht mehr
+	// ueberspringen. Nur zum Ausprobieren.
+	return;
 #endif
 
 	if (cinematicSkipScript[0])
