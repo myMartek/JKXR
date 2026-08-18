@@ -86,9 +86,44 @@ partial_link() {
     local out="$1" symbole="$2"
     shift 2
     local name="$(basename "$out" .o)"
+
+    # Platzhalter gegen die tatsächlich DEFINIERTEN Symbole auflösen, nicht
+    # wörtlich in die Exportliste schreiben.
+    #
+    # -exported_symbols_list verlangt, dass jeder Name darin definiert ist.
+    # "TBXR_*" trifft aber auch TBXR_visionOS_GetWorldTracking und
+    # TBXR_visionOS_GetSpatialDevice — die liefert erst die App-Seite
+    # (WorldTracking.m), hier sind sie bloß referenziert. Der Linker versucht
+    # sie dann aufzulösen und bricht ab:
+    #
+    #     Undefined symbols for architecture arm64:
+    #       "_TBXR_visionOS_GetWorldTracking", referenced from: ...
+    #
+    # Das fiel monatelang nicht auf, weil es vom Linker abhängt: ld-27034 aus
+    # dem Xcode-Beta duldet es, das ld-1267 des freigegebenen Xcode nicht — und
+    # auf dem Runner steht letzteres. Ein Fehler, der nur in der Pipeline
+    # auftritt und auf dem Entwicklungsrechner nie.
+    #
+    # Undefinierte Symbole aus der Liste zu lassen ist dabei nicht bloß der
+    # Ausweg, sondern das Richtige: die Liste entscheidet, welche DEFINIERTEN
+    # Symbole global bleiben. Undefinierte kann sie ohnehin nicht verbergen, sie
+    # müssen global bleiben, damit der App-Link sie auflöst.
+    local definiert
+    definiert="$(xcrun nm -g "$@" 2>/dev/null | awk '$1!="U" && $2!="U" {print $3}' | sort -u)"
+
     : > "$WORK/$name.syms"
     for symbol in $symbole; do
-        echo "_$symbol" >> "$WORK/$name.syms"
+        case "$symbol" in
+            *"*"*)
+                while IFS= read -r gefunden; do
+                    [ -n "$gefunden" ] || continue
+                    case "${gefunden#_}" in
+                        $symbol) echo "$gefunden" >> "$WORK/$name.syms";;
+                    esac
+                done <<< "$definiert"
+                ;;
+            *)  echo "_$symbol" >> "$WORK/$name.syms";;
+        esac
     done
 
     # Archive vollständig laden, Objekte einfach anhängen. Ohne -all_load nimmt

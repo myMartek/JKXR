@@ -91,6 +91,10 @@ variables:
     expire_in: 14 days
     paths:
       - fastlane/report.xml
+      # Die Übersetzungsprotokolle. Das Auftragsprotokoll zeigt nur noch die
+      # Fehlerzeilen (siehe "leise" in prepare-visionos.sh); wer mehr braucht,
+      # holt sie hier.
+      - build-visionos/*.log
 
 deploy:visionos:
   extends: .mac

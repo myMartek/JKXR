@@ -34,6 +34,30 @@ command -v xcodegen >/dev/null 2>&1 || fail "xcodegen fehlt: brew install xcodeg
 
 JOBS="$(sysctl -n hw.ncpu 2>/dev/null || echo 8)"
 
+# Übersetzen mit gedämpfter Ausgabe.
+#
+# Die beiden Engines sind rund 600 Quelldateien aus den frühen 2000ern und
+# erzeugen ein Vielfaches an Warnungen. Ungefiltert waren das vier Megabyte je
+# Lauf -- GitLab schneidet das Auftragsprotokoll bei 4 MB ab, und zwar
+# ausgerechnet vor der Fehlermeldung. Ein gescheiterter Lauf war damit nicht
+# mehr zu lesen.
+#
+# Vollständig bleibt alles in der Datei; sie ist ein CI-Artefakt.
+leise() {
+    local was="$1" log="$ROOT/build-visionos/$2.log"
+    shift 2
+    mkdir -p "$ROOT/build-visionos"
+    if "$@" > "$log" 2>&1; then
+        say "$was: $(grep -c 'warning:' "$log" || true) Warnungen, protokolliert in ${log#$ROOT/}"
+    else
+        printf '\033[1;31m%s scheiterte.\033[0m Fehler:\n' "$was" >&2
+        grep -E "error:|Error [0-9]" "$log" | grep -v "note:" | head -20 >&2
+        echo "--- letzte 40 Zeilen von ${log#$ROOT/}:" >&2
+        tail -40 "$log" >&2
+        exit 1
+    fi
+}
+
 # --- 1. gl4es ---------------------------------------------------------------
 #
 # Der Desktop-GL-Emulator, ueber den der Renderer laeuft. Sein Bauergebnis ist
@@ -63,7 +87,7 @@ if [ ! -f build-visionos/gl4es/lib/libGL.a ]; then
         -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=26.4 \
         -DNOX11=ON -DNOEGL=ON -DSTATICLIB=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         -DCMAKE_C_FLAGS="-U__ARM_NEON__ -U__ARM_NEON"
-    cmake --build build-visionos/gl4es -j"$JOBS"
+    leise "gl4es" gl4es-build cmake --build build-visionos/gl4es -j"$JOBS"
 
     python3 patch-gl4es-darwin.py Projects/Android/jni/SupportLibs/gl4es \
         build-visionos/gl4es-aliases.txt build-visionos/gl4es/lib/libGL.a
@@ -79,7 +103,7 @@ say "Engine uebersetzen (Outcast und Academy)"
 cmake -S visionos -B visionos/build -DBUILD_ENGINE=ON \
     -DCMAKE_SYSTEM_NAME=visionOS -DCMAKE_OSX_SYSROOT=xros \
     -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=26.4
-cmake --build visionos/build -j"$JOBS"
+leise "Engine" engine-build cmake --build visionos/build -j"$JOBS"
 
 # --- 3. Teil-Link -----------------------------------------------------------
 #
