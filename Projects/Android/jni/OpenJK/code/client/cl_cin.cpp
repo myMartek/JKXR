@@ -2258,6 +2258,31 @@ void SCR_RunCinematic (void)
 	CL_CheckPendingCinematic();
 
 	if (CL_handle >= 0 && CL_handle < MAX_VIDEO_HANDLES) {
+#if defined(JKXR_VISIONOS)
+		// Die Pause halten, solange die Sequenz laeuft.
+		//
+		// PlayCinematic setzt cl_paused einmal, und der Kommentar dort weiss
+		// bereits, dass etwas sie wieder aufhebt: "remove-menu call will have
+		// unpaused us, so we sometimes need to re-pause". Bei uns kommt dieses
+		// Aufheben NACH dem Setzen -- gemessen:
+		//
+		//     [Pause] nach dem Setzen: cl_paused 1
+		//     [Kartenwechsel] cl_paused 0 · sv_paused 1
+		//
+		// Ohne die Pause laeuft der Server weiter (SV_CheckPaused), das Skript
+		// wechselt die Karte, und die Sequenz ist nach rund hundert
+		// Millisekunden weg. Genau so war es zu sehen: kurz sichtbar, dann der
+		// Ladeschirm.
+		//
+		// Einmal zu setzen und zu hoffen genuegt also nicht -- wer aufhebt, tut
+		// es irgendwann danach. Die laufende Sequenz besitzt die Pause und
+		// behaelt sie, bis sie endet; SCR_StopCinematic gibt sie unten wieder
+		// frei.
+		if ( CL_IsRunningInGameCinematic()
+			&& !Cvar_VariableIntegerValue( "cl_paused" ) ) {
+			Cvar_SetValue( "cl_paused", 1 );
+		}
+#endif
 		e_status Status = CIN_RunCinematic(CL_handle);
 
 		if (CL_IsRunningInGameCinematic() && Status == FMV_IDLE  && !cinTable[CL_handle].holdAtEnd)
