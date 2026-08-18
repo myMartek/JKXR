@@ -1700,6 +1700,32 @@ void R_SetColorMappings( void ) {
 		} else {
 			inf = 255 * pow ( i/255.0f, 1.0f / g ) + 0.5f;
 		}
+#if defined(JKXR_VISIONOS)
+		// sRGB nach linear, weil der Compositor lineares Licht erwartet.
+		//
+		// Die Augentextur ist rgba16Float und wird als LINEARES Extended-Range-
+		// Licht gelesen (JKXRApp.swift). Die Engine schreibt aber die ueblichen
+		// sRGB-kodierten Werte hinein, und niemand rechnet dazwischen um. Ein
+		// Mittelwert von 0,5 bedeutet in sRGB rund 22 Prozent Licht, wird hier
+		// aber als 50 Prozent angezeigt: alles hellt auf, Schatten heben sich an,
+		// der Kontrast faellt zusammen.
+		//
+		// Genau so sah es aus -- "als waere alles einheitlich global
+		// beleuchtet". Und es erklaert, weshalb die Helligkeit auf Minimum half:
+		// r_gamma ist bei 0,5 abgeriegelt, das entspricht einem Exponenten von
+		// 2,0 und damit ungefaehr dieser Kurve. Die Helligkeitsschraube diente
+		// also als Notkorrektur fuer etwas, das hier hingehoert.
+		//
+		// Umgerechnet wird NACH r_gamma, damit die Schraube ihre gewohnte
+		// Wirkung behaelt und um einen richtigen Grundzustand herum regelt.
+		{
+			const float c = inf / 255.0f;
+			const float lin = ( c <= 0.04045f )
+				? ( c / 12.92f )
+				: powf( ( c + 0.055f ) / 1.055f, 2.4f );
+			inf = (int)( 255.0f * lin + 0.5f );
+		}
+#endif
 		inf <<= shift;
 		if (inf < 0) {
 			inf = 0;
