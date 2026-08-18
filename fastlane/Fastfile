@@ -383,6 +383,17 @@ METADATA_LIMITS = {
   "release_notes" => 4000
 }.freeze
 
+# UTF-8 ausdruecklich, ueberall wo hier eine Datei gelesen wird.
+#
+# File.read nimmt sonst die Kodierung der Locale, und ohne gesetztes LANG ist
+# das US-ASCII. Der erste deutsche Umlaut laesst dann nicht etwa das Lesen
+# scheitern, sondern erst das darauffolgende strip:
+#
+#     invalid byte sequence in US-ASCII (Encoding::CompatibilityError)
+#
+# In der Pipeline faellt das nicht auf, weil .gitlab-ci.yml LANG und LC_ALL auf
+# en_US.UTF-8 setzt -- auf einer Kommandozeile ohne das aber sofort. Von der
+# Umgebung abzuhaengen ist hier ohnehin unnoetig: die Dateien SIND UTF-8.
 def check_metadata_lengths
   too_long = []
   Dir[File.join(PROJECT_ROOT, "fastlane/metadata/*/*.txt")].sort.each do |path|
@@ -390,7 +401,7 @@ def check_metadata_lengths
     next if limit.nil?
     # Codepoints, denn so zaehlt Apple -- ein Gedankenstrich ist ein Zeichen,
     # String#bytesize waeren drei.
-    length = File.read(path).strip.length
+    length = File.read(path, encoding: "UTF-8").strip.length
     next if length <= limit
     locale = File.basename(File.dirname(path))
     too_long << "#{locale}/#{File.basename(path)}: #{length} Zeichen, erlaubt sind #{limit}"
@@ -488,7 +499,7 @@ def testflight_notes
   Dir.children(root).sort.each_with_object({}) do |locale, out|
     path = File.join(root, locale, "testflight_whats_new.txt")
     next unless File.exist?(path)
-    text = File.read(path).strip
+    text = File.read(path, encoding: "UTF-8").strip
     next if text.empty?
     if text.length > BETA_DESCRIPTION_LIMIT
       UI.user_error!("Die #{locale}-TestFlight-Notiz hat #{text.length} " \
@@ -522,7 +533,7 @@ def beta_app_localizations(feedback_email)
   end
 
   locales.sort.to_h do |locale|
-    text = File.read(File.join(root, locale, "description.txt")).strip
+    text = File.read(File.join(root, locale, "description.txt"), encoding: "UTF-8").strip
     if text.length > BETA_DESCRIPTION_LIMIT
       UI.user_error!("Die #{locale}-Beschreibung hat #{text.length} Zeichen; " \
                      "App Store Connect nimmt #{BETA_DESCRIPTION_LIMIT}.")
@@ -562,7 +573,7 @@ def review_contact
   end
 
   notes = File.join(PROJECT_ROOT, "fastlane/metadata/review_information/notes.txt")
-  contact[:notes] = File.read(notes).strip if File.exist?(notes)
+  contact[:notes] = File.read(notes, encoding: "UTF-8").strip if File.exist?(notes)
   contact
 end
 
