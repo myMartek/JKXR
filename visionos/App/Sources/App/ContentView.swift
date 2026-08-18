@@ -48,6 +48,21 @@ enum Spiel: Int32, CaseIterable, Identifiable {
         }
     }
 
+    /// Dasselbe auf Englisch, fuer die Datei im Ordner.
+    ///
+    /// Das Fenster spricht Deutsch, weil Marcel es liest. Die Datei im
+    /// Dokumentenverzeichnis liest, wer die App aus TestFlight bekommt -- und
+    /// von denen spricht nicht jeder Deutsch.
+    var requiredFilesEnglish: String {
+        switch self {
+        case .academy:
+            return "assets0.pk3 through assets3.pk3 from a Jedi Academy installation."
+        case .outcast:
+            return "assets0.pk3, assets1.pk3, assets2.pk3 and assets5.pk3 from a "
+                 + "Jedi Outcast installation."
+        }
+    }
+
     /// Die Dateien, die die App selbst mitbringt.
     ///
     /// z_vr_assets_base.pk3 ist fuer beide Spiele dieselbe (gleiche
@@ -309,27 +324,35 @@ enum AssetStore {
                                     withIntermediateDirectories: true)
             legeMitgelieferteAb(spiel)
 
-            let readme = documentsDirectory
-                .appendingPathComponent(spiel.ordner)
-                .appendingPathComponent("ANLEITUNG.txt")
+            // Englisch, und README statt ANLEITUNG.
+            //
+            // Diese Datei liest, wer die App aus TestFlight bekommt, und von
+            // denen spricht nicht jeder Deutsch. Das Fenster der App bleibt
+            // deutsch -- es ist eine andere Leserschaft.
+            let spielOrdner = documentsDirectory.appendingPathComponent(spiel.ordner)
+            let readme = spielOrdner.appendingPathComponent("README.txt")
+
+            // Die deutsche Vorgaengerin wegraeumen, sonst stehen zwei
+            // Anleitungen nebeneinander und die aeltere ist die falsche.
+            try? fm.removeItem(at: spielOrdner.appendingPathComponent("ANLEITUNG.txt"))
+
             if !fm.fileExists(atPath: readme.path) {
                 let text = """
-                Jedi Knight XR — Spieldateien fuer \(spiel.name)
+                Jedi Knight XR — game files for \(spiel.name)
 
-                In den Ordner "base" gehoeren:
+                Copy these into the "base" folder:
 
-                \(spiel.erwarteteDateien)
+                \(spiel.requiredFilesEnglish)
 
-                Sie lassen sich hier hineinkopieren oder im Fenster der App
-                ueber "Dateien auswaehlen" einlesen.
+                They come from your own copy of the game. Put them here with the
+                Files app, or use "Dateien auswählen" in the app window.
 
-                Die z_vr_assets-Dateien muessen NICHT besorgt werden: sie
-                gehoeren zum Port, liegen in der App und werden beim Start
-                selbst hier abgelegt.
+                You do NOT need the z_vr_assets files. They belong to the VR port,
+                ship inside the app, and are placed here automatically on launch.
 
-                Spielstaende und Konfiguration liegen NICHT hier, sondern unter
-                Library/Application Support (OpenJK fuer Academy, OpenJO fuer
-                Outcast). Beide Spiele halten sie getrennt.
+                Saved games and settings are NOT stored here. They live under
+                Library/Application Support — OpenJK for Academy, OpenJO for
+                Outcast. The two games keep them apart.
                 """
                 try? text.write(to: readme, atomically: true, encoding: .utf8)
             }
