@@ -3701,6 +3701,17 @@ static void CG_G2SetHeadBlink( centity_t *cent, qboolean bStart )
 			blendTime /=3;
 		}
 	}
+#if defined(JKXR_VISIONOS)
+	// MESSPUNKT, wieder zu entfernen. Jeder Lidschlag, mit Richtung -- das
+	// Zumachen und das Aufmachen sind zwei getrennte Aufrufe, und wenn nur
+	// einer davon kommt, steht hier die Antwort.
+	if ( in_camera )
+	{
+		CG_Printf( "[Gesicht] Lid %s · Nr %d · leye %d · Modell %d · Zeit %d\n",
+			bStart ? "zu " : "auf", cent->currentState.number,
+			hLeye, gent->playerModel, cg.time );
+	}
+#endif
 	gi.G2API_SetBoneAnglesIndex( &gent->ghoul2[gent->playerModel], hLeye, desiredAngles,
 		BONE_ANGLES_POSTMULT, POSITIVE_Y, POSITIVE_Z, POSITIVE_X, NULL, blendTime, cg.time );
 	const int hReye = gi.G2API_GetBoneIndex( &gent->ghoul2[0], "reye", qtrue );
@@ -3889,9 +3900,9 @@ qboolean CG_G2PlayerHeadAnims( centity_t *cent )
 		if ( cg.time - letzteMeldung > 1000 )
 		{
 			letzteMeldung = cg.time;
-			CG_Printf( "[Gesicht] Knochen · Nr %d · Gesundheit %d · Blinzeln %d · Stimme %d · anim %d\n",
+			CG_Printf( "[Gesicht] Knochen · Nr %d · Gesundheit %d · Blinzeln %.0f · Zeit %d · Stimme %d · anim %d\n",
 				cent->currentState.number, cent->gent->health,
-				cent->gent->client->facial_blink,
+				cent->gent->client->facial_blink, cg.time,
 				gi.VoiceVolume[cent->gent->s.clientNum], anim );
 		}
 	}
@@ -4056,7 +4067,7 @@ int CG_PlayerHeadExtension( centity_t *cent, refEntity_t *head )
 			if ( cg.time - letzteMeldung > 1000 )
 			{
 				letzteMeldung = cg.time;
-				CG_Printf( "[Gesicht] Haut · Nr %d · Gesundheit %d · Blinzeln %d · Stimme %d · Zuschlag %d\n",
+				CG_Printf( "[Gesicht] Haut · Nr %d · Gesundheit %d · Blinzeln %.0f · Stimme %d · Zuschlag %d\n",
 					cent->currentState.number, cent->gent->health,
 					cent->gent->client->facial_blink,
 					gi.VoiceVolume[cent->gent->s.clientNum], add_in );
