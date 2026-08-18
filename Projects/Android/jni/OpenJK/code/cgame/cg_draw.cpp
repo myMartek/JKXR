@@ -2794,6 +2794,28 @@ static void CG_DrawCrosshair( vec3_t worldPoint )
 		}
 		x -= 320;//????
 		y -= 240;//????
+
+		// Die Bildmitte liegt nicht in der Mitte.
+		//
+		// CG_WorldCoordToScreenCoordFloat rechnet mit einem symmetrischen
+		// Sichtfeld: Blickachse durch 320/240, links so weit wie rechts. Im
+		// Headset stimmt das nicht -- die beiden Augen bekommen je einen
+		// schiefen Kegel, gemessen 0,131 waagerecht und 0,044 senkrecht. Das
+		// uebrige HUD zieht das in CG_AdjustFrom640 nach; dieses Fadenkreuz
+		// nicht, denn es geht mit cgi_R_DrawStretchPic direkt an der Anpassung
+		// vorbei.
+		//
+		// Waagerecht ist die Schiefe je Auge gespiegelt. Was fehlt, ist deshalb
+		// nicht bloss ein Versatz, sondern der Augenabstand des Fadenkreuzes --
+		// es steht in beiden Augen an derselben Stelle und schwebt damit in
+		// einer Tiefe, die nichts mit dem Einschlag zu tun hat. Senkrecht ist
+		// die Schiefe fuer beide gleich und schiebt es schlicht nach unten.
+		// Genau beides hat Marcel am Geschuetz beschrieben.
+		if ( (!vr->cin_camera || vr->immersive_cinematics) && !vr->using_screen_layer )
+		{
+			x += vr->off_center_fov_x * 640.0f;
+			y -= vr->off_center_fov_y * 480.0f;
+		}
 	}
 	else
 	{
