@@ -1,0 +1,17 @@
+First build for Apple Vision Pro.
+
+WHAT TO TRY
+
+• Both titles: pick one in the launcher window, then "Play". Each has its own
+  data folder, so both can be set up side by side.
+• Game files: use "Choose files…" or copy them into the folder that "Open in
+  Files" opens for you. The window names the files it is still missing.
+• Motion control: swing, block and aim with the Sense controllers. Watch whether
+  the blade sits where your hand actually is.
+• Look around: lean, duck, step. Report anything that swims, doubles or lags
+  behind your head.
+• Menus and cut-scenes should stand still in the room while you move your head.
+
+WHAT WE KNOW
+
+Long level loads can take a while — the window stays black meanwhile.

@@ -145,7 +145,7 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Text("Jedi Knight XR")
+            Text("JKXR")
                 .font(.largeTitle)
 
             // Die Auswahl steht ganz oben und nicht neben dem Spielen-Knopf:
@@ -374,7 +374,7 @@ enum AssetStore {
 
             if !fm.fileExists(atPath: readme.path) {
                 let text = """
-                Jedi Knight XR — game files for \(spiel.name)
+                JKXR — game files for \(spiel.name)
 
                 Copy these into the "base" folder:
 

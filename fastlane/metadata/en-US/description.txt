@@ -1,0 +1,30 @@
+JKXR is an open-source engine port that brings two first-person action classics of the early 2000s (SW:JK) to Apple Vision Pro — not a window you look at, but a world you stand in.
+
+BUILT FOR THE HEADSET
+
+• Rendered per eye from the live head pose, foveated at the full resolution of the device rather than into a downscaled buffer.
+• Room-scale: you aim by pointing, lean around corners, and duck under things that are actually above you.
+• The melee weapon follows your hand one to one — angle, reach and swing come from where you are really holding the controller, and blocking is a matter of putting the blade in the way.
+• Menus, briefings and cut-scenes sit on a panel anchored in the room instead of being pinned to your face.
+
+CONTROLS
+
+The PlayStation VR2 Sense controllers are tracked individually, each with its own position, orientation and handedness. Ordinary MFi and PlayStation gamepads work too, for a seated session without motion control.
+
+TWO GAMES IN ONE APP
+
+Both titles are built in, each as a complete engine of its own, and the launcher window is where you pick one. Each keeps its own data folder and its own saves, so the two never get in each other's way.
+
+YOU SUPPLY THE GAME DATA
+
+This app contains no game content. It is a port of an open-source engine (OpenJK, by way of JKXR) and it needs the data files of the PC release you own. You copy them in yourself — through the Files app or the app's own file picker — and the app tells you exactly which files it is missing.
+
+Nothing is downloaded, offered or shared. The files are yours, they stay on your device, and the app opens no network connection to do anything with them.
+
+What the app does ship is the VR add-on package the open-source project made itself: the hand-held weapon models and the VR-specific assets that motion control needs.
+
+PRIVACY
+
+No accounts, no network services, no tracking, no analytics, no data collection of any kind.
+
+Not affiliated with, endorsed by, or connected to the rights holders of the original games. All trademarks are the property of their respective owners.

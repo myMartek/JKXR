@@ -1,0 +1,30 @@
+JKXR ist eine quelloffene Engine-Portierung und bringt zwei Ego-Action-Klassiker der frühen 2000er (SW:JK) auf die Apple Vision Pro — kein Fenster, in das man schaut, sondern eine Welt, in der man steht.
+
+FÜR DAS HEADSET GEBAUT
+
+• Je Auge aus der aktuellen Kopfhaltung gerechnet, foveiert in der vollen Auflösung des Geräts statt in einen verkleinerten Puffer.
+• Im Raum: du zielst, indem du hinzeigst, lehnst dich um Ecken und duckst dich unter Dinge, die tatsächlich über dir sind.
+• Die Nahkampfwaffe folgt deiner Hand eins zu eins — Winkel, Reichweite und Schwung kommen daher, wo du den Controller wirklich hältst, und Abwehren heißt, die Klinge dazwischen zu halten.
+• Menüs, Einsatzbesprechungen und Zwischensequenzen stehen auf einer im Raum verankerten Fläche, statt vor dem Gesicht zu kleben.
+
+STEUERUNG
+
+Die PlayStation-VR2-Sense-Controller werden einzeln verfolgt, jeder mit eigener Position, Ausrichtung und Händigkeit. Gewöhnliche MFi- und PlayStation-Gamepads gehen ebenfalls, für eine Sitzung im Sitzen ohne Bewegungssteuerung.
+
+ZWEI SPIELE IN EINER APP
+
+Beide Titel sind eingebaut, jeder als vollständige eigene Engine, und im Startfenster wählst du aus. Jeder bekommt seinen eigenen Datenordner und seine eigenen Spielstände, sie kommen sich also nie in die Quere.
+
+DIE SPIELDATEIEN BRINGST DU MIT
+
+Diese App enthält keinerlei Spielinhalte. Sie ist die Portierung einer quelloffenen Engine (OpenJK, über JKXR) und braucht die Datendateien der PC-Fassung, die dir gehört. Du kopierst sie selbst hinein — über die Dateien-App oder die Dateiauswahl der App — und das Fenster sagt dir genau, welche Datei noch fehlt.
+
+Nichts wird heruntergeladen, angeboten oder weitergegeben. Die Dateien gehören dir, sie bleiben auf deinem Gerät, und die App öffnet dafür keine Netzverbindung.
+
+Mitgeliefert wird allein das VR-Zusatzpaket, das das quelloffene Projekt selbst erstellt hat: die Modelle der in der Hand gehaltenen Waffen und die VR-eigenen Daten, die die Bewegungssteuerung braucht.
+
+DATENSCHUTZ
+
+Keine Konten, keine Netzdienste, keine Verfolgung, keine Auswertung, keinerlei Datenerhebung.
+
+Weder verbunden mit noch unterstützt von den Rechteinhabern der ursprünglichen Spiele. Alle Marken gehören ihren jeweiligen Inhabern.

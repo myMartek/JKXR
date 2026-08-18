@@ -1,0 +1,7 @@
+First release for Apple Vision Pro.
+
+• Both titles in one app, chosen in the launcher window
+• Per-eye rendering with foveation at the full resolution of the device
+• PlayStation VR2 Sense controllers tracked individually, with hand-following melee
+• Menus and cut-scenes on a panel anchored in the room
+• Game files imported through the Files app or the app's own picker

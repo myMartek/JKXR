@@ -324,3 +324,14 @@ spikes/*/DerivedData/
 spikes/s4-angle/angle/
 spikes/s4-angle/depot_tools/
 spikes/s4-angle/reference/
+
+# --- Veroeffentlichung (fastlane) ------------------------------------------
+# Zugangsdaten. Der App-Store-Connect-Schluessel, das match-Passwort und eine
+# private Rufnummer. Gehoert in die CI-Variablen, nicht hierher.
+.env.local
+# Gems, Archive und fastlanes eigene Ausgaben -- alles reproduzierbar.
+vendor/bundle/
+/build/
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/test_output/

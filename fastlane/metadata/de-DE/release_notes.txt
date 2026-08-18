@@ -1,0 +1,7 @@
+Erste Fassung für die Apple Vision Pro.
+
+• Beide Titel in einer App, Auswahl im Startfenster
+• Rechnung je Auge, foveiert in der vollen Auflösung des Geräts
+• PlayStation-VR2-Sense-Controller einzeln verfolgt, Nahkampf folgt der Hand
+• Menüs und Zwischensequenzen auf einer im Raum verankerten Fläche
+• Spieldateien über die Dateien-App oder die Dateiauswahl der App

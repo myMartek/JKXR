@@ -46,7 +46,24 @@
 	    Nutzer, was die Suche zusätzlich in die Irre führt.
 	-->
 	<key>NSAccessoryTrackingUsageDescription</key>
-	<string>Jedi Knight XR tracks your controllers so that your hands appear in the game where you are actually holding them.</string>
+	<string>JKXR tracks your controllers so that your hands appear in the game where you are actually holding them.</string>
+
+	<!--
+	    Keine nicht-ausgenommene Verschluesselung.
+
+	    Ohne diesen Schluessel fragt App Store Connect bei JEDEM Build nach,
+	    und der Build bleibt so lange liegen -- eine Pipeline laeuft dann gruen
+	    durch und niemand bekommt die Fassung, weil sie auf eine Antwort
+	    wartet, die nur von Hand kommt.
+
+	    "false" ist hier richtig und nicht bloss bequem: die App oeffnet keine
+	    Netzverbindung, hat keine Konten und verschluesselt selbst nichts. Was
+	    an Verschluesselung vorkommt, ist die des Betriebssystems (HTTPS im
+	    System, Dateisystemschutz) -- und die ist von der Ausfuhrregelung
+	    ausdruecklich ausgenommen.
+	-->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 
 	<key>UIFileSharingEnabled</key>
 	<true/>

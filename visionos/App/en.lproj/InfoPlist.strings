@@ -1,6 +1,6 @@
 /* Shown when the app asks for accessory tracking. Without it the accessory
    provider is denied and ar_session_run fails. */
-"NSAccessoryTrackingUsageDescription" = "Jedi Knight XR tracks your controllers so that your hands appear in the game where you are actually holding them.";
+"NSAccessoryTrackingUsageDescription" = "JKXR tracks your controllers so that your hands appear in the game where you are actually holding them.";
 
 /* Shown when the app asks for world sensing (head and controller pose). */
 "NSWorldSensingUsageDescription" = "Head and controller position for playing in the immersive space.";

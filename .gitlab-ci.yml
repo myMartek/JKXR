@@ -1,0 +1,119 @@
+# JKXR für visionOS — eine Plattform, ein Ziel.
+#
+# Zweig → Verhalten:
+#   main            bauen, extern verteilen, danach der Eintragstext
+#   develop         bauen und extern verteilen
+#   visionos/*      bauen und hochladen, nur interne Tester
+#   alles andere    gar keine Pipeline
+#
+# Bildschirmfotos macht Marcel von Hand. Es gibt hier deshalb bewusst keinen
+# Auftrag dafür, und die metadata-Lane überspringt sie ausdrücklich — deliver
+# gleicht sonst ab, und ein Abgleich gegen ein leeres Verzeichnis LÖSCHT, was
+# in App Store Connect steht.
+#
+# Was der Runner selbst mitbringen muss: cmake und xcodegen (brew), dazu ein
+# Xcode mit visionOS-SDK. Alles Weitere baut ./prepare-visionos.sh — gl4es, beide
+# Engines, die Teil-Link-Objekte und das Xcode-Projekt. Ein vollständiger Lauf
+# dauert deshalb eher eine Dreiviertelstunde als fünf Minuten.
+#
+# Nötige CI/CD-Variablen (maskiert + geschützt), derselbe Satz wie bei den
+# anderen Apps:
+#   APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID,
+#   APP_STORE_CONNECT_KEY_CONTENT, APPLE_TEAM_ID, MATCH_GIT_URL, MATCH_PASSWORD
+#
+# Der Store-Auftrag braucht zwei weitere, weil App Store Connect keinen Eintrag
+# ohne jemanden annimmt, den man dazu anrufen kann — und das sind eine private
+# Nummer und ein privates Postfach, die deshalb hier stehen und nicht im Repo:
+#   REVIEW_CONTACT_EMAIL, REVIEW_CONTACT_PHONE (letztere als +49…, mit
+#   Ländervorwahl; Apple weist sie sonst ab). REVIEW_CONTACT_FIRST_NAME und
+#   REVIEW_CONTACT_LAST_NAME sind wahlfrei.
+#
+# TESTFLIGHT_GROUPS entscheidet, wer den Build bekommt: eine kommagetrennte
+# Liste externer Gruppennamen, genau so geschrieben wie in App Store Connect.
+# EINE GRUPPE ZU NENNEN IST DIE ANFORDERUNG — einen zweiten Schalter zum
+# Einschalten gibt es nicht. Bleibt sie leer, wird hochgeladen und liegen
+# gelassen.
+#   TESTFLIGHT_CHANGELOG ersetzt die Platzhalter-Freigabenotiz.
+#   TESTFLIGHT_NOTIFY_EXTERNAL_TESTERS=false verteilt, ohne zu mailen.
+#   TESTFLIGHT_WITHDRAW_PENDING=false lässt eine bereits laufende Beta-Prüfung
+#   in Ruhe. Der Push lädt dann hoch und reicht NICHT ein; die Ablehnung wird
+#   geduldet, die Pipeline bleibt grün, und die ältere Prüfung behält ihren
+#   Platz in der Warteschlange.
+#
+# Wahlfrei: MATCH_KEYCHAIN_NAME und MATCH_KEYCHAIN_PASSWORD. Sind sie gesetzt,
+# legt das Fastfile diesen Schlüsselbund an, bevor match läuft — sonst tut das
+# niemand, und match selbst schlägt immer nur einen nach.
+
+stages:
+  - deploy
+  - store
+
+variables:
+  BUNDLE_PATH: vendor/bundle
+  FASTLANE_HIDE_CHANGELOG: "true"
+  FASTLANE_SKIP_UPDATE_CHECK: "true"
+  LANG: en_US.UTF-8
+  LC_ALL: en_US.UTF-8
+  XCODE_SCHEME: JKXR
+
+.mac:
+  tags:
+    - macos
+  before_script:
+    # Homebrews Ruby ist keg-only, muss also von Hand nach vorn. Das
+    # System-Ruby ist 2.6 und trägt das aktuelle fastlane nicht. /opt/homebrew/bin
+    # dazu, weil cmake und xcodegen dort liegen und ein nicht-interaktives
+    # Runner-Shell sie sonst nicht findet.
+    - export PATH="/opt/homebrew/opt/ruby/bin:/opt/homebrew/lib/ruby/gems/$(ruby -e 'print Gem.ruby_api_version')/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+    - ruby -v
+    - gem install bundler --no-document
+    - bundle config set path "$BUNDLE_PATH"
+    - bundle install --jobs 4 --retry 3
+  # gl4es zwischen den Pipelines behalten.
+  #
+  # Nur gl4es, nicht die Engine. gl4es hängt an nichts, was sich hier ändert —
+  # die Quellen liegen gepatcht im Repo und werden seit Monaten nicht angefasst,
+  # der Bau dauert aber jedes Mal Minuten. Die Engine dagegen wird bei JEDEM
+  # Lauf neu übersetzt, und zwar mit Absicht: ein veraltetes Objekt, das
+  # unbemerkt mitausgeliefert wird, ist genau der Fehler, der diesen Port schon
+  # einmal stundenlang gekostet hat (siehe den Kommentar in link-visionos.sh
+  # zum verworfenen App-Bündel). Zehn Minuten Übersetzen sind billiger.
+  #
+  # Die -v-Nummer hochzählen, wenn das Xcode wechselt: gl4es wird gegen dessen
+  # SDK gebaut, und das kann GitLab nicht aus einer Datei ableiten.
+  cache:
+    key: visionos-gl4es-v1
+    paths:
+      - build-visionos/gl4es/
+      - build-visionos/gl4es-aliases.txt
+  artifacts:
+    when: always
+    expire_in: 14 days
+    paths:
+      - fastlane/report.xml
+
+deploy:visionos:
+  extends: .mac
+  stage: deploy
+  timeout: 90m
+  rules:
+    # main und develop gehen an die externe Gruppe; ein visionos/*-Zweig wird
+    # gebaut und hochgeladen, erreicht aber nur interne Tester. Alles andere
+    # startet gar keine Pipeline — ein Zweig, den niemand benannt hat, soll
+    # keine Dreiviertelstunde Runner verbrauchen.
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH =~ /^visionos\//'
+      variables:
+        TESTFLIGHT_DISTRIBUTE_EXTERNAL: "false"
+  script:
+    - bundle exec fastlane beta
+
+store:metadata:
+  extends: .mac
+  stage: store
+  needs: ["deploy:visionos"]
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  script:
+    - bundle exec fastlane metadata

@@ -1,0 +1,18 @@
+Erster Build für die Apple Vision Pro.
+
+WAS AUSZUPROBIEREN IST
+
+• Beide Titel: im Startfenster einen wählen, dann „spielen“. Jeder hat seinen
+  eigenen Datenordner, beide lassen sich also nebeneinander einrichten.
+• Spieldateien: „Dateien auswählen…“ benutzen oder sie in den Ordner kopieren,
+  den „In Dateien öffnen“ aufmacht. Das Fenster nennt die Datei, die noch fehlt.
+• Bewegungssteuerung: mit den Sense-Controllern schwingen, abwehren, zielen.
+  Achte darauf, ob die Klinge dort sitzt, wo deine Hand wirklich ist.
+• Umsehen: lehnen, ducken, gehen. Melde alles, was schwimmt, doppelt erscheint
+  oder dem Kopf hinterherhängt.
+• Menüs und Zwischensequenzen sollen im Raum stehen bleiben, während du den
+  Kopf bewegst.
+
+BEKANNT
+
+Lange Ladevorgänge dauern; das Bild bleibt so lange schwarz.

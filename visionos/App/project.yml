@@ -69,7 +69,10 @@ targets:
     settings:
       base:
         PRODUCT_NAME: JKXR
-        INFOPLIST_KEY_CFBundleDisplayName: Jedi Knight XR
+        # Der Name unter dem Symbol. Bewusst das Kuerzel und nicht der
+        # ausgeschriebene Titel: unter dem Symbol stehen ohnehin nur rund
+        # zwoelf Zeichen, und derselbe Name steht im App Store.
+        INFOPLIST_KEY_CFBundleDisplayName: JKXR
 
         # Das Programmsymbol.
         #

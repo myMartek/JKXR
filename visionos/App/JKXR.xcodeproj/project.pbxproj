@@ -7,19 +7,19 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		155EEDF989C5A376ADC8DBC3 /* z_vr_assets_jka.pk3 in Resources */ = {isa = PBXBuildFile; fileRef = FBBCFC8FE621D48E13EBD479 /* z_vr_assets_jka.pk3 */; };
 		18122BF354D28ADB51F94A63 /* libGLESv2.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FA12E523E340FEA71E6FA7C0 /* libGLESv2.framework */; };
 		368A53BEA92B4E1DAE469734 /* WorldTracking.m in Sources */ = {isa = PBXBuildFile; fileRef = 40E4386F40A16FF2D112B627 /* WorldTracking.m */; };
 		40BC6F5041D521B791E3FE53 /* AngleBridge.c in Sources */ = {isa = PBXBuildFile; fileRef = F7BEE25D9141AD2B40FB361E /* AngleBridge.c */; };
 		48E72E6BE2FF69EF8918EAB3 /* libGLESv2.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = FA12E523E340FEA71E6FA7C0 /* libGLESv2.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		64B957B37BE13EC34C5E7459 /* z_vr_assets_jko.pk3 in Resources */ = {isa = PBXBuildFile; fileRef = BC369A608192E7D848CDB0DB /* z_vr_assets_jko.pk3 */; };
 		7197778DD14A550DC4626FC1 /* libEGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 63D4B8E4A26A48D82F8DCE60 /* libEGL.framework */; };
 		78CA5C5899D378FF4C88CE1D /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47635BCC2BCC1CC1C5751D4 /* ContentView.swift */; };
 		78D555D5C95FDB660899D176 /* libEGL.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 63D4B8E4A26A48D82F8DCE60 /* libEGL.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		84B1859DAB6D978E19FDDC56 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 9A6CAA3C243A1F831B8EC237 /* InfoPlist.strings */; };
+		8D3854770BF2383E1D7A9D46 /* z_vr_assets_jko.pk3 in Resources */ = {isa = PBXBuildFile; fileRef = 6EC6D290FF5C38BB4AE6F1E0 /* z_vr_assets_jko.pk3 */; };
 		AC868F8DEF90BEA3B0B633BF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FED42145EED052145A239D27 /* Assets.xcassets */; };
-		B5F86F847E48D51A6855CAAF /* z_vr_assets_base.pk3 in Resources */ = {isa = PBXBuildFile; fileRef = DF20DBAA7EDE88B2DEEA8142 /* z_vr_assets_base.pk3 */; };
-		BACC95BD14F44E8C5916BDFD /* z_vr_assets_jka.pk3 in Resources */ = {isa = PBXBuildFile; fileRef = A24E42949E824C2F25F94F55 /* z_vr_assets_jka.pk3 */; };
 		BCEEB8B7CE0E2A32AC9FF1E8 /* EngineHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06BB71B3A0F665691FF899FB /* EngineHost.swift */; };
+		CD6BF3229EB33199BC6E4E30 /* z_vr_assets_base.pk3 in Resources */ = {isa = PBXBuildFile; fileRef = A80259B3E1C8BD9D6820BB98 /* z_vr_assets_base.pk3 */; };
 		D7D7EF00F6C052A3F2BCC96C /* SpielWahl.c in Sources */ = {isa = PBXBuildFile; fileRef = 75DB998F042F5F877FD8C325 /* SpielWahl.c */; };
 		F11369E60922F07CC12DF9DD /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = CA42B53AFDBDBF7DC79DF2F0 /* InfoPlist.strings */; };
 		FE04998D8653339058EDA0AB /* JKXRApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12FC913F54114EA867076FDC /* JKXRApp.swift */; };
@@ -46,18 +46,18 @@
 		33D840871EDE1EC635691BD3 /* AngleBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AngleBridge.h; sourceTree = "<group>"; };
 		40E4386F40A16FF2D112B627 /* WorldTracking.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WorldTracking.m; sourceTree = "<group>"; };
 		63D4B8E4A26A48D82F8DCE60 /* libEGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = libEGL.framework; path = Frameworks/libEGL.framework; sourceTree = "<group>"; };
+		6EC6D290FF5C38BB4AE6F1E0 /* z_vr_assets_jko.pk3 */ = {isa = PBXFileReference; path = z_vr_assets_jko.pk3; sourceTree = "<group>"; };
 		6F7B01FB19B5941154702D36 /* JKXR-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "JKXR-Bridging-Header.h"; sourceTree = "<group>"; };
 		75DB998F042F5F877FD8C325 /* SpielWahl.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = SpielWahl.c; sourceTree = "<group>"; };
 		959BE1DE7DBFE94ACDC8E10F /* JKXR.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = JKXR.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9A6CAA3C243A1F831B8EC237 /* InfoPlist.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = InfoPlist.strings; sourceTree = "<group>"; };
-		A24E42949E824C2F25F94F55 /* z_vr_assets_jka.pk3 */ = {isa = PBXFileReference; path = z_vr_assets_jka.pk3; sourceTree = "<group>"; };
-		BC369A608192E7D848CDB0DB /* z_vr_assets_jko.pk3 */ = {isa = PBXFileReference; path = z_vr_assets_jko.pk3; sourceTree = "<group>"; };
+		A80259B3E1C8BD9D6820BB98 /* z_vr_assets_base.pk3 */ = {isa = PBXFileReference; path = z_vr_assets_base.pk3; sourceTree = "<group>"; };
 		CA42B53AFDBDBF7DC79DF2F0 /* InfoPlist.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = InfoPlist.strings; sourceTree = "<group>"; };
-		DF20DBAA7EDE88B2DEEA8142 /* z_vr_assets_base.pk3 */ = {isa = PBXFileReference; path = z_vr_assets_base.pk3; sourceTree = "<group>"; };
 		E47635BCC2BCC1CC1C5751D4 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		EF7A3D96492B916A30A6FE3E /* JKXRBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = JKXRBridge.h; sourceTree = "<group>"; };
 		F7BEE25D9141AD2B40FB361E /* AngleBridge.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = AngleBridge.c; sourceTree = "<group>"; };
 		FA12E523E340FEA71E6FA7C0 /* libGLESv2.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = libGLESv2.framework; path = Frameworks/libGLESv2.framework; sourceTree = "<group>"; };
+		FBBCFC8FE621D48E13EBD479 /* z_vr_assets_jka.pk3 */ = {isa = PBXFileReference; path = z_vr_assets_jka.pk3; sourceTree = "<group>"; };
 		FED42145EED052145A239D27 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -74,29 +74,13 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		1A53CEACA76F6F25561117ED /* base */ = {
+		30B8D5639DCF352782B065D2 /* base */ = {
 			isa = PBXGroup;
 			children = (
-				BC369A608192E7D848CDB0DB /* z_vr_assets_jko.pk3 */,
+				A80259B3E1C8BD9D6820BB98 /* z_vr_assets_base.pk3 */,
+				FBBCFC8FE621D48E13EBD479 /* z_vr_assets_jka.pk3 */,
 			);
 			path = base;
-			sourceTree = "<group>";
-		};
-		1ED55C8AC22EF51216F7E490 /* JKA */ = {
-			isa = PBXGroup;
-			children = (
-				CFADD799351BA5F6860DCAE6 /* base */,
-			);
-			path = JKA;
-			sourceTree = "<group>";
-		};
-		5A87A36BBB889556C6CED344 /* JKXR-PCVR-Installer */ = {
-			isa = PBXGroup;
-			children = (
-				1ED55C8AC22EF51216F7E490 /* JKA */,
-				9148025E7FD75BAD6752E862 /* JKO */,
-			);
-			path = "JKXR-PCVR-Installer";
 			sourceTree = "<group>";
 		};
 		60717059EF5696D037F48E07 /* en.lproj */ = {
@@ -105,6 +89,14 @@
 				9A6CAA3C243A1F831B8EC237 /* InfoPlist.strings */,
 			);
 			path = en.lproj;
+			sourceTree = "<group>";
+		};
+		6A7F29074D58A08762367744 /* JKA */ = {
+			isa = PBXGroup;
+			children = (
+				30B8D5639DCF352782B065D2 /* base */,
+			);
+			path = JKA;
 			sourceTree = "<group>";
 		};
 		6AC6EFBA3F73C33BE1F58718 /* Frameworks */ = {
@@ -116,12 +108,12 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		792FD0E2D83C5B3A896BD280 /* JKXR */ = {
+		85BE31EF6CFCA6865835CE04 /* jkxr */ = {
 			isa = PBXGroup;
 			children = (
-				5A87A36BBB889556C6CED344 /* JKXR-PCVR-Installer */,
+				DBB3E949B4E442BF8740F813 /* JKXR-PCVR-Installer */,
 			);
-			name = JKXR;
+			name = jkxr;
 			path = ../..;
 			sourceTree = "<group>";
 		};
@@ -138,14 +130,6 @@
 			path = Bridge;
 			sourceTree = "<group>";
 		};
-		9148025E7FD75BAD6752E862 /* JKO */ = {
-			isa = PBXGroup;
-			children = (
-				1A53CEACA76F6F25561117ED /* base */,
-			);
-			path = JKO;
-			sourceTree = "<group>";
-		};
 		A698F2DEE10066241CC86EBA /* Resources */ = {
 			isa = PBXGroup;
 			children = (
@@ -154,16 +138,32 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
+		B2156D9A84589AA416ADD0D0 /* JKO */ = {
+			isa = PBXGroup;
+			children = (
+				BBC91F1B59381816EC9AD850 /* base */,
+			);
+			path = JKO;
+			sourceTree = "<group>";
+		};
 		BA6D6FC6C97557A917052369 = {
 			isa = PBXGroup;
 			children = (
 				E1D8DF2B8C17014435FAB300 /* de.lproj */,
 				60717059EF5696D037F48E07 /* en.lproj */,
-				792FD0E2D83C5B3A896BD280 /* JKXR */,
+				85BE31EF6CFCA6865835CE04 /* jkxr */,
 				CDDC856CDF2721123B506D2E /* Sources */,
 				6AC6EFBA3F73C33BE1F58718 /* Frameworks */,
 				DF7DA449E2ED724A8DB4B653 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		BBC91F1B59381816EC9AD850 /* base */ = {
+			isa = PBXGroup;
+			children = (
+				6EC6D290FF5C38BB4AE6F1E0 /* z_vr_assets_jko.pk3 */,
+			);
+			path = base;
 			sourceTree = "<group>";
 		};
 		CDDC856CDF2721123B506D2E /* Sources */ = {
@@ -176,15 +176,6 @@
 			path = Sources;
 			sourceTree = "<group>";
 		};
-		CFADD799351BA5F6860DCAE6 /* base */ = {
-			isa = PBXGroup;
-			children = (
-				DF20DBAA7EDE88B2DEEA8142 /* z_vr_assets_base.pk3 */,
-				A24E42949E824C2F25F94F55 /* z_vr_assets_jka.pk3 */,
-			);
-			path = base;
-			sourceTree = "<group>";
-		};
 		DA5C2726D5C4EC7B030C9990 /* App */ = {
 			isa = PBXGroup;
 			children = (
@@ -193,6 +184,15 @@
 				12FC913F54114EA867076FDC /* JKXRApp.swift */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		DBB3E949B4E442BF8740F813 /* JKXR-PCVR-Installer */ = {
+			isa = PBXGroup;
+			children = (
+				6A7F29074D58A08762367744 /* JKA */,
+				B2156D9A84589AA416ADD0D0 /* JKO */,
+			);
+			path = "JKXR-PCVR-Installer";
 			sourceTree = "<group>";
 		};
 		DF7DA449E2ED724A8DB4B653 /* Products */ = {
@@ -276,9 +276,9 @@
 				AC868F8DEF90BEA3B0B633BF /* Assets.xcassets in Resources */,
 				84B1859DAB6D978E19FDDC56 /* InfoPlist.strings in Resources */,
 				F11369E60922F07CC12DF9DD /* InfoPlist.strings in Resources */,
-				B5F86F847E48D51A6855CAAF /* z_vr_assets_base.pk3 in Resources */,
-				BACC95BD14F44E8C5916BDFD /* z_vr_assets_jka.pk3 in Resources */,
-				64B957B37BE13EC34C5E7459 /* z_vr_assets_jko.pk3 in Resources */,
+				CD6BF3229EB33199BC6E4E30 /* z_vr_assets_base.pk3 in Resources */,
+				155EEDF989C5A376ADC8DBC3 /* z_vr_assets_jka.pk3 in Resources */,
+				8D3854770BF2383E1D7A9D46 /* z_vr_assets_jko.pk3 in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -312,7 +312,7 @@
 				);
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../spikes/s4-angle/angle-include $(SRCROOT)/../../Projects/Android/jni/OpenJK/code/visionos";
 				INFOPLIST_FILE = Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Jedi Knight XR";
+				INFOPLIST_KEY_CFBundleDisplayName = JKXR;
 				INFOPLIST_KEY_NSWorldSensingUsageDescription = "Head and controller position for playing in the immersive space.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
@@ -395,7 +395,7 @@
 				);
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../spikes/s4-angle/angle-include $(SRCROOT)/../../Projects/Android/jni/OpenJK/code/visionos";
 				INFOPLIST_FILE = Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Jedi Knight XR";
+				INFOPLIST_KEY_CFBundleDisplayName = JKXR;
 				INFOPLIST_KEY_NSWorldSensingUsageDescription = "Head and controller position for playing in the immersive space.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";

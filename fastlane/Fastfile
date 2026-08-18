@@ -1,0 +1,640 @@
+# frozen_string_literal: true
+
+# JKXR fuer visionOS -- eine Plattform, ein Ziel.
+#
+# Nach dem Vorbild der Gen1-Vision- und SM64-Wrapper gebaut, mit einer
+# strukturellen Besonderheit: das Xcode-Projekt ist hier nur die letzte von vier
+# Stufen und keine davon steht in der .xcodeproj. Die Engine ist C++ und wird
+# von CMake uebersetzt, aus ihren Modulen macht link-visionos.sh Teil-Link-
+# Objekte, und erst die traegt project.yml als OTHER_LDFLAGS ein, bevor xcodegen
+# das Projekt erzeugt. Deshalb faehrt jede bauende Lane zuerst ./prepare-visionos.sh.
+
+require "shellwords"
+
+default_platform(:ios)
+
+PROJECT_PATH   = "visionos/App/JKXR.xcodeproj"
+SCHEME_NAME    = ENV.fetch("XCODE_SCHEME", "JKXR")
+APP_IDENTIFIER = ENV.fetch("APP_IDENTIFIER", "de.martek.jkxr")
+TEAM_ID        = ENV.fetch("APPLE_TEAM_ID", "9VSUPJ942Y")
+OUTPUT_DIR     = "build"
+PROJECT_ROOT   = File.expand_path("..", __dir__)
+
+def truthy_env?(name, default: false)
+  value = ENV[name].to_s.strip.downcase
+  return default if value.empty?
+  %w[1 true yes y on].include?(value)
+end
+
+# Das ausgewaehlte Xcode zu dem machen, das tatsaechlich laeuft.
+#
+# DEVELOPER_DIR allein genuegt nicht, und xcode-select auch nicht:
+# Xcode.app/Contents/Developer/usr/bin steht in einem gewoehnlichen PATH vor
+# /usr/bin, ein blosses `xcodebuild` nimmt also das Xcode, dem dieses
+# Verzeichnis gehoert, und uebergeht die Auswahl stillschweigend. Auf einer
+# Maschine mit Xcode und Xcode-beta nebeneinander ist das der Unterschied
+# zwischen zwei visionOS-SDKs -- und der Fehler nennt dann ein Quellsymbol
+# statt des SDK.
+#
+# Dieselben drei Zeilen stehen in ./prepare-visionos.sh und muessen dort
+# uebereinstimmen: die Engine-Bibliotheken werden gegen das SDK uebersetzt, das
+# jenes Skript waehlt, und der Archivlauf muss dasselbe nehmen.
+def select_xcode
+  @select_xcode ||= begin
+    dir = ENV["DEVELOPER_DIR"].to_s.strip
+    dir = `xcode-select -p`.strip if dir.empty?
+    UI.user_error!("Kein Xcode ausgewaehlt: xcode-select -s ...") if dir.empty? || !Dir.exist?(dir)
+    ENV["DEVELOPER_DIR"] = dir
+    ENV["PATH"] = "#{dir}/usr/bin:#{ENV['PATH']}"
+    UI.message("Xcode: #{dir}")
+    dir
+  end
+end
+
+# Der Signier-Schluesselbund: angelegt, nach VORN gestellt, aufgeschlossen und
+# zur Auskunft berechtigt.
+#
+# DIE REIHENFOLGE IST DER GANZE PUNKT. codesign fragt nicht "welcher
+# Schluesselbund haelt diese Identitaet", sondern nimmt den ERSTEN Treffer in
+# der Suchliste -- und auf diesem Runner bauen mehrere Apps, deren CI-Bunde alle
+# in dieser Liste stehen und dasselbe Apple-Distribution-Zertifikat halten. In
+# der Liste zu stehen genuegt also nicht; in einem verschlossenen weiter vorn zu
+# landen stellt einen Dialog auf den Bildschirm der Maschine, und an einer
+# Bauamschine sitzt niemand.
+#
+# VORN, nicht ALLEIN. Die Liste zu leeren sieht aufgeraeumt aus und bricht den
+# Archivlauf mit "No signing certificate found": der braucht auch das
+# Entwicklerzertifikat, und das liegt im Anmelde-Schluesselbund. Unserer kommt
+# also davor, alles andere behaelt seinen Platz dahinter.
+#
+# Die beiden anderen Haelften desselben Problems, jede mit eigenem irrefuehrendem
+# Symptom:
+#
+#   * -lut 7200, weil die uebliche Sperrfrist mitten im Build ablaeuft und der
+#     Fehler dann das Zertifikat beschuldigt statt der Sperre.
+#   * set-key-partition-list, sonst fragt macOS auch bei offenem Bund nach
+#     Erlaubnis -- und wieder antwortet niemand.
+#
+# restore_keychains stellt die Liste zurueck, damit ein Auftrag die Maschine so
+# verlaesst, wie er sie vorgefunden hat.
+#
+# `log: false` bei jedem Befehl, der das Passwort traegt: ein Auftragsprotokoll
+# ist kein Ort dafuer, und was einmal darin stand, bleibt darin.
+def unlock_signing_keychain
+  name = ENV["MATCH_KEYCHAIN_NAME"].to_s.strip
+  password = ENV["MATCH_KEYCHAIN_PASSWORD"].to_s
+  return if name.empty? || password.empty?
+
+  base = name.sub(/-db$/, "")
+  path = File.expand_path("~/Library/Keychains/#{base}-db")
+  sh("security", "create-keychain", "-p", password, name, log: false) unless File.exist?(path)
+
+  @previous_keychains ||= `security list-keychains -d user`.scan(/"([^"]+)"/).flatten
+  others = @previous_keychains.reject { |k| k.include?(base) }
+  sh(*(["security", "list-keychains", "-d", "user", "-s", name] + others))
+
+  sh("security", "unlock-keychain", "-p", password, name, log: false)
+  sh("security", "set-keychain-settings", "-lut", "7200", name)
+
+  # Geduldet, und deshalb zweimal aufgerufen. Ein Schluesselbund ohne Schluessel
+  # -- der erste Lauf auf einem Runner, bevor match irgendetwas abgelegt hat --
+  # antwortet "The specified item could not be found in the keychain". Das ist
+  # kein Fehlschlag, das ist ein leerer Bund, der genau das sagt. Entscheidend
+  # ist der Aufruf NACH dem Einspielen des Zertifikats, weshalb die Lane das
+  # hier ein zweites Mal ausfuehrt.
+  sh("security", "set-key-partition-list", "-S", "apple-tool:,apple:,codesign:",
+     "-s", "-k", password, name, log: false,
+     error_callback: ->(_) { UI.message("Partitionsliste: in diesem Bund liegt noch nichts") })
+end
+
+def restore_keychains
+  return if @previous_keychains.to_a.empty?
+  sh(*(["security", "list-keychains", "-d", "user", "-s"] + @previous_keychains))
+  @previous_keychains = nil
+end
+
+# Eine Buildnummer, die Apple als streng steigend annimmt, ohne dass sich
+# jemand die letzte merken muss. Fuer eine bewusste Wiederholung ueberschreibbar.
+def build_number
+  @build_number ||= begin
+    override = ENV["APP_BUILD_NUMBER"].to_s.strip
+    override.empty? ? Time.now.utc.strftime("%Y%m%d%H%M%S") : override
+  end
+end
+
+# Die Version, von der Eintrag und Build gleichermassen handeln.
+#
+# Nicht aus dem Projekt gelesen: das erzeugt xcodegen bei jedem Build neu, und
+# was dort steht, kommt aus project.yml und nicht aus einer Freigabeentscheidung.
+# Der Wrapper ist hier die Instanz, apply_project_settings schreibt die Nummer
+# INS Projekt statt eine herauszulesen. Mit APP_VERSION anheben.
+def marketing_version
+  @marketing_version ||= begin
+    value = ENV["APP_VERSION"].to_s.strip
+    value.empty? ? "1.0" : value
+  end
+end
+
+def app_store_connect_key
+  @app_store_connect_key ||= begin
+    missing = %w[APP_STORE_CONNECT_KEY_ID APP_STORE_CONNECT_ISSUER_ID APP_STORE_CONNECT_KEY_CONTENT]
+              .select { |key| ENV[key].to_s.strip.empty? }
+    UI.user_error!("Fehlende App-Store-Connect-Variablen: #{missing.join(', ')}") unless missing.empty?
+
+    app_store_connect_api_key(
+      key_id: ENV.fetch("APP_STORE_CONNECT_KEY_ID"),
+      issuer_id: ENV.fetch("APP_STORE_CONNECT_ISSUER_ID"),
+      key_content: ENV.fetch("APP_STORE_CONNECT_KEY_CONTENT"),
+      is_key_content_base64: true,
+      duration: 1200,
+      in_house: false
+    )
+  end
+end
+
+# Baut gl4es, beide Engines, die Teil-Link-Objekte und das Xcode-Projekt.
+# Getrennt von build_app, weil das alles geschehen sein muss, bevor fastlane
+# auch nur eine Versionsnummer aus dem Projekt lesen kann -- es gibt vorher
+# kein Projekt.
+def prepare
+  select_xcode
+  sh("cd #{Shellwords.escape(PROJECT_ROOT)} && ./prepare-visionos.sh")
+end
+
+# Was das erzeugte Projekt nicht wissen kann: unter welcher Bundle-Kennung diese
+# App ausgeliefert wird und welches Profil sie signiert.
+#
+# project.yml laesst die Signierung auf "Automatic" und traegt kein Team fuer den
+# Store ein -- richtig fuer ein Repository, das auch ohne Apple-Konto baubar sein
+# soll, und unbrauchbar fuer ein App-Store-Archiv. Statt dem Port dieses Konto
+# beizubringen, schreibt der Wrapper bei jedem Build hinein, was er braucht. Da
+# das Projekt ohnehin jedes Mal neu erzeugt wird, bleibt auch nichts zurueck.
+#
+# Manuelle Signierung, nicht automatische: automatische fragt zur Archivzeit bei
+# App Store Connect nach einem Profil, wofuer ein angemeldetes Xcode noetig
+# waere -- und match hat genau das richtige bereits auf die Platte gelegt.
+def apply_project_settings
+  require "xcodeproj"
+
+  mapping = lane_context[SharedValues::MATCH_PROVISIONING_PROFILE_MAPPING] || {}
+  profile = mapping[APP_IDENTIFIER]
+
+  project = Xcodeproj::Project.open(File.join(PROJECT_ROOT, PROJECT_PATH))
+  target = project.targets.find { |t| t.name == SCHEME_NAME }
+  UI.user_error!("Kein Ziel #{SCHEME_NAME} in #{PROJECT_PATH}") if target.nil?
+
+  target.build_configurations.each do |config|
+    settings = config.build_settings
+    settings["PRODUCT_BUNDLE_IDENTIFIER"] = APP_IDENTIFIER
+    settings["DEVELOPMENT_TEAM"] = TEAM_ID
+    settings["MARKETING_VERSION"] = marketing_version
+
+    if profile
+      settings["CODE_SIGN_STYLE"] = "Manual"
+      settings["PROVISIONING_PROFILE_SPECIFIER"] = profile
+      settings["CODE_SIGN_IDENTITY"] = "Apple Distribution"
+    else
+      # Kein match-Repo (etwa ein lokaler Build). Dann lieber Xcode entscheiden
+      # lassen, als auf ein Profil zu zeigen, das nicht da ist.
+      settings["CODE_SIGN_STYLE"] = "Automatic"
+    end
+  end
+  project.save
+
+  UI.message("Signiere #{APP_IDENTIFIER} mit #{profile || 'automatischer Signierung'}")
+  profile
+end
+
+# match, standardmaessig nur lesend: ein Veroeffentlichungslauf soll
+# Signiermittel verbrauchen, nicht erfinden. bootstrap_signing ist die einzige
+# Lane, die schreiben darf.
+def sync_signing
+  return if ENV["MATCH_GIT_URL"].to_s.strip.empty?
+
+  options = {
+    type: "appstore",
+    app_identifier: [APP_IDENTIFIER],
+    platform: "ios",
+    git_url: ENV.fetch("MATCH_GIT_URL"),
+    readonly: !truthy_env?("MATCH_ALLOW_WRITES", default: false),
+    team_id: TEAM_ID,
+    api_key: app_store_connect_key
+  }
+
+  # Ausdruecklich benannt statt der Umgebung ueberlassen: match muss in denselben
+  # Schluesselbund einspielen, den unlock_signing_keychain gerade nach vorn
+  # gestellt hat -- sonst landet das Zertifikat an einer Stelle und die offene
+  # Tuer ist woanders. Das sieht vollkommen gesund aus, bis errSecInternalComponent
+  # kommt.
+  keychain = ENV["MATCH_KEYCHAIN_NAME"].to_s.strip
+  unless keychain.empty?
+    options[:keychain_name] = keychain
+    options[:keychain_password] = ENV.fetch("MATCH_KEYCHAIN_PASSWORD", "")
+  end
+
+  sync_code_signing(options)
+end
+
+desc "visionOS-App bauen und zu TestFlight hochladen"
+lane :beta do
+  app_store_connect_key
+  unlock_signing_keychain
+  sync_signing
+  # Noch einmal, jetzt wo das Zertifikat wirklich drin ist: der erste Durchgang
+  # lief auf einem leeren Bund und hatte codesign nichts zu gestatten. Stellt
+  # ausserdem die Suchreihenfolge wieder nach vorn, falls match sie umgeraeumt hat.
+  unlock_signing_keychain
+  prepare
+  profile = apply_project_settings
+
+  increment_build_number(
+    xcodeproj: PROJECT_PATH,
+    build_number: build_number,
+    skip_info_plist: true
+  )
+
+  export_options = {
+    method: "app-store",
+    teamID: TEAM_ID,
+    uploadSymbols: true,
+    manageAppVersionAndBuildNumber: false
+  }
+  if profile
+    export_options[:signingStyle] = "manual"
+    export_options[:provisioningProfiles] = { APP_IDENTIFIER => profile }
+  else
+    export_options[:signingStyle] = "automatic"
+  end
+
+  # Nirgends ein --keychain-Schalter, und das mit Absicht. Ihn codesign zu
+  # nennen klingt nach der strengeren Antwort und ist die falsche: der
+  # Archivlauf greift auch nach dem Entwicklerzertifikat, das im
+  # Anmeldebund liegt, und jede Signatur auf unseren zu heften macht aus dem
+  # Dialog ein "No signing certificate found". Entschieden wird das oben ueber
+  # die Suchreihenfolge.
+  #
+  # clean: false -- anders als in den Schwesterprojekten. Der Archivlauf wuerde
+  # sonst zwar nur sein eigenes Zwischenverzeichnis leeren, aber
+  # ./prepare-visionos.sh hat unmittelbar davor eine Dreiviertelstunde Engine
+  # uebersetzt, und deren Ergebnisse liegen als fertige .a daneben; sie erneut
+  # anzufassen bringt nichts. link-visionos.sh wirft das App-Buendel ohnehin
+  # weg, damit Xcode neu linkt -- das ist das einzige, was hier veralten kann.
+  ipa_path = build_app(
+    project: PROJECT_PATH,
+    scheme: SCHEME_NAME,
+    configuration: "Release",
+    clean: false,
+    destination: "generic/platform=visionOS",
+    output_directory: "#{OUTPUT_DIR}/visionos",
+    output_name: "JKXR-visionOS.ipa",
+    archive_path: "#{OUTPUT_DIR}/archives/JKXR-visionOS.xcarchive",
+    export_method: "app-store",
+    export_options: export_options
+  )
+
+  groups = ENV.fetch("TESTFLIGHT_GROUPS", "").split(",").map(&:strip).reject(&:empty?)
+
+  # EINE GRUPPE ZU NENNEN IST DIE ANFORDERUNG. Frueher waren es zwei Variablen,
+  # die uebereinstimmen mussten, und die zweite stand standardmaessig auf aus:
+  # TESTFLIGHT_GROUPS war gesetzt, der Build ging hoch, verteilt wurde nichts,
+  # und die Pipeline war gruen -- einem erfolgreichen Upload sieht man das nicht
+  # an. Also entscheiden die Gruppen, und der Schalter bleibt nur als
+  # Uebersteuerung.
+  distribute = truthy_env?("TESTFLIGHT_DISTRIBUTE_EXTERNAL", default: !groups.empty?)
+
+  if distribute && groups.empty?
+    UI.user_error!("TESTFLIGHT_DISTRIBUTE_EXTERNAL ist an, aber TESTFLIGHT_GROUPS " \
+                   "ist leer. Externe Verteilung ohne Gruppe laedt den Build hoch " \
+                   "und gibt ihn niemandem.")
+  end
+
+  options = {
+    api_key: app_store_connect_key,
+    app_identifier: APP_IDENTIFIER,
+    app_platform: "xros",
+    ipa: ipa_path,
+    # Ein Build, der noch verarbeitet wird, laesst sich niemandem geben --
+    # verteilen heisst also darauf warten, und nicht verteilen heisst, sich die
+    # zwanzig Minuten zu sparen.
+    skip_waiting_for_build_processing: !distribute,
+    changelog: ENV.fetch("TESTFLIGHT_CHANGELOG", "Fehlerbehebungen und Verbesserungen")
+  }
+
+  # WAS ZU TESTEN IST, in der Sprache des Testers. Der Changelog oben ist der
+  # Rueckfall, und "Fehlerbehebungen und Verbesserungen" sagt niemandem, was er
+  # ausprobieren soll -- der ganze Inhalt dieses Feldes. Also kommt es aus einer
+  # Datei je Sprache neben den Store-Texten.
+  notes = testflight_notes
+  options[:localized_build_info] = notes unless notes.empty?
+
+  # EIN ZUG, EINE PRUEFUNG. Der aeltere muss zuerst weg.
+  #
+  # App Store Connect erlaubt je Versionszug genau eine Beta-Pruefung und weist
+  # den neuen Build mit "Another build in the same train is already in beta
+  # review" ab -- nach dem Upload, nach der Verarbeitung, beim letzten Aufruf.
+  cancel_pending_beta_review if distribute
+
+  if distribute
+    options[:distribute_external] = true
+    options[:groups] = groups
+
+    # EXTERNES TESTEN IST EINE PRUEFUNG, und Apple eroeffnet sie nicht ohne
+    # dasselbe, was ein Store-Eintrag braucht: eine Beschreibung, eine Adresse
+    # fuer Rueckmeldungen und einen Menschen zum Anrufen. Der Upload gelingt
+    # ohne all das -- der Build geht hoch, wird verarbeitet, nimmt seinen
+    # Changelog, und erst der allerletzte Aufruf scheitert an "Beta App
+    # Description is missing". Zwanzig Minuten spaeter, wegen eines Feldes, das
+    # die ganze Zeit auf der Platte lag.
+    contact = review_contact
+    # BENANNTE SPRACHEN, nicht beta_app_description -- siehe
+    # beta_app_localizations.
+    options[:localized_app_info] = beta_app_localizations(contact[:email_address])
+    options[:beta_app_review_info] = {
+      contact_first_name: contact[:first_name],
+      contact_last_name: contact[:last_name],
+      contact_email: contact[:email_address],
+      contact_phone: contact[:phone_number],
+      # Kein Konto zu vergeben: was ein Pruefer braucht, sind die Spieldateien,
+      # und die Notizen sagen, was ohne sie zu sehen ist.
+      demo_account_required: false,
+      notes: contact[:notes].to_s
+    }
+    options[:notify_external_testers] =
+      truthy_env?("TESTFLIGHT_NOTIFY_EXTERNAL_TESTERS", default: true)
+    UI.message("TestFlight: verteile an #{groups.join(', ')}")
+  else
+    UI.message("TestFlight: nur Upload, keine externe Verteilung")
+  end
+
+  submit_tolerating_limit(options)
+end
+
+# Was App Store Connect annimmt, gezaehlt bevor irgendetwas gesendet wird.
+#
+# Hier geprueft, weil der Upload nicht in einem Stueck geschieht: deliver geht
+# die Sprachen einzeln durch, und ein Feld, das ein Zeichen zu lang ist, laesst
+# JENE Sprache scheitern, nachdem die anderen schon geschrieben sind. Der
+# Eintrag ist dann halb englisch, halb nichts, und der Fehler kommt als Stapel
+# aus einem Arbeitsthread. Billiger, vorher zu zaehlen.
+METADATA_LIMITS = {
+  "name" => 30,
+  "subtitle" => 30,
+  "promotional_text" => 170,
+  "keywords" => 100,
+  "description" => 4000,
+  "release_notes" => 4000
+}.freeze
+
+def check_metadata_lengths
+  too_long = []
+  Dir[File.join(PROJECT_ROOT, "fastlane/metadata/*/*.txt")].sort.each do |path|
+    limit = METADATA_LIMITS[File.basename(path, ".txt")]
+    next if limit.nil?
+    # Codepoints, denn so zaehlt Apple -- ein Gedankenstrich ist ein Zeichen,
+    # String#bytesize waeren drei.
+    length = File.read(path).strip.length
+    next if length <= limit
+    locale = File.basename(File.dirname(path))
+    too_long << "#{locale}/#{File.basename(path)}: #{length} Zeichen, erlaubt sind #{limit}"
+  end
+  return if too_long.empty?
+
+  UI.user_error!("Der Eintragstext ist zu lang fuer App Store Connect:\n  " +
+                 too_long.join("\n  "))
+end
+
+BETA_DESCRIPTION_LIMIT = 4000
+
+# Die Beta-Pruefung zurueckziehen, die diese hier blockiert.
+#
+# App Store Connect erlaubt je Versionszug eine Beta-Pruefung und weist jede
+# weitere Einreichung ab -- nach dem Upload, nach der Verarbeitung, beim
+# allerletzten Aufruf.
+#
+# Durch ABLAUFENLASSEN des wartenden Builds, nicht durch Loeschen seiner
+# Einreichung: DELETE auf betaAppReviewSubmissions nimmt App Store Connect nicht
+# mehr an. Den Build ablaufen zu lassen zieht seine Pruefung zurueck und macht
+# den Platz frei, und der Build, den es den Testern aus der Hand nimmt, ist
+# immer der aeltere von beiden.
+def cancel_pending_beta_review
+  # EIN AUSSTIEG, denn hier wird jemandes Platz in einer Warteschlange
+  # weggeworfen. Eine Pruefung, die seit gestern laeuft, ist mehr wert als die
+  # Bequemlichkeit, nicht neu einreichen zu muessen, und nur wer schiebt, weiss
+  # welcher der beiden Faelle vorliegt.
+  unless truthy_env?("TESTFLIGHT_WITHDRAW_PENDING", default: true)
+    UI.important("Lasse eine laufende Beta-Pruefung in Ruhe " \
+                 "(TESTFLIGHT_WITHDRAW_PENDING=false).")
+    return
+  end
+
+  require "spaceship"
+  app_store_connect_key   # setzt das globale Spaceship-Token
+
+  app = Spaceship::ConnectAPI::App.find(APP_IDENTIFIER)
+  unless app
+    UI.important("#{APP_IDENTIFIER} ist in App Store Connect nicht angelegt; nichts zurueckzuziehen.")
+    return
+  end
+
+  builds = app.get_builds(
+    filter: {
+      "preReleaseVersion.platform" => "VISION_OS",
+      "betaAppReviewSubmission.betaReviewState" => "WAITING_FOR_REVIEW,IN_REVIEW"
+    },
+    includes: "betaAppReviewSubmission,preReleaseVersion"
+  )
+
+  if builds.empty?
+    UI.message("Kein Build wartet auf Beta-Pruefung.")
+    return
+  end
+
+  builds.each do |build|
+    UI.message("Lasse Build #{build.version} (#{build.id}) ablaufen, um den Pruefplatz freizugeben.")
+    begin
+      build.expire!
+    rescue StandardError => error
+      UI.important("Build #{build.id} liess sich nicht ablaufen lassen: #{error.message}")
+    end
+  end
+rescue StandardError => error
+  UI.important("Ueberspringe das Zurueckziehen der Beta-Pruefung: #{error.message}")
+end
+
+# Was die EINREICHUNG ablehnen darf, ohne dass der Lauf kaputt ist.
+#
+# Zu diesem Zeitpunkt ist das Binary hochgeladen und verarbeitet; abgewiesen
+# wurde nur die Bitte um Pruefung, und die laesst sich aus App Store Connect
+# wiederholen. Zwei Pushes in einer Stunde faerbten main sonst rot aus einem
+# Grund, der mit dem Code nichts zu tun hat.
+TOLERATED_SUBMISSION_ERRORS = [
+  "another build in the same train is already in beta review",
+  "submission limit has been reached",
+  "rate limit exceeded"
+].freeze
+
+def submit_tolerating_limit(options)
+  upload_to_testflight(options)
+rescue => error
+  message = error.message.to_s
+  raise unless TOLERATED_SUBMISSION_ERRORS.any? { |m| message.downcase.include?(m) }
+  UI.important("Nicht zur Beta-Pruefung eingereicht: #{message.strip}")
+  UI.important("Der Build ist hochgeladen und verarbeitet -- aus App Store Connect " \
+               "einreichen, sobald der vorige durch ist.")
+end
+
+# Die Notiz "Was gibt es zu testen" je Sprache, aus
+# fastlane/metadata/<sprache>/testflight_whats_new.txt.
+def testflight_notes
+  root = File.join(PROJECT_ROOT, "fastlane/metadata")
+  Dir.children(root).sort.each_with_object({}) do |locale, out|
+    path = File.join(root, locale, "testflight_whats_new.txt")
+    next unless File.exist?(path)
+    text = File.read(path).strip
+    next if text.empty?
+    if text.length > BETA_DESCRIPTION_LIMIT
+      UI.user_error!("Die #{locale}-TestFlight-Notiz hat #{text.length} " \
+                     "Zeichen; App Store Connect nimmt #{BETA_DESCRIPTION_LIMIT}.")
+    end
+    out[locale] = { whats_new: text }
+  end
+end
+
+# Was TestFlight einem externen Tester zeigt, je Sprache, und was die
+# Beta-Pruefung liest.
+#
+# BENANNTE SPRACHEN STATT pilots beta_app_description, und dieser Unterschied
+# ist der ganze Grund, warum externe Verteilung an einer fehlenden Beschreibung
+# scheiterte, die sie soeben gesetzt zu haben meldete.
+#
+# Der einfache Weg in pilot ruft update_localized_app_review mit einem LEEREN
+# Sprach-Hash und dem Text als Vorgabe auf. Diese Funktion fuellt ihre
+# Arbeitsliste dann aus den Lokalisierungen, die App Store Connect BEREITS HAT
+# -- und eine brandneue App hat keine. Leere Liste, keine Durchlaeufe, keine
+# Ausnahme, und ein zufriedenes "Successfully set the beta_app_description"
+# dafuer, gar nichts geschrieben zu haben.
+def beta_app_localizations(feedback_email)
+  root = File.join(PROJECT_ROOT, "fastlane/metadata")
+  locales = Dir.children(root).select do |entry|
+    File.exist?(File.join(root, entry, "description.txt"))
+  end
+  if locales.empty?
+    UI.user_error!("Externes Testen braucht je Sprache eine Beta-Beschreibung, " \
+                   "und es gibt keine fastlane/metadata/<sprache>/description.txt.")
+  end
+
+  locales.sort.to_h do |locale|
+    text = File.read(File.join(root, locale, "description.txt")).strip
+    if text.length > BETA_DESCRIPTION_LIMIT
+      UI.user_error!("Die #{locale}-Beschreibung hat #{text.length} Zeichen; " \
+                     "App Store Connect nimmt #{BETA_DESCRIPTION_LIMIT}.")
+    end
+    [locale, { feedback_email: feedback_email, description: text }]
+  end
+end
+
+# Wen Apple anruft, wenn ein Pruefer nicht weiterkommt.
+#
+# Aus der Umgebung, nicht aus fastlane/metadata/review_information/, weil ein
+# Name, eine private Rufnummer und ein privates Postfach nichts sind, was man
+# eincheckt -- deliver wuerde sie aus Dateien dort lesen, und genau das ist das
+# Problem. Die Notizen daneben SIND im Repository: die handeln von der App.
+def review_contact
+  contact = {
+    first_name: ENV.fetch("REVIEW_CONTACT_FIRST_NAME", "Marcel"),
+    last_name: ENV.fetch("REVIEW_CONTACT_LAST_NAME", "Wlotzka"),
+    email_address: ENV["REVIEW_CONTACT_EMAIL"].to_s.strip,
+    phone_number: ENV["REVIEW_CONTACT_PHONE"].to_s.strip
+  }
+
+  missing = []
+  missing << "REVIEW_CONTACT_EMAIL" if contact[:email_address].empty?
+  missing << "REVIEW_CONTACT_PHONE" if contact[:phone_number].empty?
+  unless missing.empty?
+    UI.user_error!("App Store Connect will einen Pruefkontakt. Setze #{missing.join(' und ')} " \
+                   "(maskiert + geschuetzt in CI, fastlane/.env.local lokal).")
+  end
+
+  # Apples eigene Worte: "Preface the phone number with '+' followed by the
+  # country code". Eine Nummer ohne das wird abgewiesen, nachdem der Eintragstext
+  # bereits hochgegangen ist.
+  unless contact[:phone_number].start_with?("+")
+    UI.user_error!("REVIEW_CONTACT_PHONE muss mit + und Laendervorwahl beginnen, " \
+                   "etwa +49 ...")
+  end
+
+  notes = File.join(PROJECT_ROOT, "fastlane/metadata/review_information/notes.txt")
+  contact[:notes] = File.read(notes).strip if File.exist?(notes)
+  contact
+end
+
+desc "App-Store-Eintragstext aus fastlane/metadata/ hochladen"
+lane :metadata do
+  check_metadata_lengths
+  upload_to_app_store(
+    app_review_information: review_contact,
+    api_key: app_store_connect_key,
+    app_identifier: APP_IDENTIFIER,
+    platform: "xros",
+    app_version: marketing_version,
+    metadata_path: File.join(PROJECT_ROOT, "fastlane/metadata"),
+    skip_binary_upload: true,
+    # Bildschirmfotos macht Marcel von Hand. Das Ueberspringen ist hier keine
+    # Bequemlichkeit, sondern Schutz: deliver gleicht sonst ab, und ein
+    # Abgleich gegen ein leeres Verzeichnis LOESCHT, was in App Store Connect
+    # steht.
+    skip_screenshots: true,
+    skip_app_version_update: false,
+    submit_for_review: false,
+    automatic_release: false,
+    force: true,
+    precheck_include_in_app_purchases: false,
+    run_precheck_before_submit: false
+  )
+end
+
+desc "Alles: TestFlight-Build und Eintragstext"
+lane :publish do
+  beta
+  metadata
+end
+
+# Einmalig, und die einzige Lane, die ins match-Repo schreibt. Eine neue
+# Bundle-Kennung hat dort noch keine Signiermittel, und jede andere Lane laeuft
+# nur lesend, kann sie also nicht anlegen. Das ios-Plattformprofil ist das
+# richtige: es deckt iPhone, iPad und Vision Pro gemeinsam ab.
+#
+#   bundle exec fastlane bootstrap_signing --env local
+desc "Einmalig: Signiermittel dieser App im match-Repo anlegen (schreibt!)"
+lane :bootstrap_signing do
+  UI.user_error!("MATCH_GIT_URL muss gesetzt sein (etwa ueber --env local)") if ENV["MATCH_GIT_URL"].to_s.strip.empty?
+  UI.user_error!("MATCH_PASSWORD muss gesetzt sein, um das match-Repo zu ent- und verschluesseln") if ENV["MATCH_PASSWORD"].to_s.strip.empty?
+
+  ENV.delete("MATCH_KEYCHAIN_NAME")
+  ENV.delete("MATCH_KEYCHAIN_PASSWORD")
+
+  sync_code_signing(
+    type: "appstore",
+    app_identifier: [APP_IDENTIFIER],
+    platform: "ios",
+    git_url: ENV.fetch("MATCH_GIT_URL"),
+    readonly: false,
+    force: truthy_env?("MATCH_FORCE", default: false),
+    team_id: TEAM_ID,
+    api_key: app_store_connect_key
+  )
+
+  UI.success("Die Signiermittel fuer #{APP_IDENTIFIER} liegen im match-Repo (ios -> iPhone/iPad/Vision Pro).")
+end
+
+# Die Suchreihenfolge, die dieser Auftrag geaendert hat, gilt maschinenweit --
+# sie gehoert also nicht laenger zu ihm, als er dauert. Beide Haken, weil ein
+# gescheitertes Archiv den Runner genauso umgeraeumt hinterlaesst wie ein
+# gelungenes.
+after_all do |_lane|
+  restore_keychains
+end
+
+error do |_lane, _exception|
+  restore_keychains
+end

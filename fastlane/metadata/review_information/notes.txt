@@ -1,0 +1,61 @@
+IMPORTANT — this app cannot be played without game data, and the app neither
+contains that data nor may it.
+
+WHAT THIS APP IS
+
+JKXR is a port of an open-source game engine (OpenJK, by way of the JKXR
+project) to Apple Vision Pro. It ships no game content of any kind: no levels,
+no textures, no sounds, no models from the original titles. What it does carry
+is the VR add-on package created by that open-source project itself — the
+models of the weapons held in the hand and the VR-specific data the motion
+control needs.
+
+To run a game, the user copies in the data files (.pk3) of the PC release they
+own. The app offers no way to obtain them, links to no source for them, and
+downloads nothing.
+
+FOR THIS REVIEW
+
+We cannot supply game data, so here is a recorded session instead. It shows the
+launcher window, the file import, both titles starting, and the immersive world
+with motion control:
+
+    https://youtu.be/8QBxBHDyUBM
+
+WHAT WORKS WITHOUT GAME DATA
+
+The launcher window works fully: the title picker, the file import, the status
+display naming the missing file, and "Open in Files". Only starting a game
+needs the data — the app says so plainly and does not crash.
+
+If you do have a copy of the PC originals (the early-2000s SW:JK titles, sold
+on the usual PC storefronts), the app takes their .pk3 files directly; no
+conversion, no patching.
+
+HOW THE FILES ARE HANDLED
+
+"Choose files…" opens the system document picker. Chosen files are copied into
+the app's own container, into a folder per title, and are checked by name. They
+are never uploaded, shared or transmitted: the app opens no network connection,
+has no server, no accounts and no analytics.
+
+Alternatively the user can drop the files in over the Files app — the app
+declares UIFileSharingEnabled and writes a README into the target folder saying
+what belongs there.
+
+ENCRYPTION
+
+The app performs no encryption of its own and uses none beyond what the
+operating system provides. ITSAppUsesNonExemptEncryption is set to false in
+Info.plist.
+
+PRIVACY
+
+No accounts, no analytics, no tracking, no data collection, no network access
+of any kind.
+
+TRACKING PERMISSIONS
+
+The app asks for world sensing and accessory tracking. Both are needed to
+render: head pose per frame, and the position of the controllers so that the
+weapon in the game sits where the user's hand actually is.
