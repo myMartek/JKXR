@@ -28,6 +28,15 @@ Projects/Android/build/*
 assets/oculussig*
 Projects/Android/.cxx/*
 *.json
+# Ausnahme: die Metadaten des Asset-Katalogs sind Quelle, kein Bauergebnis.
+#
+# Das pauschale *.json oben stammt aus JKXRs Android-Zweig und verschluckte
+# jede Contents.json des Katalogs. Auf dem Rechner, auf dem Xcode sie angelegt
+# hat, faellt das nie auf; ein frischer Klon bekommt dagegen PNGs ohne
+# Zuordnung. actool meldet dann "must have at least 2 layers with applicable
+# content", der Build laeuft trotzdem durch, und die App hat einfach kein
+# Programmsymbol.
+!visionos/App/Sources/Resources/Assets.xcassets/**/Contents.json
 *.bin
 .gradle/*
 Projects/Android/.gradle/*
