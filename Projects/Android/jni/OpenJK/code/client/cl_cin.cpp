@@ -2059,6 +2059,17 @@ static void PlayCinematic(const char *arg, const char *s, qboolean qbInGame)
 			if (qbInGame)
 			{
 				Cvar_SetValue( "cl_paused", 1);	// remove-menu call will have unpaused us, so we sometimes need to re-pause
+#if defined(JKXR_VISIONOS)
+				// MESSPUNKT, wieder zu entfernen.
+				//
+				// Diese Pause haelt den Server an (SV_CheckPaused,
+				// sv_main.cpp:393) und damit das Skript, das die Karte
+				// wechselt. cl_paused ist CVAR_ROM -- wenn Cvar_SetValue hier
+				// nicht durchgreift, laeuft das Skript weiter und ueberrollt die
+				// Sequenz. Genau das ist zu sehen.
+				Com_Printf( "[Pause] nach dem Setzen: cl_paused %d\n",
+					Cvar_VariableIntegerValue( "cl_paused" ) );
+#endif
 			}
 
 			CL_iPlaybackStartTime = cls.realtime;	// special use to avoid accidentally skipping ingame videos via fast-firing
