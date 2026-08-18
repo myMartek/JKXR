@@ -92,6 +92,25 @@ Adds command text at the end of the buffer, does NOT add a final \n
 void Cbuf_AddText( const char *text ) {
 	int		l;
 
+#if defined(JKXR_VISIONOS)
+	// MESSPUNKT, wieder zu entfernen.
+	//
+	// Die gescriptete Kamerafahrt gehoert zur ALTEN Karte und muss vor dem
+	// Wechsel abgeschlossen sein. Gemessen laeuft sie aber in den Wechsel
+	// hinein, ohne dass eine Eingabe sie beendet -- es gab keine einzige
+	// "+use"-Zeile.
+	//
+	// Bleibt die Frage, WANN das Kartenkommando in die Warteschlange geraet.
+	// Steht diese Zeile VOR dem Beginn der Fahrt, ist der Wechsel laengst
+	// abgesetzt und die Fahrt startet aussichtslos; steht sie waehrenddessen,
+	// setzt ihn das Skript mitten hinein.
+	if ( text && ( !Q_stricmpn( text, "map ", 4 )
+		|| !Q_stricmpn( text, "spmap ", 6 )
+		|| !Q_stricmpn( text, "devmap ", 7 ) ) ) {
+		Com_Printf( "[Kartenkommando] eingereiht: %s", text );
+	}
+#endif
+
 	l = strlen (text);
 
 	if (cmd_text.cursize + l >= cmd_text.maxsize)
