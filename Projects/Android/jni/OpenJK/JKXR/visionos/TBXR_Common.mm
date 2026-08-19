@@ -1721,6 +1721,76 @@ extern "C" int TBXR_visionOS_LadeAstcStufe(unsigned tex, int stufe, unsigned for
     return (int)angle::GetError();
 }
 
+/// Einen Punkt aus einer bereits hochgeladenen Textur zurueckholen.
+///
+/// Damit laesst sich beantworten, was auf der GPU ANKOMMT -- unabhaengig davon,
+/// was der Renderer spaeter damit anstellt. Abgetastet wird ausdruecklich
+/// Stufe 0 (textureLod), damit die Mip-Kette das Ergebnis nicht faerbt.
+extern "C" void TBXR_visionOS_LiesTexturpunkt(unsigned tex, unsigned char aus[4])
+{
+    GLint pbo = -1;
+    angle::GetIntegerv(0x88EF /* PIXEL_UNPACK_BUFFER_BINDING */, &pbo);
+
+    GLuint ziel = 0, fbo = 0;
+    angle::GenTextures(1, &ziel);
+    angle::BindTexture(GL_TEXTURE_2D, ziel);
+    angle::TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    angle::GenFramebuffers(1, &fbo);
+    angle::BindFramebuffer(GL_FRAMEBUFFER, fbo);
+    angle::FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ziel, 0);
+
+    static const char *vs =
+        "#version 300 es\n"
+        "void main() {\n"
+        "  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
+        "  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+        "}\n";
+    static const char *fs =
+        "#version 300 es\n"
+        "precision highp float;\n"
+        "uniform sampler2D bild;\n"
+        "out vec4 farbe;\n"
+        "void main() { farbe = textureLod(bild, vec2(0.5), 0.0); }\n";
+    GLuint v = angle::CreateShader(GL_VERTEX_SHADER);
+    angle::ShaderSource(v, 1, &vs, nullptr); angle::CompileShader(v);
+    GLuint f = angle::CreateShader(GL_FRAGMENT_SHADER);
+    angle::ShaderSource(f, 1, &fs, nullptr); angle::CompileShader(f);
+    GLuint prog = angle::CreateProgram();
+    angle::AttachShader(prog, v); angle::AttachShader(prog, f);
+    angle::LinkProgram(prog);
+    angle::UseProgram(prog);
+    angle::ActiveTexture(GL_TEXTURE0);
+    angle::BindTexture(GL_TEXTURE_2D, tex);
+    angle::Uniform1i(angle::GetUniformLocation(prog, "bild"), 0);
+    angle::Viewport(0, 0, 1, 1);
+    angle::DrawArrays(GL_TRIANGLES, 0, 3);
+    angle::ReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, aus);
+
+    ALOGV("[ASTClies] Textur %u -> %u/%u/%u/%u · Unpack-Puffer %d · GL 0x%04x",
+          tex, aus[0], aus[1], aus[2], aus[3], pbo, angle::GetError());
+
+    angle::BindFramebuffer(GL_FRAMEBUFFER, 0);
+    angle::DeleteTextures(1, &ziel);
+}
+
+/// Die hoechste belegte Mip-Stufe festlegen.
+///
+/// Eine Textur ist nur VOLLSTAENDIG, wenn jede Stufe bis zur Obergrenze belegt
+/// ist. Fehlt eine, tastet GLES undefinierte Daten ab -- das sah auf dem Geraet
+/// wie Rauschen auf entfernten Waenden aus, waehrend nahe Flaechen sauber
+/// blieben (dort wird Stufe 0 gezogen).
+///
+/// Direkt und nicht ueber gl4es: GL_TEXTURE_MAX_LEVEL gehoert zu GLES3, und
+/// gl4es' Header kennen die Konstante gar nicht.
+extern "C" void TBXR_visionOS_SetzeMipGrenze(unsigned tex, int hoechste)
+{
+    angle::BindTexture(GL_TEXTURE_2D, tex);
+    angle::TexParameteri(GL_TEXTURE_2D, 0x813C /* BASE_LEVEL */, 0);
+    angle::TexParameteri(GL_TEXTURE_2D, 0x813D /* MAX_LEVEL  */, hoechste);
+}
+
 /// Zweite Sonde: vertraegt sich eine direkt hochgeladene Textur mit gl4es?
 ///
 /// Der Renderer bindet seine Texturen ueber gl4es (qglBindTexture). gl4es

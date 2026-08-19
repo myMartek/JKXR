@@ -1354,6 +1354,8 @@ extern "C" int TBXR_visionOS_EchteTextur(void);
 extern "C" int TBXR_visionOS_LadeAstcStufe(unsigned tex, int stufe, unsigned format,
                                            int breite, int hoehe, int groesse,
                                            const void *daten);
+extern "C" void TBXR_visionOS_SetzeMipGrenze(unsigned tex, int hoechste);
+extern "C" void TBXR_visionOS_LiesTexturpunkt(unsigned tex, unsigned char aus[4]);
 
 static image_t *R_visionOS_AstcLaden( const char *name, qboolean mipmap,
                                       qboolean allowPicmip, qboolean allowTC,
@@ -1422,6 +1424,13 @@ static image_t *R_visionOS_AstcLaden( const char *name, qboolean mipmap,
 
 	// r_picmip faellt hier umsonst ab: eine Stufe zu ueberspringen heisst, bei
 	// Mip 1 statt 0 zu beginnen. Kein zweites Backen noetig.
+	// HALBIERUNG DES PROBLEMS: nur Stufe 0 hochladen.
+	//
+	// Ist das Rauschen damit weg, liegen die Mip-Daten oder ihre Verwaltung
+	// falsch. Bleibt es, liegt es an Stufe 0 selbst oder am Zustand ringsum
+	// (Bindung, Texturheit) -- und die Mip-Kette waere unschuldig.
+	const qboolean nurNull = (qboolean)(getenv("JKXR_ASTC_NUR0") != NULL);
+
 	int ueberspringen = 0;
 	if ( allowPicmip && r_picmip->integer > 0 ) {
 		ueberspringen = r_picmip->integer;
@@ -1449,6 +1458,24 @@ static image_t *R_visionOS_AstcLaden( const char *name, qboolean mipmap,
 		return image;	// das weisse Bild ist besser als gar keines
 	}
 
+	// ZWEI Fallen, beide Folge davon, dass R_CreateImage mitbenutzt wird.
+	//
+	// 1. Upload32 setzt GL_GENERATE_MIPMAP fuer Texturen mit Mip-Kette. Bliebe
+	//    das stehen, versuchte der Treiber bei JEDEM folgenden Upload von Stufe
+	//    0 die uebrigen selbst zu erzeugen -- aus komprimierten Daten, die er
+	//    dafuer gar nicht auspacken kann.
+	//
+	// 2. Eine Textur ist nur VOLLSTAENDIG, wenn jede Stufe bis zum eingestellten
+	//    Maximum belegt ist. Fehlt eine, tastet GLES undefinierte Daten ab --
+	//    und das sieht aus wie Rauschen. Genau so ist es aufgefallen: die
+	//    Monitore nah waren sauber, die Waende in der Ferne verrauscht, weil
+	//    dort die hoeheren Stufen gezogen werden.
+	//
+	// Deshalb: Selbsterzeugung aus, und die Obergrenze auf das setzen, was
+	// wirklich hochgeladen wurde.
+	qglBindTexture( GL_TEXTURE_2D, image->texnum );
+	qglTexParameteri( GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_FALSE );
+
 	const byte *p = roh + 16;
 	const byte *ende = roh + laenge;
 	int hochgeladen = 0;
@@ -1460,6 +1487,7 @@ static image_t *R_visionOS_AstcLaden( const char *name, qboolean mipmap,
 
 		const int b = breite  >> i ? breite  >> i : 1;
 		const int h = hoehe   >> i ? hoehe   >> i : 1;
+		if ( nurNull && i > ueberspringen ) { p += groesse; continue; }
 		if ( i >= ueberspringen ) {
 			const int fehler = TBXR_visionOS_LadeAstcStufe(
 				(unsigned)echt, i - ueberspringen, format, b, h, (int)groesse, p );
@@ -1486,14 +1514,39 @@ static image_t *R_visionOS_AstcLaden( const char *name, qboolean mipmap,
 	// direkte Upload umgebogen hat.
 	qglBindTexture( GL_TEXTURE_2D, image->texnum );
 	qglTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-	                  hochgeladen > 1 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR );
+	                  ( hochgeladen > 1 && !nurNull ) ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR );
 	qglTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+	// Die Obergrenze auf die letzte wirklich hochgeladene Stufe -- direkt, weil
+	// GL_TEXTURE_MAX_LEVEL zu GLES3 gehoert und gl4es die Konstante nicht kennt.
+	TBXR_visionOS_SetzeMipGrenze( (unsigned)echt, hochgeladen - 1 );
+
+	// MESSPUNKT: eine benannte Textur nach dem Hochladen zuruecklesen. Damit
+	// laesst sich trennen, ob schon der Upload falsch ist oder erst das, was
+	// der Renderer daraus macht.
+	{
+		const char *gesucht = getenv( "JKXR_ASTC_LIES" );
+		if ( gesucht && strstr( stamm, gesucht ) ) {
+			unsigned char punkt[4] = {0};
+			TBXR_visionOS_LiesTexturpunkt( (unsigned)echt, punkt );
+			ri.Printf( PRINT_ALL, "[ASTClies] %s -> %u/%u/%u/%u\n",
+			           stamm, punkt[0], punkt[1], punkt[2], punkt[3] );
+		}
+	}
+	qglBindTexture( GL_TEXTURE_2D, image->texnum );
 
 	// Zaehlen statt je Textur melden: bei tausenden Texturen waere jede Zeile
 	// im Protokoll selbst eine Last.
 	static int gezaehlt = 0;
 	static int gemeldet = -1;   // damit der ERSTE Treffer sofort spricht
 	++gezaehlt;
+
+	// MESSPUNKT: die Namen mitschreiben. Ohne sie laesst sich nicht sagen,
+	// WELCHE Textur falsch landet -- und geraten habe ich heute genug.
+	if ( getenv( "JKXR_ASTC_NAMEN" ) ) {
+		ri.Printf( PRINT_ALL, "[ASTCname] %s %dx%d %d Stufen%s\n",
+		           stamm, (int)breite, (int)hoehe, (int)stufen,
+		           ( roh[14] & 1 ) ? " alpha" : "" );
+	}
 	if ( gezaehlt == 1 || gezaehlt >= gemeldet + 25 ) {
 		gemeldet = gezaehlt;
 		ri.Printf( PRINT_ALL, "[ASTC] %d Texturen vorgebacken geladen\n", gezaehlt );
