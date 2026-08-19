@@ -1,6 +1,7 @@
 import CompositorServices
 import Foundation
 import Metal
+import os
 
 /// Fährt die Engine hoch und hält sie am Leben.
 ///
@@ -39,12 +40,28 @@ final class EngineHost {
         // Eigener Thread, keine Task: der Engine-Thread blockiert während des
         // Ladens, und eine Warteschlange von Swift Concurrency könnte davon
         // ausgehungert werden — genau der Fehler aus S4.
+        // Der Herzschlag meldet zusätzlich den VERBLEIBENDEN Speicher.
+        //
+        // Beide Todesarten sehen von außen gleich aus — der Prozess endet mit
+        // SIGKILL. Der Compositor tut das, wenn Bilder ausbleiben; das System
+        // tut es bei Speicherdruck. Die verstrichene Zeit allein unterscheidet
+        // sie nicht zuverlässig.
+        //
+        // os_proc_available_memory sagt, wie viel bis zur Grenze noch übrig
+        // ist. Fällt der Wert vor dem Abbruch gegen null, war es der Speicher;
+        // bleibt er hoch, war es der Wächter. Damit ist die Frage beim nächsten
+        // Absturz beantwortet, statt wieder vermutet zu werden.
         let beat = Thread {
             var seconds = 0
+            var tiefstand = Int.max
             while true {
                 Thread.sleep(forTimeInterval: 1.0)
                 seconds += 1
-                NSLog("[Herzschlag] %d s", seconds)
+                let frei = os_proc_available_memory()
+                if frei > 0 { tiefstand = min(tiefstand, frei) }
+                NSLog("[Herzschlag] %d s · frei %d MB · Tiefstand %d MB",
+                      seconds, frei / (1024 * 1024),
+                      tiefstand == Int.max ? -1 : tiefstand / (1024 * 1024))
             }
         }
         beat.name = "de.martek.jkxr.heartbeat"
@@ -140,10 +157,39 @@ final class EngineHost {
 
         print("[JKXR] starte Engine")
 
-        var arg0 = strdup("jkxr")
-        defer { free(arg0) }
-        withUnsafeMutablePointer(to: &arg0) { argv in
-            _ = spiel.pointee.Main(1, argv)
+        // Die Befehlszeile der Engine.
+        //
+        // JKXR_visionOS_Main setzt aus argv[1...] eine Zeichenkette zusammen und
+        // gibt sie an Com_Init -- der klassische Weg von id Tech 3. Ein "+set"
+        // darin wirkt, BEVOR die erste Textur geladen wird, und genau darauf
+        // kommt es bei r_picmip an: als gelatchte Variable würde ein späteres
+        // Setzen erst beim nächsten vid_restart greifen.
+        var teile = ["jkxr"]
+        if UserDefaults.standard.bool(forKey: "jkxr.picmip") {
+            // Halbe Kantenlänge heißt ein Viertel Texturspeicher. Bei einem
+            // 4x-Upscale bleibt damit immer noch die doppelte Auflösung des
+            // Originals übrig.
+            teile += ["+set", "r_picmip", "1"]
+        }
+        // Zusätzliche Argumente aus der Umgebung, für die Fehlersuche.
+        //
+        // Damit lässt sich vom Mac aus eine bestimmte Karte laden oder eine
+        // cvar setzen, ohne neu zu bauen:
+        //
+        //   devicectl ... --environment-variables '{"JKXR_ARGS":"+map kejim_post"}'
+        //
+        // Im gewöhnlichen Start ist die Variable nicht gesetzt und die Zeile
+        // bleibt folgenlos -- dieselbe Bauart wie JKXR_AUTO_START.
+        if let zusatz = ProcessInfo.processInfo.environment["JKXR_ARGS"],
+           !zusatz.trimmingCharacters(in: .whitespaces).isEmpty {
+            teile += zusatz.split(separator: " ").map(String.init)
+        }
+        print("[JKXR] Befehlszeile: \(teile.joined(separator: " "))")
+
+        var zeiger: [UnsafeMutablePointer<CChar>?] = teile.map { strdup($0) }
+        defer { zeiger.forEach { free($0) } }
+        zeiger.withUnsafeMutableBufferPointer { puffer in
+            _ = spiel.pointee.Main(Int32(teile.count), puffer.baseAddress)
         }
         print("[JKXR] Engine beendet")
     }

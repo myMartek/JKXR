@@ -102,6 +102,22 @@ enum Spiel: Int32, CaseIterable, Identifiable {
     /// eine da, und "irgendeine" hiesse ab sofort immer "bereit" -- der
     /// Spielen-Knopf fuehrte dann in eine Engine, die nichts findet.
     var pflichtDatei: String { "assets0.pk3" }
+
+    /// Die Dateien des gekauften Spiels, namentlich.
+    ///
+    /// NAMENTLICH und nicht ueber das Praefix "assets". Genau daran ist die
+    /// Erkennung gescheitert: das Upscale-Paket heisst assets8_4x_upscale.pk3
+    /// -- der Autor hat den Namen mit Bedacht gewaehlt, damit er hinter
+    /// assets0-5 einsortiert -- und fiel damit durch ein Sieb, das eigentlich
+    /// nur die Originaldateien fernhalten sollte. Es erschien nie als Zusatz,
+    /// liess sich also weder an- noch abschalten, und der Ladeknopf blieb
+    /// stehen, als waere nichts geladen worden.
+    var spieleigeneDateien: Set<String> {
+        switch self {
+        case .academy: return ["assets0.pk3", "assets1.pk3", "assets2.pk3", "assets3.pk3"]
+        case .outcast: return ["assets0.pk3", "assets1.pk3", "assets2.pk3", "assets5.pk3"]
+        }
+    }
 }
 
 /// Fenster vor dem Start.
@@ -142,8 +158,22 @@ struct ContentView: View {
     @State private var importing = false
     @State private var progress: String?
     @State private var didAutoStart = false
+    @State private var zusaetze: [ZusatzDatei] = []
+    /// Welches Angebot gerade geladen wird, und wie weit.
+    @State private var laedt: String?
+    @State private var ladeText = ""
+    @State private var lader = ZusatzLader()
+    /// Welcher Zusatz gerade zum Löschen angefragt ist.
+    @State private var loeschKandidat: ZusatzDatei?
+
+    /// Texturen beim Laden halbieren.
+    ///
+    /// Wirkt über die Befehlszeile der Engine (EngineHost) und damit erst beim
+    /// nächsten Start des Immersive Space -- r_picmip ist gelatcht.
+    @AppStorage("jkxr.picmip") private var picmip: Bool = false
 
     var body: some View {
+        ScrollView {
         VStack(spacing: 20) {
             Text("JKXR")
                 .font(.largeTitle)
@@ -213,12 +243,101 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if !zusaetze.isEmpty || !Zusatzkatalog.fuer(spiel).isEmpty {
+                Divider().frame(maxWidth: 460)
+
+                Text(Sprache.t("Add-ons", "Zusätze"))
+                    .font(.headline)
+
+                ForEach(zusaetze) { z in
+                    HStack(spacing: 12) {
+                        Toggle(isOn: Binding(
+                            get: { z.aktiv },
+                            set: { an in
+                                AssetStore.setzeAktiv(z, an)
+                                zusaetze = AssetStore.zusatzDateien(spiel)
+                            })) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(z.name)
+                                Text(groesse(z.groesse))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Button(role: .destructive) {
+                            loeschKandidat = z
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    .frame(maxWidth: 460)
+                }
+
+                ForEach(Zusatzkatalog.fuer(spiel).filter { angebot in
+                    !zusaetze.contains { $0.name.lowercased() == angebot.dateiname.lowercased() }
+                }) { angebot in
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(Sprache.t(angebot.anzeigeEnglisch, angebot.anzeige))
+                            Text(laedt == angebot.id ? ladeText : angebot.ungefaehr)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if laedt == angebot.id {
+                            ProgressView()
+                        } else {
+                            Button(Sprache.t("Download", "Laden")) {
+                                Task { await hole(angebot) }
+                            }
+                            .disabled(laedt != nil)
+                        }
+                    }
+                    .frame(maxWidth: 460)
+                }
+
+                Toggle(isOn: $picmip) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Sprache.t("Halve textures", "Texturen halbieren"))
+                        Text(Sprache.t(
+                                "A quarter of the texture memory. Needed for large "
+                                    + "packs; still sharper than the original. Takes "
+                                    + "effect on the next start.",
+                                "Ein Viertel des Texturspeichers. Für große Pakete "
+                                    + "nötig, immer noch schärfer als das Original. "
+                                    + "Wirkt beim nächsten Start."))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: 460)
+
+                // Die Reihenfolge ist keine Kleinigkeit, sondern der haeufigste
+                // Grund, warum eine Mod "nicht wirkt": bei Gleichstand gewinnt
+                // der alphabetisch letzte Dateiname. Deshalb heissen unsere
+                // eigenen Zusaetze z_vr_...
+                Text(Sprache.t(
+                        "On conflict the alphabetically last file wins. A name after "
+                            + "\"z_vr_…\" also overrides the VR add-ons of the port.",
+                        "Bei Gleichstand gewinnt der alphabetisch letzte Dateiname. "
+                            + "Ein Name nach „z_vr_…“ überschreibt auch die "
+                            + "VR-Zusätze des Ports."))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 460)
+            }
+
             Divider().frame(maxWidth: 460)
 
             HStack(spacing: 12) {
                 Button(Sprache.t("Choose files…", "Dateien auswählen…")) { importing = true }
                 Button(Sprache.t("Open in Files", "In Dateien öffnen")) { AssetStore.revealInFiles(spiel) }
-                Button(Sprache.t("Check again", "Erneut prüfen")) { assets = AssetStore.status(spiel) }
+                Button(Sprache.t("Check again", "Erneut prüfen")) {
+                    assets = AssetStore.status(spiel)
+                    zusaetze = AssetStore.zusatzDateien(spiel)
+                }
             }
             .font(.callout)
 
@@ -227,11 +346,42 @@ struct ContentView: View {
                 .foregroundStyle(.tertiary)
                 .textSelection(.enabled)
         }
+        }
         .padding(40)
+        // Rollbar, nicht nur hoeher.
+        //
+        // Die Hoehe haengt jetzt am Inhalt: je Zusatz eine Zeile, dazu der
+        // Ladefortschritt und der Regler. Eine feste Fenstergroesse passt fuer
+        // genau einen Zustand und schneidet beim naechsten wieder ab -- so wie
+        // es die Mod-Auswahl gerade getan hat.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .confirmationDialog(
+            Sprache.t("Delete \(loeschKandidat?.name ?? "")?",
+                      "\(loeschKandidat?.name ?? "") löschen?"),
+            isPresented: Binding(get: { loeschKandidat != nil },
+                                 set: { if !$0 { loeschKandidat = nil } }),
+            titleVisibility: .visible) {
+            Button(Sprache.t("Delete", "Löschen"), role: .destructive) {
+                if let z = loeschKandidat {
+                    AssetStore.loesche(z)
+                    zusaetze = AssetStore.zusatzDateien(spiel)
+                }
+                loeschKandidat = nil
+            }
+            Button(Sprache.t("Cancel", "Abbrechen"), role: .cancel) { loeschKandidat = nil }
+        } message: {
+            // Die Groesse gehoert in die Rueckfrage: erneut zu laden dauert bei
+            // 1,7 GB Minuten, und das soll man vor dem Tippen wissen.
+            Text(Sprache.t("\(groesse(loeschKandidat?.groesse ?? 0)) will be removed. "
+                            + "Downloading it again takes a while.",
+                           "\(groesse(loeschKandidat?.groesse ?? 0)) werden entfernt. "
+                            + "Erneut zu laden dauert."))
+        }
         .onChange(of: spiel) { _, neu in
             progress = nil
             letztesSpiel = Int(neu.rawValue)
             assets = AssetStore.status(neu)
+            zusaetze = AssetStore.zusatzDateien(neu)
         }
         .task {
             // Die gemerkte Wahl VOR der Statusabfrage übernehmen, sonst zeigt
@@ -245,7 +395,25 @@ struct ContentView: View {
             // Info.plist steht. Erst wenn etwas darin liegt, wird der Ordner
             // sichtbar und man kann hineinkopieren.
             AssetStore.prepare()
+
+            // Zusaetze von aussen umschalten, fuer die Fehlersuche.
+            //
+            //   devicectl ... --environment-variables '{"JKXR_ZUSATZ":"an"}'
+            //
+            // Gebraucht, um beide Zustaende vom Mac aus messen zu koennen: das
+            // Upscale-Paket wiegt 1,7 GB, und es nur zum Umbenennen erneut
+            // hochzuschieben waere absurd. Ohne die Variable passiert nichts --
+            // dieselbe Bauart wie JKXR_AUTO_START.
+            if let wunsch = ProcessInfo.processInfo.environment["JKXR_ZUSATZ"] {
+                let an = (wunsch == "an" || wunsch == "1")
+                for z in AssetStore.zusatzDateien(spiel) where z.aktiv != an {
+                    AssetStore.setzeAktiv(z, an)
+                    print("[JKXR] Zusatz \(z.name) -> \(an ? "an" : "aus")")
+                }
+            }
+
             assets = AssetStore.status(spiel)
+            zusaetze = AssetStore.zusatzDateien(spiel)
 
             // Hardware-Diagnose ohne UI-Automation. devicectl kann die App mit
             // JKXR_AUTO_START=1 starten; im normalen App-Start ist die Variable
@@ -353,7 +521,56 @@ struct ContentView: View {
         }
         progress = nil
         assets = AssetStore.status(spiel)
+        zusaetze = AssetStore.zusatzDateien(spiel)
     }
+
+    /// Ein Angebot holen und ablegen.
+    ///
+    /// Der Fortschritt steht in der Zeile des Angebots, nicht in der allgemeinen
+    /// Meldung: bei einem Paket dieser Groesse laeuft das minutenlang, und man
+    /// soll sehen, WORAN es laeuft.
+    private func hole(_ angebot: Zusatzangebot) async {
+        laedt = angebot.id
+        ladeText = Sprache.t("starting…", "beginnt…")
+        let ziel = AssetStore.baseDirectory(angebot.spiel)
+            .appendingPathComponent(angebot.dateiname)
+
+        do {
+            _ = try await lader.lade(angebot, nach: ziel) { anteil, geladen, gesamt in
+                ladeText = gesamt > 0
+                    ? String(format: "%.0f %% · %@ / %@", anteil * 100,
+                             groesse(Int(geladen)), groesse(Int(gesamt)))
+                    : groesse(Int(geladen))
+            }
+            progress = nil
+        } catch {
+            progress = Sprache.t("Download failed: \(error.localizedDescription)",
+                                 "Laden fehlgeschlagen: \(error.localizedDescription)")
+        }
+        laedt = nil
+        ladeText = ""
+        zusaetze = AssetStore.zusatzDateien(spiel)
+        assets = AssetStore.status(spiel)
+    }
+
+    /// Dateigroesse in einer Zeile, die im Fenster Platz hat.
+    private func groesse(_ bytes: Int) -> String {
+        let mb = Double(bytes) / (1024 * 1024)
+        return mb >= 1024 ? String(format: "%.1f GB", mb / 1024)
+                          : String(format: "%.0f MB", mb)
+    }
+}
+
+/// Eine zusätzliche pk3 im base-Ordner, die weder zum gekauften Spiel noch zum
+/// Port gehört — also eine Mod.
+struct ZusatzDatei: Identifiable {
+    let id = UUID()
+    /// Der Name MIT .pk3, aber ohne die Abschaltendung.
+    let name: String
+    let aktiv: Bool
+    let groesse: Int
+    /// Wie die Datei gerade wirklich heißt.
+    let pfad: URL
 }
 
 enum AssetStatus {
@@ -466,6 +683,85 @@ enum AssetStore {
             print("[JKXR] Documents/base nach \(Spiel.academy.ordner)/base verschoben")
         } catch {
             print("[JKXR] Umzug von Documents/base fehlgeschlagen: "
+                + "\(error.localizedDescription)")
+        }
+    }
+
+    /// Angehängt, um eine pk3 stillzulegen.
+    ///
+    /// Abschalten heißt UMBENENNEN, nicht verschieben. Die Engine listet
+    /// ausschließlich Dateien auf ".pk3" (FS_AddGameDirectory), eine
+    /// "…pk3.aus" ist für sie also gar nicht vorhanden. Verschieben wäre die
+    /// naheliegende Alternative und die schlechtere: ein Upscale-Paket wiegt
+    /// Gigabyte, und die hin- und herzuschaufeln dauert Minuten, das Umbenennen
+    /// einen Augenblick.
+    static let ausEndung = ".aus"
+
+    /// Alle Mods im base-Ordner, an wie aus.
+    ///
+    /// Alles, was weder zum gekauften Spiel gehört (assets*.pk3) noch vom Port
+    /// mitgeliefert wird (z_vr_assets_*), gilt als Mod. Die Prüfdatei fürs
+    /// App-Review bleibt ebenfalls außen vor — sie ist keine.
+    static func zusatzDateien(_ spiel: Spiel) -> [ZusatzDatei] {
+        let fm = FileManager.default
+        let base = baseDirectory(spiel)
+        let eigene = Set(spiel.mitgelieferteDateien.map { "\($0).pk3" })
+
+        // Nach Basisnamen zusammenfassen, nicht je Datei auflisten.
+        //
+        // Beide Formen koennen nebeneinander liegen -- etwa wenn ein Umbenennen
+        // auf halbem Weg steckenblieb oder jemand von Hand kopiert hat. Ohne
+        // diese Zusammenfassung erschien derselbe Zusatz ZWEIMAL im Fenster,
+        // einmal an und einmal aus, und beim Umschalten passierte nichts:
+        // moveItem trifft dann auf eine vorhandene Zieldatei und scheitert.
+        //
+        // Die aktive Form gewinnt, denn sie ist die, welche die Engine sieht.
+        var gefunden: [String: ZusatzDatei] = [:]
+        for datei in ((try? fm.contentsOfDirectory(atPath: base.path)) ?? []).sorted() {
+            let klein = datei.lowercased()
+            let aktiv = klein.hasSuffix(".pk3")
+            let abgeschaltet = klein.hasSuffix(".pk3" + ausEndung)
+            guard aktiv || abgeschaltet else { continue }
+
+            let name = aktiv ? datei : String(datei.dropLast(ausEndung.count))
+            let k = name.lowercased()
+            if spiel.spieleigeneDateien.contains(k) { continue }
+            if eigene.contains(k) { continue }
+            if k == DemoDatei.dateiname { continue }
+
+            let pfad = base.appendingPathComponent(datei)
+            let groesse = (try? pfad.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+            let eintrag = ZusatzDatei(name: name, aktiv: aktiv, groesse: groesse, pfad: pfad)
+
+            if let bisher = gefunden[k], bisher.aktiv, !aktiv { continue }
+            gefunden[k] = eintrag
+        }
+        return gefunden.values.sorted { $0.name.lowercased() < $1.name.lowercased() }
+    }
+
+    /// Einen Zusatz vollstaendig entfernen -- beide Formen.
+    ///
+    /// Ueber die Dateien-App ginge das auch, aber ein Paket dieser Groesse dort
+    /// zu suchen ist umstaendlich, und nach einem missglueckten Umschalten
+    /// koennen zwei Dateien herumliegen, von denen man nur eine sieht.
+    static func loesche(_ eintrag: ZusatzDatei) {
+        let base = eintrag.pfad.deletingLastPathComponent()
+        for name in [eintrag.name, eintrag.name + ausEndung] {
+            try? FileManager.default.removeItem(at: base.appendingPathComponent(name))
+        }
+    }
+
+    static func setzeAktiv(_ eintrag: ZusatzDatei, _ an: Bool) {
+        guard an != eintrag.aktiv else { return }
+        let base = eintrag.pfad.deletingLastPathComponent()
+        let ziel = base.appendingPathComponent(an ? eintrag.name : eintrag.name + ausEndung)
+        do {
+            // Liegt die andere Form schon da, ist sie ein Ueberbleibsel: die
+            // Datei, die wir gerade verschieben, ist die massgebliche.
+            try? FileManager.default.removeItem(at: ziel)
+            try FileManager.default.moveItem(at: eintrag.pfad, to: ziel)
+        } catch {
+            print("[JKXR] \(eintrag.name) ließ sich nicht umschalten: "
                 + "\(error.localizedDescription)")
         }
     }

@@ -18,6 +18,7 @@
 		84B1859DAB6D978E19FDDC56 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 9A6CAA3C243A1F831B8EC237 /* InfoPlist.strings */; };
 		865C43888C7B6CA9FAE9E36A /* DemoWelt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 459383A965334C7B186876B1 /* DemoWelt.swift */; };
 		8D3854770BF2383E1D7A9D46 /* z_vr_assets_jko.pk3 in Resources */ = {isa = PBXBuildFile; fileRef = 6EC6D290FF5C38BB4AE6F1E0 /* z_vr_assets_jko.pk3 */; };
+		938C4E00ADF9428B38515ADD /* Zusaetze.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EDE62CF80416222717806B1 /* Zusaetze.swift */; };
 		AC868F8DEF90BEA3B0B633BF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FED42145EED052145A239D27 /* Assets.xcassets */; };
 		BCEEB8B7CE0E2A32AC9FF1E8 /* EngineHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06BB71B3A0F665691FF899FB /* EngineHost.swift */; };
 		CD6BF3229EB33199BC6E4E30 /* z_vr_assets_base.pk3 in Resources */ = {isa = PBXBuildFile; fileRef = A80259B3E1C8BD9D6820BB98 /* z_vr_assets_base.pk3 */; };
@@ -44,6 +45,7 @@
 /* Begin PBXFileReference section */
 		06BB71B3A0F665691FF899FB /* EngineHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineHost.swift; sourceTree = "<group>"; };
 		12FC913F54114EA867076FDC /* JKXRApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JKXRApp.swift; sourceTree = "<group>"; };
+		1EDE62CF80416222717806B1 /* Zusaetze.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Zusaetze.swift; sourceTree = "<group>"; };
 		33D840871EDE1EC635691BD3 /* AngleBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AngleBridge.h; sourceTree = "<group>"; };
 		40E4386F40A16FF2D112B627 /* WorldTracking.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WorldTracking.m; sourceTree = "<group>"; };
 		459383A965334C7B186876B1 /* DemoWelt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoWelt.swift; sourceTree = "<group>"; };
@@ -185,6 +187,7 @@
 				459383A965334C7B186876B1 /* DemoWelt.swift */,
 				06BB71B3A0F665691FF899FB /* EngineHost.swift */,
 				12FC913F54114EA867076FDC /* JKXRApp.swift */,
+				1EDE62CF80416222717806B1 /* Zusaetze.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -299,6 +302,7 @@
 				FE04998D8653339058EDA0AB /* JKXRApp.swift in Sources */,
 				D7D7EF00F6C052A3F2BCC96C /* SpielWahl.c in Sources */,
 				368A53BEA92B4E1DAE469734 /* WorldTracking.m in Sources */,
+				938C4E00ADF9428B38515ADD /* Zusaetze.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

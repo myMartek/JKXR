@@ -102,7 +102,11 @@ struct JKXRApp: App {
         WindowGroup {
             ContentView()
         }
-        .defaultSize(width: 640, height: 480)
+        // Hoeher als frueher: unter dem Dateistatus stehen jetzt die Zusaetze --
+        // je Mod eine Zeile, dazu der Schalter fuer die Texturgroesse. Mit 480
+        // schnitt das ab. Der Inhalt rollt zusaetzlich (ContentView), damit auch
+        // ein dritter Zusatz nicht wieder anstoesst.
+        .defaultSize(width: 700, height: 820)
 
         ImmersiveSpace(id: "game") {
             CompositorLayer(configuration: JKXRLayerConfiguration()) { layerRenderer in
