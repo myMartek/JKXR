@@ -96,6 +96,9 @@ void (*DepthFunc)(GLenum) = nullptr;
 void (*DepthMask)(GLboolean) = nullptr;
 void (*ClearDepthf)(GLfloat) = nullptr;
 GLenum (*GetError)(void) = nullptr;
+const GLubyte *(*GetString)(GLenum) = nullptr;
+void (*CompressedTexImage2D)(GLenum, GLint, GLenum, GLsizei, GLsizei, GLint,
+                             GLsizei, const void *) = nullptr;
 void (*Flush)(void) = nullptr;
 void (*ClearColor)(GLfloat, GLfloat, GLfloat, GLfloat) = nullptr;
 void (*Clear)(GLbitfield) = nullptr;
@@ -194,6 +197,8 @@ bool resolve()
     RESOLVE(UniformMatrix4fv)
     RESOLVE(Uniform2f)
     RESOLVE(Uniform1i)
+    RESOLVE(GetString)
+    RESOLVE(CompressedTexImage2D)
     #undef RESOLVE
 
     ok = true;
@@ -1085,6 +1090,8 @@ void TBXR_GetScreenRes(int *width, int *height)
     *height = (int)(gAppState.Height * gSuperSampling);
 }
 
+extern "C" void TBXR_visionOS_AstcSonde(void);
+
 extern "C" void TBXR_visionOS_SetLayerRenderer(cp_layer_renderer_t renderer)
 {
     // Auf Android füllt TBXR dieses Feld aus den OpenXR-Systemeigenschaften mit
@@ -1100,6 +1107,10 @@ extern "C" void TBXR_visionOS_SetLayerRenderer(cp_layer_renderer_t renderer)
     if (!angle::resolve()) {
         ALOGE("GLES-Funktionen von ANGLE nicht auflösbar — kein Rendern möglich");
     }
+
+    // Nach dem Auflösen und mit aktivem Kontext: die einzige Stelle, an der die
+    // Sonde beides vorfindet. Sie tut nichts ohne JKXR_ASTC_SONDE.
+    TBXR_visionOS_AstcSonde();
 
     gLayerRenderer = renderer;
     id<MTLDevice> device = cp_layer_renderer_get_device(renderer);
@@ -1538,6 +1549,67 @@ void TBXR_FrameSetup()
 
     TBXR_ProcessHaptics();
     gAppState.FrameSetup = true;
+}
+
+/// Sonde: kommt eine ASTC-Textur an gl4es vorbei auf der GPU an?
+///
+/// Der Nutzen von ASTC steht und faellt damit, dass die KOMPRIMIERTEN Bloecke
+/// hochgeladen werden. gl4es packt komprimierte Texturen aus (uncompressDXTc in
+/// texture.c) und kennt ASTC ohnehin nicht -- der uebliche Weg fuehrt also
+/// nirgendwohin. Diese Sonde geht denselben Weg wie der Rest dieser Datei:
+/// unmittelbar gegen libGLESv2.
+///
+/// OHNE KODIERER. ASTC kennt den "Void-Extent"-Block: sechzehn Byte fuer eine
+/// konstante Farbe. Damit laesst sich der Weg pruefen, ohne astcenc auch nur zu
+/// installieren -- und diese Frage kommt vor jeder Werkzeugkette.
+///
+/// Aufbau eines solchen Blocks (LDR, 2D):
+///   Byte 0..1  FC FD   die neun Kennbits, LDR, reserviert
+///   Byte 2..7  FF      "kein Void-Extent-Bereich angegeben"
+///   Byte 8..15 RGBA    je 16 Bit ohne Vorzeichen, niederwertig zuerst
+extern "C" void TBXR_visionOS_AstcSonde(void)
+{
+    if (!getenv("JKXR_ASTC_SONDE")) return;
+
+    const GLubyte *ext = angle::GetString(GL_EXTENSIONS);
+    const char *e = ext ? (const char *)ext : "";
+    ALOGV("[ASTC] astc_ldr im Kontext: %s",
+          strstr(e, "texture_compression_astc_ldr") ? "JA" : "nein");
+
+    // 12x12 bei 6x6-Bloecken = 2x2 = 4 Bloecke = 64 Byte.
+    const int kante = 12, block = 6;
+    const int bloecke = ((kante + block - 1) / block) * ((kante + block - 1) / block);
+    std::vector<uint8_t> daten(bloecke * 16);
+    for (int i = 0; i < bloecke; ++i) {
+        uint8_t *b = daten.data() + i * 16;
+        b[0] = 0xFC; b[1] = 0xFD;
+        for (int k = 2; k < 8; ++k) b[k] = 0xFF;
+        // Ein kraeftiges Magenta, damit eine Verwechslung mit Schwarz oder
+        // Weiss ausgeschlossen ist: R=1.0, G=0.0, B=1.0, A=1.0
+        const uint16_t rgba[4] = { 0xFFFF, 0x0000, 0xFFFF, 0xFFFF };
+        for (int k = 0; k < 4; ++k) {
+            b[8 + k * 2]     = (uint8_t)(rgba[k] & 0xFF);
+            b[8 + k * 2 + 1] = (uint8_t)(rgba[k] >> 8);
+        }
+    }
+
+    while (angle::GetError() != GL_NO_ERROR) { }
+
+    GLuint tex = 0;
+    angle::GenTextures(1, &tex);
+    angle::BindTexture(GL_TEXTURE_2D, tex);
+
+    // 0x93B4 = GL_COMPRESSED_RGBA_ASTC_6x6_KHR. Als Zahl, weil unsere
+    // GL-Header das Makro nicht mitbringen.
+    const GLenum ASTC_6x6 = 0x93B4;
+    angle::CompressedTexImage2D(GL_TEXTURE_2D, 0, ASTC_6x6, kante, kante, 0,
+                                (GLsizei)daten.size(), daten.data());
+    const GLenum fehler = angle::GetError();
+
+    ALOGV("[ASTC] Upload 12x12 ASTC 6x6, %zu Byte -> glGetError 0x%04x (%s)",
+          daten.size(), fehler, fehler == GL_NO_ERROR ? "in Ordnung" : "FEHLER");
+
+    angle::DeleteTextures(1, &tex);
 }
 
 void TBXR_prepareEyeBuffer(int eye)
