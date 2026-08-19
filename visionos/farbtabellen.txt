@@ -1,0 +1,14 @@
+# Farbtabellen der Engine, ausgegeben von R_visionOS_TabellenAusgeben.
+#
+# Upload32 legt sie auf JEDE Textur, bevor sie hochgeladen wird:
+#     p[i] = gamma[ intens[i] ]   (Textur mit Mip-Kette)
+#     p[i] = gamma[i]             (ohne Mip-Kette)
+#
+# Der ASTC-Weg umgeht Upload32 und muss dasselbe beim Backen tun --
+# sonst ist alles zu hell, auf dem Geraet beobachtet.
+#
+# Gemessen mit deviceSupportsGamma=0, overbrightBits=0, identityLight=1.0.
+# Aendern sich r_gamma oder r_intensity, gehoert diese Datei neu erzeugt:
+#     JKXR_ASTC_SONDE=1 starten, [Tabelle]-Zeilen aus dem Protokoll uebernehmen.
+gamma 00000000010101010101010102020202020202030303030304040404050505060606060707080808080909090a0a0b0b0c0c0c0d0d0d0e0e0f0f101011111212131314141516161717181819191a1b1b1c1d1d1e1e1f20202122232324252526272829292a2b2c2d2d2e2f3031323333343536373839393a3b3c3d3e3f404142434445464748494a4c4d4e4e4f50515254555657585a5b5c5d5f5f60616364656768696b6c6d6f6f707273747677797a7c7d7f7f8082838586888a8b8d8e8e9092939597989a9c9d9d9fa1a3a4a6a8aaababadafb1b3b5b7b8babcbcbec0c2c4c6c8cacaccced0d2d4d6d8dadadcdee0e2e5e7e9e9ebedeff2f4f6f8f8fafdff
+intens 000102030405060708090a0b0c0d0e101112131415161718191a1b1c1d1f202122232425262728292a2b2c2e2f303132333435363738393a3b3c3e3f404142434445464748494a4b4d4e4f505152535455565758595a5c5d5e5f606162636465666768696b6c6d6e6f707172737475767778797b7c7d7e7f8081828384858687888a8b8c8d8e8f9091929394959697999a9b9c9d9e9fa0a1a2a3a4a5a6a7a9aaabacadaeafb0b1b2b3b4b5b6b8b9babbbcbdbebfc0c1c2c3c4c5c7c8c9cacbcccdcecfd0d1d2d3d4d6d7d8d9dadbdcdddedfe0e1e2e3e4e6e7e8e9eaebecedeeeff0f1f2f3f5f6f7f8f9fafbfcfdfeffffffffffffffffffffffffffffffffff

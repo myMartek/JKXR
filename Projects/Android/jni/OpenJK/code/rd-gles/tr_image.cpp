@@ -1837,6 +1837,36 @@ void R_CreateBuiltinImages( void ) {
 R_SetColorMappings
 ===============
 */
+// MESSPUNKT: die fertigen Tabellen ausgeben.
+//
+// Upload32 legt sie auf JEDE Textur, bevor sie hochgeladen wird
+// (R_LightScaleTexture) -- Gamma und Intensitaet, dazu das Abdunkeln fuers
+// Overbright-Verfahren. Der ASTC-Weg umgeht Upload32 und damit auch das, und
+// genau deshalb war alles zu hell.
+//
+// Ausgegeben statt nachgerechnet: der Backofen soll dieselbe Abbildung
+// anwenden, nicht eine nachgebaute, die um eine Rundung danebenliegt.
+static void R_visionOS_TabellenAusgeben( void )
+{
+	if ( !getenv( "JKXR_ASTC_SONDE" ) ) return;
+
+	char zeile[1100];
+	int n = Com_sprintf( zeile, sizeof(zeile), "[Tabelle] gamma " );
+	for ( int i = 0; i < 256; ++i ) {
+		n += Com_sprintf( zeile + n, sizeof(zeile) - n, "%02x", s_gammatable[i] );
+	}
+	ri.Printf( PRINT_ALL, "%s\n", zeile );
+
+	n = Com_sprintf( zeile, sizeof(zeile), "[Tabelle] intens " );
+	for ( int i = 0; i < 256; ++i ) {
+		n += Com_sprintf( zeile + n, sizeof(zeile) - n, "%02x", s_intensitytable[i] );
+	}
+	ri.Printf( PRINT_ALL, "%s\n", zeile );
+
+	ri.Printf( PRINT_ALL, "[Tabelle] deviceSupportsGamma=%d overbrightBits=%d identityLight=%.4f\n",
+	           (int)glConfig.deviceSupportsGamma, tr.overbrightBits, tr.identityLight );
+}
+
 void R_SetColorMappings( void ) {
 	int		i, j;
 	float	g;
@@ -1935,6 +1965,8 @@ void R_SetColorMappings( void ) {
 	{
 		ri.WIN_SetGamma( &glConfig, s_gammatable, s_gammatable, s_gammatable );
 	}
+
+	R_visionOS_TabellenAusgeben();
 }
 
 /*

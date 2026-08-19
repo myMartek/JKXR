@@ -57,6 +57,31 @@ ENDUNGEN = (".jpg", ".jpeg", ".tga", ".png")
 ASTC_KOPF = 16
 
 
+def lies_tabellen(pfad: pathlib.Path) -> bytes | None:
+    """Die Farbabbildung der Engine, aus visionos/farbtabellen.txt.
+
+    Upload32 legt sie auf JEDE Textur, bevor sie hochgeladen wird
+    (R_LightScaleTexture). Der ASTC-Weg umgeht Upload32 — ohne dieselbe
+    Abbildung beim Backen ist alles zu hell, auf dem Gerät beobachtet.
+
+    Zurückgegeben wird die FERTIGE Verkettung gamma[intens[v]], also der Fall
+    für Texturen mit Mip-Kette. Das sind praktisch alle; die wenigen ohne
+    bekämen nur Gamma, und der Unterschied liegt unter der Wahrnehmbarkeit.
+    """
+    if not pfad.exists():
+        return None
+    tabellen = {}
+    for zeile in pfad.read_text().splitlines():
+        if zeile.startswith("#") or not zeile.strip():
+            continue
+        name, hexwerte = zeile.split()
+        tabellen[name] = bytes.fromhex(hexwerte)
+    if "gamma" not in tabellen or "intens" not in tabellen:
+        return None
+    g, i = tabellen["gamma"], tabellen["intens"]
+    return bytes(g[i[v]] for v in range(256))
+
+
 def mipkette(bild: Image.Image) -> list[Image.Image]:
     """Alle Stufen bis hinunter zu 1×1.
 
@@ -97,7 +122,7 @@ def kodiere(bild: Image.Image, block: str, astcenc: str) -> bytes:
 
 
 def backe_eine(auftrag) -> tuple[str, bytes] | None:
-    name, rohdaten, block, astcenc = auftrag
+    name, rohdaten, block, astcenc, abbildung = auftrag
     try:
         bild = Image.open(io.BytesIO(rohdaten))
         hat_alpha = bild.mode in ("RGBA", "LA") or "transparency" in bild.info
@@ -105,6 +130,16 @@ def backe_eine(auftrag) -> tuple[str, bytes] | None:
     except Exception as fehler:
         print(f"  übersprungen  {name}: {fehler}", file=sys.stderr)
         return None
+
+    # Die Abbildung der Engine auf das Vollbild legen, VOR der Mip-Erzeugung.
+    #
+    # Genau diese Reihenfolge hat die Engine auch: R_LightScaleTexture wirkt auf
+    # das Vollbild, die Stufen entstehen danach (GL_GENERATE_MIPMAP). Nur RGB,
+    # Alpha bleibt unberührt.
+    if abbildung:
+        r, g, b, a = bild.split()
+        bild = Image.merge("RGBA", (r.point(abbildung), g.point(abbildung),
+                                    b.point(abbildung), a))
 
     bw, bh = (int(x) for x in block.split("x"))
     stufen = mipkette(bild)
@@ -136,6 +171,8 @@ def main() -> int:
     p.add_argument("--jobs", type=int, default=8)
     p.add_argument("--astcenc", default="astcenc-neon",
                    help="Pfad zum Kodierer (aus ARM-software/astc-encoder gebaut)")
+    p.add_argument("--tabellen", default="visionos/farbtabellen.txt",
+                   help="Farbabbildung der Engine (siehe R_visionOS_TabellenAusgeben)")
     p.add_argument("--filter", default="",
                    help="nur Pfade, die diesen Text enthalten")
     p.add_argument("--limit", type=int, default=0,
@@ -155,7 +192,15 @@ def main() -> int:
         namen = namen[:args.limit]
     print(f"{len(namen)} Texturen, Block {args.block}")
 
-    auftraege = [(n, quelle.read(n), args.block, astcenc) for n in namen]
+    abbildung = lies_tabellen(pathlib.Path(args.tabellen))
+    if abbildung is None:
+        print(f"WARNUNG: {args.tabellen} fehlt -- ohne die Farbabbildung der "
+              f"Engine wird alles zu hell.", file=sys.stderr)
+    else:
+        print(f"Farbabbildung aus {args.tabellen}: "
+              f"128 -> {abbildung[128]}, 64 -> {abbildung[64]}")
+
+    auftraege = [(n, quelle.read(n), args.block, astcenc, abbildung) for n in namen]
 
     fertig = 0
     roh = klein = 0
