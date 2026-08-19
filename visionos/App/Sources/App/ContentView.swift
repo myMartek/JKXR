@@ -166,11 +166,14 @@ struct ContentView: View {
     /// Welcher Zusatz gerade zum Löschen angefragt ist.
     @State private var loeschKandidat: ZusatzDatei?
 
-    /// Texturen beim Laden halbieren.
-    ///
     /// Wirkt über die Befehlszeile der Engine (EngineHost) und damit erst beim
-    /// nächsten Start des Immersive Space -- r_picmip ist gelatcht.
+    /// nächsten Start des Immersive Space -- r_picmip ist gelatcht. Gesetzt
+    /// wird es nicht mehr von Hand, sondern aus der Texturstufe.
     @AppStorage("jkxr.picmip") private var picmip: Bool = false
+
+    /// Die gewählte Texturauflösung.
+    @AppStorage("jkxr.texturstufe") private var stufeRoh: Int = Texturstufe.standard.rawValue
+    private var stufe: Texturstufe { Texturstufe(rawValue: stufeRoh) ?? .standard }
 
     var body: some View {
         ScrollView {
@@ -243,7 +246,10 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if !zusaetze.isEmpty || !Zusatzkatalog.fuer(spiel).isEmpty {
+            // Der Abschnitt steht immer, sobald es fuer dieses Spiel ueberhaupt
+            // ein Angebot gibt -- die Auswahl soll auffindbar sein, bevor
+            // irgendetwas geladen wurde.
+            if !zusaetze.isEmpty || Zusatzkatalog.alle.contains(where: { $0.spiel == spiel }) {
                 Divider().frame(maxWidth: 460)
 
                 Text(Sprache.t("Add-ons", "Zusätze"))
@@ -274,19 +280,38 @@ struct ContentView: View {
                     .frame(maxWidth: 460)
                 }
 
-                ForEach(Zusatzkatalog.fuer(spiel).filter { angebot in
-                    !zusaetze.contains { $0.name.lowercased() == angebot.dateiname.lowercased() }
-                }) { angebot in
+                Picker(Sprache.t("Texture resolution", "Texturauflösung"),
+                       selection: Binding(get: { stufe },
+                                          set: { neu in waehleStufe(neu) })) {
+                    ForEach(Texturstufe.allCases) { s in
+                        Text(s.name).tag(s)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 460)
+
+                Text(stufe.erklaerung)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 460)
+
+                if let angebot = Zusatzkatalog.fuer(spiel, stufe) {
+                    let da = AssetStore.paketVorhanden(angebot)
                     HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(Sprache.t(angebot.anzeigeEnglisch, angebot.anzeige))
-                            Text(laedt == angebot.id ? ladeText : angebot.ungefaehr)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                        Text(da ? Sprache.t("Package present", "Paket vorhanden")
+                                : angebot.ungefaehr)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         Spacer()
                         if laedt == angebot.id {
+                            Text(ladeText).font(.caption).foregroundStyle(.secondary)
                             ProgressView()
+                        } else if da {
+                            Button(Sprache.t("Delete", "Löschen"), role: .destructive) {
+                                AssetStore.loeschePaket(angebot)
+                                zusaetze = AssetStore.zusatzDateien(spiel)
+                            }
                         } else {
                             Button(Sprache.t("Download", "Laden")) {
                                 Task { await hole(angebot) }
@@ -296,22 +321,6 @@ struct ContentView: View {
                     }
                     .frame(maxWidth: 460)
                 }
-
-                Toggle(isOn: $picmip) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(Sprache.t("Halve textures", "Texturen halbieren"))
-                        Text(Sprache.t(
-                                "A quarter of the texture memory. Needed for large "
-                                    + "packs; still sharper than the original. Takes "
-                                    + "effect on the next start.",
-                                "Ein Viertel des Texturspeichers. Für große Pakete "
-                                    + "nötig, immer noch schärfer als das Original. "
-                                    + "Wirkt beim nächsten Start."))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(maxWidth: 460)
 
                 // Die Reihenfolge ist keine Kleinigkeit, sondern der haeufigste
                 // Grund, warum eine Mod "nicht wirkt": bei Gleichstand gewinnt
@@ -524,6 +533,23 @@ struct ContentView: View {
         zusaetze = AssetStore.zusatzDateien(spiel)
     }
 
+    /// Die Texturstufe wechseln.
+    ///
+    /// Setzt in einem Zug alles, was zusammengehört: das Paket der gewählten
+    /// Stufe wird eingeschaltet, das der anderen ausgeschaltet, und die
+    /// Halbierung folgt der Stufe. Einzeln bedienbar waren die drei Dinge nur
+    /// eine Quelle widersprüchlicher Zustände.
+    private func waehleStufe(_ neu: Texturstufe) {
+        stufeRoh = neu.rawValue
+        picmip = neu.halbieren
+
+        for angebot in Zusatzkatalog.alle where angebot.spiel == spiel {
+            AssetStore.setzePaketAktiv(angebot, angebot.stufe == neu)
+        }
+        zusaetze = AssetStore.zusatzDateien(spiel)
+        assets = AssetStore.status(spiel)
+    }
+
     /// Ein Angebot holen und ablegen.
     ///
     /// Der Fortschritt steht in der Zeile des Angebots, nicht in der allgemeinen
@@ -549,8 +575,8 @@ struct ContentView: View {
         }
         laedt = nil
         ladeText = ""
-        zusaetze = AssetStore.zusatzDateien(spiel)
-        assets = AssetStore.status(spiel)
+        // Frisch geladen heißt eingeschaltet -- und das andere Paket aus.
+        waehleStufe(stufe)
     }
 
     /// Dateigroesse in einer Zeile, die im Fenster Platz hat.
@@ -726,6 +752,10 @@ enum AssetStore {
             let name = aktiv ? datei : String(datei.dropLast(ausEndung.count))
             let k = name.lowercased()
             if spiel.spieleigeneDateien.contains(k) { continue }
+            // Was die Texturauswahl verwaltet, taucht nicht zusaetzlich als
+            // freier Schalter auf -- sonst liessen sich widersprechende
+            // Zustaende einstellen.
+            if Zusatzkatalog.verwalteteNamen.contains(k) { continue }
             if eigene.contains(k) { continue }
             if k == DemoDatei.dateiname { continue }
 
@@ -737,6 +767,39 @@ enum AssetStore {
             gefunden[k] = eintrag
         }
         return gefunden.values.sorted { $0.name.lowercased() < $1.name.lowercased() }
+    }
+
+    /// Liegt das Paket eines Angebots da, an oder aus?
+    static func paketVorhanden(_ angebot: Zusatzangebot) -> Bool {
+        let base = baseDirectory(angebot.spiel)
+        let fm = FileManager.default
+        return fm.fileExists(atPath: base.appendingPathComponent(angebot.dateiname).path)
+            || fm.fileExists(atPath: base.appendingPathComponent(angebot.dateiname + ausEndung).path)
+    }
+
+    /// Das Paket eines Angebots ein- oder ausschalten.
+    ///
+    /// Tut nichts, wenn es gar nicht da ist -- eine Stufe zu waehlen, deren
+    /// Paket noch fehlt, ist ein zulaessiger Zwischenzustand: erst waehlen,
+    /// dann laden.
+    static func setzePaketAktiv(_ angebot: Zusatzangebot, _ an: Bool) {
+        let base = baseDirectory(angebot.spiel)
+        let fm = FileManager.default
+        let ein = base.appendingPathComponent(angebot.dateiname)
+        let aus = base.appendingPathComponent(angebot.dateiname + ausEndung)
+
+        let quelle = an ? aus : ein
+        let ziel   = an ? ein : aus
+        guard fm.fileExists(atPath: quelle.path) else { return }
+        try? fm.removeItem(at: ziel)
+        try? fm.moveItem(at: quelle, to: ziel)
+    }
+
+    static func loeschePaket(_ angebot: Zusatzangebot) {
+        let base = baseDirectory(angebot.spiel)
+        for name in [angebot.dateiname, angebot.dateiname + ausEndung] {
+            try? FileManager.default.removeItem(at: base.appendingPathComponent(name))
+        }
     }
 
     /// Einen Zusatz vollstaendig entfernen -- beide Formen.

@@ -6,26 +6,67 @@ import Foundation
 /// Der Katalog steht im Code und nicht auf dem Server: die App soll nicht von
 /// einer Liste abhängen, die jemand anders ändern kann, und ein Zusatz, den es
 /// noch nicht gibt, ist auch kein Eintrag im Fenster wert.
+/// Wie fein die Texturen sein sollen.
+///
+/// Eine Auswahl statt zweier Schalter: die Stufe entscheidet BEIDES -- welches
+/// Paket geladen wird und ob die Engine die Texturen beim Hochladen halbiert.
+/// Getrennt bedienbar waren die zwei Dinge nur verwirrend, denn nur bestimmte
+/// Paarungen ergeben Sinn.
+enum Texturstufe: Int, CaseIterable, Identifiable {
+    case standard = 0
+    case zweifach = 1
+    case vierfach = 2
+
+    var id: Int { rawValue }
+
+    var name: String {
+        switch self {
+        case .standard: return Sprache.t("Default", "Standard")
+        case .zweifach: return "2×"
+        case .vierfach: return Sprache.t("4× (experimental)", "4× (experimentell)")
+        }
+    }
+
+    var erklaerung: String {
+        switch self {
+        case .standard:
+            return Sprache.t("The textures of the game you own.",
+                             "Die Texturen des Spiels, das dir gehört.")
+        case .zweifach:
+            return Sprache.t("Upscaled pack, halved on upload — a quarter of the "
+                                + "texture memory, still sharper than the original.",
+                             "Hochgerechnetes Paket, beim Laden halbiert — ein Viertel "
+                                + "des Texturspeichers, immer noch schärfer als das Original.")
+        case .vierfach:
+            return Sprache.t("Full resolution, pre-baked as compressed GPU textures. "
+                                + "Known issue: distant surfaces show noise.",
+                             "Volle Auflösung, vorgebacken als komprimierte "
+                                + "GPU-Texturen. Bekannter Fehler: entfernte Flächen "
+                                + "rauschen.")
+        }
+    }
+
+    /// Halbiert die Engine beim Hochladen? Nur bei 2× -- bei 4x ist das Paket
+    /// bereits komprimiert und braucht es nicht.
+    var halbieren: Bool { self == .zweifach }
+}
+
+/// Ein Zusatz, den die App selbst holen kann.
 struct Zusatzangebot: Identifiable, Sendable {
     let id: String
-    /// Was im Fenster steht.
-    let anzeige: String
-    let anzeigeEnglisch: String
-    /// Für welches Spiel, denn die base-Ordner sind getrennt.
     let spiel: Spiel
+    let stufe: Texturstufe
 
     /// Unter welchem Namen die Datei abgelegt wird — und das ist keine
     /// Nebensache, sondern bestimmt die LADEREIHENFOLGE.
     ///
     /// Bei Gleichstand gewinnt der alphabetisch letzte Name (files.cpp:
-    /// aufsteigend hinzugefügt, jeder Suchpfad vorangestellt). "upscale_…"
-    /// liegt hinter "assets3.pk3" und vor "z_vr_assets_…": das Paket schlägt
-    /// damit die Originaltexturen, lässt die VR-Zusätze des Ports aber in Ruhe.
-    /// Hieße es "zz_…", überschriebe es auch die Waffenmodelle.
+    /// aufsteigend hinzugefügt, jeder Suchpfad vorangestellt). Beide Namen
+    /// liegen hinter "assets0-5" und vor "z_vr_assets_": die Pakete schlagen
+    /// damit die Originaltexturen, lassen die VR-Zusätze des Ports aber in Ruhe.
     let dateiname: String
 
     let url: URL
-    /// Nur für die Anzeige, bevor der Server die echte Größe nennt.
     let ungefaehr: String
 
     /// Optional: erwarteter SHA-256. Ist er gesetzt, wird nach dem Laden
@@ -34,28 +75,37 @@ struct Zusatzangebot: Identifiable, Sendable {
 }
 
 enum Zusatzkatalog {
-    // Die Datei liegt auf Marcels Server. Angeboten wird die ENTPACKTE .pk3,
-    // nicht das 7z-Archiv des Autors: eine .pk3 ist bereits ein Deflate-ZIP,
-    // LZMA holt daraus noch ein Prozent heraus (1756 statt 1774 MB), und dafür
-    // einen 7z-Entpacker mitzuschleppen, der auf dem Gerät nochmals 1,7 GB
-    // Zwischenraum bräuchte, wäre ein schlechter Handel.
     static let alle: [Zusatzangebot] = [
         Zusatzangebot(
-            id: "jko-upscale-4x",
-            anzeige: "Texturen in vierfacher Auflösung (KI-Hochrechnung)",
-            anzeigeEnglisch: "Textures at four times the resolution (AI upscale)",
+            id: "jko-upscale-2x",
             spiel: .outcast,
-            // Der Name stammt vom Autor und ist gut gewählt: "assets8" sortiert
-            // hinter assets0-5 und vor z_vr_assets_ -- das Paket schlägt die
-            // Originaltexturen, die VR-Zusätze des Ports bleiben unangetastet.
+            stufe: .zweifach,
+            // Der Name stammt vom Autor des Pakets.
             dateiname: "assets8_4x_upscale.pk3",
-            url: URL(string: "https://www.martek.de/downloads/assets8_4x_upscale.pk3")!,
+            url: URL(string: "https://www.martek.de/downloads/outcast/assets8_4x_upscale.pk3")!,
             ungefaehr: "1,7 GB",
             sha256: "e00ae28ae11c96646795c07ce299d7641c8c133b5be7f7631a3ff9dfbbedccae"),
+
+        Zusatzangebot(
+            id: "jko-upscale-4x",
+            spiel: .outcast,
+            stufe: .vierfach,
+            dateiname: "assets9_astc.pk3",
+            url: URL(string: "https://www.martek.de/downloads/outcast/assets9_astc.pk3")!,
+            ungefaehr: "4,7 GB",
+            // Noch keiner: das Paket wird neu gebacken, sobald das Rauschen
+            // behoben ist, und der Hash änderte sich dabei.
+            sha256: nil),
     ]
 
-    static func fuer(_ spiel: Spiel) -> [Zusatzangebot] {
-        alle.filter { $0.spiel == spiel }
+    static func fuer(_ spiel: Spiel, _ stufe: Texturstufe) -> Zusatzangebot? {
+        alle.first { $0.spiel == spiel && $0.stufe == stufe }
+    }
+
+    /// Alle Dateinamen des Katalogs -- die verwaltet die Auswahl, nicht die
+    /// allgemeine Zusatzliste.
+    static var verwalteteNamen: Set<String> {
+        Set(alle.map { $0.dateiname.lowercased() })
     }
 }
 

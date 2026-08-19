@@ -165,7 +165,8 @@ def backe_eine(auftrag) -> tuple[str, bytes] | None:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("quelle")
+    p.add_argument("quelle", nargs="+",
+                   help="eine oder mehrere .pk3 — Academy liefert elf Stueck")
     p.add_argument("ziel")
     p.add_argument("--block", default="6x6")
     p.add_argument("--jobs", type=int, default=8)
@@ -184,13 +185,29 @@ def main() -> int:
         print(f"Kodierer nicht gefunden: {args.astcenc}", file=sys.stderr)
         return 1
 
-    quelle = zipfile.ZipFile(args.quelle)
-    namen = [n for n in quelle.namelist() if n.lower().endswith(ENDUNGEN)]
-    if args.filter:
-        namen = [n for n in namen if args.filter in n]
+    # MEHRERE QUELLEN in ein Ausgabepaket.
+    #
+    # Academy kommt als elf .pk3 (gfx, models_1..4, textures_1..N). Umpacken
+    # von Hand braucht es dafür nicht — eine .pk3 ist ein ZIP, und hier werden
+    # sie ohnehin alle gelesen.
+    #
+    # Bei gleichem Pfad in zwei Quellen gewinnt die SPÄTERE. Das ist dieselbe
+    # Regel wie im Spiel, wo die alphabetisch letzte pk3 gewinnt — die Reihenfolge
+    # auf der Kommandozeile entscheidet.
+    herkunft = {}
+    for pfad in args.quelle:
+        z = zipfile.ZipFile(pfad)
+        for n in z.namelist():
+            if not n.lower().endswith(ENDUNGEN):
+                continue
+            if args.filter and args.filter not in n:
+                continue
+            herkunft[n] = z
+
+    namen = sorted(herkunft)
     if args.limit:
         namen = namen[:args.limit]
-    print(f"{len(namen)} Texturen, Block {args.block}")
+    print(f"{len(namen)} Texturen aus {len(args.quelle)} Paket(en), Block {args.block}")
 
     abbildung = lies_tabellen(pathlib.Path(args.tabellen))
     if abbildung is None:
@@ -200,7 +217,8 @@ def main() -> int:
         print(f"Farbabbildung aus {args.tabellen}: "
               f"128 -> {abbildung[128]}, 64 -> {abbildung[64]}")
 
-    auftraege = [(n, quelle.read(n), args.block, astcenc, abbildung) for n in namen]
+    auftraege = [(n, herkunft[n].read(n), args.block, astcenc, abbildung)
+                 for n in namen]
 
     fertig = 0
     roh = klein = 0
