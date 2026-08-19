@@ -1567,6 +1567,130 @@ void TBXR_FrameSetup()
 ///   Byte 0..1  FC FD   die neun Kennbits, LDR, reserviert
 ///   Byte 2..7  FF      "kein Void-Extent-Bereich angegeben"
 ///   Byte 8..15 RGBA    je 16 Bit ohne Vorzeichen, niederwertig zuerst
+/// Einen ASTC-Void-Extent-Block bauen: sechzehn Byte konstante Farbe.
+///
+/// Damit laesst sich der Weg pruefen, ohne astcenc auch nur zu installieren.
+/// Aufbau (LDR, 2D):
+///   Byte 0..1  FC FD   die neun Kennbits, LDR, reserviert
+///   Byte 2..7  FF      "kein Void-Extent-Bereich angegeben"
+///   Byte 8..15 RGBA    je 16 Bit ohne Vorzeichen, niederwertig zuerst
+static void astcVoidExtent(uint8_t *b, uint16_t r, uint16_t g, uint16_t bl, uint16_t a)
+{
+    b[0] = 0xFC; b[1] = 0xFD;
+    for (int k = 2; k < 8; ++k) b[k] = 0xFF;
+    const uint16_t f[4] = { r, g, bl, a };
+    for (int k = 0; k < 4; ++k) {
+        b[8 + k * 2]     = (uint8_t)(f[k] & 0xFF);
+        b[8 + k * 2 + 1] = (uint8_t)(f[k] >> 8);
+    }
+}
+
+/// Laedt eine einfarbige ASTC-Textur und liest zurueck, was die GPU daraus macht.
+///
+/// Zurueckgegeben wird true, wenn der Upload durchging; die ausgelesene Farbe
+/// steht in aus[4].
+static bool astcRundlauf(GLenum format, const char *name,
+                         uint16_t fr, uint16_t fg, uint16_t fb, uint8_t aus[4])
+{
+    const int kante = 12, block = 6;
+    const int proReihe = (kante + block - 1) / block;
+    std::vector<uint8_t> daten(proReihe * proReihe * 16);
+    for (int i = 0; i < proReihe * proReihe; ++i) {
+        astcVoidExtent(daten.data() + i * 16, fr, fg, fb, 0xFFFF);
+    }
+
+    while (angle::GetError() != GL_NO_ERROR) { }
+
+    GLuint tex = 0;
+    angle::GenTextures(1, &tex);
+    angle::BindTexture(GL_TEXTURE_2D, tex);
+    angle::CompressedTexImage2D(GL_TEXTURE_2D, 0, format, kante, kante, 0,
+                                (GLsizei)daten.size(), daten.data());
+    const GLenum hochgeladen = angle::GetError();
+    if (hochgeladen != GL_NO_ERROR) {
+        ALOGV("[ASTC] %s: Upload -> 0x%04x FEHLER", name, hochgeladen);
+        angle::DeleteTextures(1, &tex);
+        return false;
+    }
+    // NEAREST und keine Mip-Kette: die Textur hat nur Stufe 0, mit der
+    // Vorgabe GL_NEAREST_MIPMAP_LINEAR waere sie unvollstaendig und liefe
+    // schwarz.
+    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    // Ziel: 1x1 RGBA8, damit ein einziger Bildpunkt die Antwort ist.
+    GLuint ziel = 0, fbo = 0;
+    angle::GenTextures(1, &ziel);
+    angle::BindTexture(GL_TEXTURE_2D, ziel);
+    angle::TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    angle::GenFramebuffers(1, &fbo);
+    angle::BindFramebuffer(GL_FRAMEBUFFER, fbo);
+    angle::FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ziel, 0);
+
+    static const char *vs =
+        "#version 300 es\n"
+        "out vec2 uv;\n"
+        "void main() {\n"
+        "  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
+        "  uv = p;\n"
+        "  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+        "}\n";
+    static const char *fs =
+        "#version 300 es\n"
+        "precision highp float;\n"
+        "uniform sampler2D bild;\n"
+        "in vec2 uv;\n"
+        "out vec4 farbe;\n"
+        "void main() { farbe = texture(bild, vec2(0.5)); }\n";
+
+    GLuint v = angle::CreateShader(GL_VERTEX_SHADER);
+    angle::ShaderSource(v, 1, &vs, nullptr); angle::CompileShader(v);
+    GLuint f = angle::CreateShader(GL_FRAGMENT_SHADER);
+    angle::ShaderSource(f, 1, &fs, nullptr); angle::CompileShader(f);
+    GLuint prog = angle::CreateProgram();
+    angle::AttachShader(prog, v); angle::AttachShader(prog, f);
+    angle::LinkProgram(prog);
+
+    GLint verknuepft = 0;
+    angle::GetProgramiv(prog, GL_LINK_STATUS, &verknuepft);
+    if (!verknuepft) {
+        char log[512] = {0};
+        angle::GetProgramInfoLog(prog, sizeof(log), nullptr, log);
+        ALOGV("[ASTC] %s: Programm nicht verknuepfbar: %s", name, log);
+    }
+
+    angle::UseProgram(prog);
+    angle::ActiveTexture(GL_TEXTURE0);
+    angle::BindTexture(GL_TEXTURE_2D, tex);
+    angle::Uniform1i(angle::GetUniformLocation(prog, "bild"), 0);
+    angle::Viewport(0, 0, 1, 1);
+    angle::DrawArrays(GL_TRIANGLES, 0, 3);
+
+    angle::ReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, aus);
+    const GLenum ende = angle::GetError();
+
+    ALOGV("[ASTC] %s: gelesen R=%u G=%u B=%u A=%u (glGetError 0x%04x)",
+          name, aus[0], aus[1], aus[2], aus[3], ende);
+
+    angle::DeleteTextures(1, &tex);
+    angle::DeleteTextures(1, &ziel);
+    angle::BindFramebuffer(GL_FRAMEBUFFER, 0);
+    return true;
+}
+
+/// Sonde: kommt eine ASTC-Textur an gl4es vorbei auf der GPU an -- und was
+/// macht die GPU daraus?
+///
+/// gl4es packt komprimierte Texturen aus (uncompressDXTc in texture.c) und
+/// kennt ASTC ohnehin nicht. Diese Sonde geht deshalb denselben Weg wie der
+/// Rest dieser Datei: unmittelbar gegen libGLESv2.
+///
+/// Geprueft werden BEIDE Farbraum-Varianten. Ein sRGB-Format dekodiert beim
+/// Abtasten nach linear, ein lineares nicht -- die falsche Wahl verschiebt
+/// jede Helligkeit im Spiel, und genau dort ist dieser Port schon einmal
+/// danebengelegen.
 extern "C" void TBXR_visionOS_AstcSonde(void)
 {
     if (!getenv("JKXR_ASTC_SONDE")) return;
@@ -1576,40 +1700,20 @@ extern "C" void TBXR_visionOS_AstcSonde(void)
     ALOGV("[ASTC] astc_ldr im Kontext: %s",
           strstr(e, "texture_compression_astc_ldr") ? "JA" : "nein");
 
-    // 12x12 bei 6x6-Bloecken = 2x2 = 4 Bloecke = 64 Byte.
-    const int kante = 12, block = 6;
-    const int bloecke = ((kante + block - 1) / block) * ((kante + block - 1) / block);
-    std::vector<uint8_t> daten(bloecke * 16);
-    for (int i = 0; i < bloecke; ++i) {
-        uint8_t *b = daten.data() + i * 16;
-        b[0] = 0xFC; b[1] = 0xFD;
-        for (int k = 2; k < 8; ++k) b[k] = 0xFF;
-        // Ein kraeftiges Magenta, damit eine Verwechslung mit Schwarz oder
-        // Weiss ausgeschlossen ist: R=1.0, G=0.0, B=1.0, A=1.0
-        const uint16_t rgba[4] = { 0xFFFF, 0x0000, 0xFFFF, 0xFFFF };
-        for (int k = 0; k < 4; ++k) {
-            b[8 + k * 2]     = (uint8_t)(rgba[k] & 0xFF);
-            b[8 + k * 2 + 1] = (uint8_t)(rgba[k] >> 8);
-        }
-    }
+    uint8_t x[4] = {0};
 
-    while (angle::GetError() != GL_NO_ERROR) { }
+    // Magenta liegt auf den Endpunkten 0 und 1 -- den Fixpunkten der
+    // sRGB-Kennlinie. Beide Formate MUESSEN dort dasselbe liefern; die Farbe
+    // beweist die Dekodierung, sagt zum Farbraum aber nichts.
+    astcRundlauf(0x93B4, "Magenta, linear", 0xFFFF, 0x0000, 0xFFFF, x);
+    astcRundlauf(0x93D4, "Magenta, sRGB  ", 0xFFFF, 0x0000, 0xFFFF, x);
 
-    GLuint tex = 0;
-    angle::GenTextures(1, &tex);
-    angle::BindTexture(GL_TEXTURE_2D, tex);
-
-    // 0x93B4 = GL_COMPRESSED_RGBA_ASTC_6x6_KHR. Als Zahl, weil unsere
-    // GL-Header das Makro nicht mitbringen.
-    const GLenum ASTC_6x6 = 0x93B4;
-    angle::CompressedTexImage2D(GL_TEXTURE_2D, 0, ASTC_6x6, kante, kante, 0,
-                                (GLsizei)daten.size(), daten.data());
-    const GLenum fehler = angle::GetError();
-
-    ALOGV("[ASTC] Upload 12x12 ASTC 6x6, %zu Byte -> glGetError 0x%04x (%s)",
-          daten.size(), fehler, fehler == GL_NO_ERROR ? "in Ordnung" : "FEHLER");
-
-    angle::DeleteTextures(1, &tex);
+    // Mittleres Grau entscheidet es. 0x8080 entspricht 128/255 = 0.502.
+    //   lineares Format:  bleibt 0.502  -> gelesen ~128
+    //   sRGB-Format:      wird beim Abtasten nach linear gewandelt,
+    //                     0.502 -> ~0.216 -> gelesen ~55
+    astcRundlauf(0x93B4, "Grau 0.502, linear", 0x8080, 0x8080, 0x8080, x);
+    astcRundlauf(0x93D4, "Grau 0.502, sRGB  ", 0x8080, 0x8080, 0x8080, x);
 }
 
 void TBXR_prepareEyeBuffer(int eye)
