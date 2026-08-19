@@ -1691,6 +1691,158 @@ static bool astcRundlauf(GLenum format, const char *name,
 /// Abtasten nach linear, ein lineares nicht -- die falsche Wahl verschiebt
 /// jede Helligkeit im Spiel, und genau dort ist dieser Port schon einmal
 /// danebengelegen.
+/// Welche Textur ist im ECHTEN GLES gerade gebunden?
+///
+/// gl4es fuehrt eine eigene Buchhaltung und legt die echte Textur erst an, wenn
+/// Daten hindurchfliessen. Nach einem Upload durch gl4es sagt diese Abfrage,
+/// welche Kennung dabei entstanden ist -- gemessen ist sie dieselbe, aber
+/// gefragt ist besser als angenommen.
+extern "C" int TBXR_visionOS_EchteTextur(void)
+{
+    GLint t = -1;
+    angle::GetIntegerv(GL_TEXTURE_BINDING_2D, &t);
+    return (int)t;
+}
+
+/// Eine Mip-Stufe als ASTC-Bloecke hochladen, an gl4es vorbei.
+///
+/// gl4es packt komprimierte Texturen aus (uncompressDXTc in texture.c) und
+/// kennt ASTC ohnehin nicht -- der uebliche Weg wuerde den ganzen Gewinn
+/// zunichtemachen. Gemessen auf dem Geraet: der direkte Upload ueberlebt einen
+/// spaeteren Bind durch gl4es unveraendert.
+extern "C" int TBXR_visionOS_LadeAstcStufe(unsigned tex, int stufe, unsigned format,
+                                           int breite, int hoehe, int groesse,
+                                           const void *daten)
+{
+    angle::BindTexture(GL_TEXTURE_2D, tex);
+    while (angle::GetError() != GL_NO_ERROR) { }
+    angle::CompressedTexImage2D(GL_TEXTURE_2D, stufe, format,
+                                breite, hoehe, 0, groesse, daten);
+    return (int)angle::GetError();
+}
+
+/// Zweite Sonde: vertraegt sich eine direkt hochgeladene Textur mit gl4es?
+///
+/// Der Renderer bindet seine Texturen ueber gl4es (qglBindTexture). gl4es
+/// fuehrt dabei eine EIGENE Buchhaltung und gibt nicht zwangslaeufig die
+/// Kennung des echten GLES heraus -- es kann sie abbilden. Eine Textur, die wir
+/// unmittelbar gegen libGLESv2 anlegen, waere dann fuer den Renderer
+/// unerreichbar, und der Fehler zeigte sich als schwarze Flaeche ohne
+/// Fehlermeldung.
+///
+/// Gemessen wird deshalb dreierlei:
+///   1. Gibt gl4es dieselbe Kennung heraus, die GLES bindet?
+///   2. Ueberlebt ein direkt hochgeladener Inhalt einen Bind ueber gl4es?
+///      (gl4es haelt Schattenkopien und koennte sie zurueckschreiben.)
+///   3. Kommt die Farbe danach noch richtig an?
+static void gl4esVertraeglichkeit(void)
+{
+    // ACHTUNG: die unqualifizierten Namen sind gl4es. Der Port loest ANGLE
+    // ausdruecklich ueber dlsym auf (angle::), WEIL der Linker sonst gl4es'
+    // Aliase nimmt -- genau der Unterschied, um den es hier geht.
+    GLuint t = 0;
+    glGenTextures(1, &t);
+    glBindTexture(GL_TEXTURE_2D, t);
+
+    GLint vorErst = -1;
+    angle::GetIntegerv(GL_TEXTURE_BINDING_2D, &vorErst);
+
+    // ERST DATEN DURCH gl4es SCHICKEN.
+    //
+    // Ein blosses Bind legt im echten Kontext nichts an: gl4es arbeitet
+    // verzoegert, und die Abfrage lieferte 0 -- "keine Textur". Ein direkter
+    // Upload ginge dann in die Standardtextur, und eine Messung, die das nicht
+    // bemerkt, bestaetigt sich selbst. (Genau so ist mein erster Versuch
+    // ausgegangen.)
+    //
+    // Ein winziges glTexImage2D durch gl4es zwingt es, die echte Textur
+    // anzulegen. Danach sagt GL_TEXTURE_BINDING_2D, welche Kennung das ist.
+    const uint8_t einPunkt[4] = { 0, 0, 0, 255 };
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, einPunkt);
+
+    GLint echt = -1;
+    angle::GetIntegerv(GL_TEXTURE_BINDING_2D, &echt);
+    ALOGV("[gl4es] Kennung von gl4es: %u · echt nach Bind: %d · echt nach Upload: %d -> %s",
+          t, vorErst, echt,
+          (echt > 0) ? ((GLint)t == echt ? "GLEICH" : "ABGEBILDET") : "IMMER NOCH KEINE");
+    if (echt <= 0) {
+        ALOGV("[gl4es] ohne echte Kennung ist der Rest sinnlos -- Abbruch");
+        return;
+    }
+
+    // Blocke direkt hochladen, auf das gerade gebundene Ziel.
+    const int kante = 12, block = 6;
+    const int proReihe = (kante + block - 1) / block;
+    std::vector<uint8_t> daten(proReihe * proReihe * 16);
+    for (int i = 0; i < proReihe * proReihe; ++i) {
+        astcVoidExtent(daten.data() + i * 16, 0x0000, 0xFFFF, 0x0000, 0xFFFF); // Gruen
+    }
+    while (angle::GetError() != GL_NO_ERROR) { }
+    // Ausdruecklich auf die echte Kennung binden, nicht auf das, was gl4es
+    // gerade gebunden zu haben glaubt.
+    angle::BindTexture(GL_TEXTURE_2D, (GLuint)echt);
+    angle::CompressedTexImage2D(GL_TEXTURE_2D, 0, 0x93B4, kante, kante, 0,
+                                (GLsizei)daten.size(), daten.data());
+    const GLenum hoch = angle::GetError();
+    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    ALOGV("[gl4es] direkter Upload auf gl4es-Textur -> 0x%04x", hoch);
+
+    // Jetzt der entscheidende Teil: ueber gl4es woanders hin und zurueck.
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindTexture(GL_TEXTURE_2D, t);
+    GLint nachher = -1;
+    angle::GetIntegerv(GL_TEXTURE_BINDING_2D, &nachher);
+    ALOGV("[gl4es] nach Bind ueber gl4es gebunden: %d (vorher %d) -> %s",
+          nachher, echt, (nachher == echt) ? "dieselbe" : "ANDERE");
+
+    // Und was steht jetzt drin? Wenn gl4es eine Schattenkopie zurueckgeschrieben
+    // hat, ist unser Gruen weg.
+    GLuint ziel = 0, fbo = 0;
+    angle::GenTextures(1, &ziel);
+    angle::BindTexture(GL_TEXTURE_2D, ziel);
+    angle::TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    angle::GenFramebuffers(1, &fbo);
+    angle::BindFramebuffer(GL_FRAMEBUFFER, fbo);
+    angle::FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ziel, 0);
+
+    static const char *vs =
+        "#version 300 es\n"
+        "void main() {\n"
+        "  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
+        "  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+        "}\n";
+    static const char *fs =
+        "#version 300 es\n"
+        "precision highp float;\n"
+        "uniform sampler2D bild;\n"
+        "out vec4 farbe;\n"
+        "void main() { farbe = texture(bild, vec2(0.5)); }\n";
+    GLuint v = angle::CreateShader(GL_VERTEX_SHADER);
+    angle::ShaderSource(v, 1, &vs, nullptr); angle::CompileShader(v);
+    GLuint f = angle::CreateShader(GL_FRAGMENT_SHADER);
+    angle::ShaderSource(f, 1, &fs, nullptr); angle::CompileShader(f);
+    GLuint prog = angle::CreateProgram();
+    angle::AttachShader(prog, v); angle::AttachShader(prog, f);
+    angle::LinkProgram(prog);
+    angle::UseProgram(prog);
+    angle::ActiveTexture(GL_TEXTURE0);
+    angle::BindTexture(GL_TEXTURE_2D, (GLuint)nachher);
+    angle::Uniform1i(angle::GetUniformLocation(prog, "bild"), 0);
+    angle::Viewport(0, 0, 1, 1);
+    angle::DrawArrays(GL_TRIANGLES, 0, 3);
+
+    uint8_t aus[4] = {0};
+    angle::ReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, aus);
+    ALOGV("[gl4es] gelesen R=%u G=%u B=%u A=%u (erwartet 0/255/0/255)",
+          aus[0], aus[1], aus[2], aus[3]);
+
+    angle::BindFramebuffer(GL_FRAMEBUFFER, 0);
+    angle::DeleteTextures(1, &ziel);
+}
+
 extern "C" void TBXR_visionOS_AstcSonde(void)
 {
     if (!getenv("JKXR_ASTC_SONDE")) return;
@@ -1714,6 +1866,8 @@ extern "C" void TBXR_visionOS_AstcSonde(void)
     //                     0.502 -> ~0.216 -> gelesen ~55
     astcRundlauf(0x93B4, "Grau 0.502, linear", 0x8080, 0x8080, 0x8080, x);
     astcRundlauf(0x93D4, "Grau 0.502, sRGB  ", 0x8080, 0x8080, 0x8080, x);
+
+    gl4esVertraeglichkeit();
 }
 
 void TBXR_prepareEyeBuffer(int eye)

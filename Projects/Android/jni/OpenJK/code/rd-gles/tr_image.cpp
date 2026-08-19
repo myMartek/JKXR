@@ -1328,6 +1328,182 @@ void R_CreateAutomapImage( const char *name, const byte *pic, int width, int hei
 	R_CreateImage(name, pic, width, height, GL_RGBA, mipmap, allowPicmip, allowTC, glWrapClampMode);
 }
 
+
+#if defined(JKXR_VISIONOS)
+// ---------------------------------------------------------------------------
+// Vorgebackene ASTC-Texturen
+//
+// Neben textures/foo.jpg darf textures/foo.jpg.astc liegen. Steckt sie in
+// irgendeiner pk3, wird SIE geladen und das Bild nie ausgepackt -- und genau
+// darin liegt der Gewinn: eine RGBA8-Textur belegt vier Byte je Bildpunkt,
+// ASTC 6x6 knapp 3,6 Bit. Beim 4x-Upscale-Paket ist das der Unterschied
+// zwischen "die Karte laedt" und SIGKILL (gemessen: ohne Gegenmassnahme faellt
+// der freie Speicher linear um 131 MB/s bis auf null).
+//
+// Gebacken wird auf dem Mac, siehe bake-astc.py. Der Kodierer bleibt dort:
+// astcenc steht unter Apache-2.0, JKXR unter GPLv2-only, und die beiden gelten
+// als unvereinbar.
+//
+// DER WEG AN gl4es VORBEI ist Pflicht und auf dem Geraet ausgemessen. gl4es
+// packt komprimierte Texturen aus (uncompressDXTc) und kennt ASTC nicht.
+// Gemessen wurde ausserdem, dass ein direkter Upload einen spaeteren Bind durch
+// gl4es unveraendert ueberlebt und dass die Kennungen uebereinstimmen -- die
+// echte wird trotzdem abgefragt statt angenommen.
+// ---------------------------------------------------------------------------
+extern "C" int TBXR_visionOS_EchteTextur(void);
+extern "C" int TBXR_visionOS_LadeAstcStufe(unsigned tex, int stufe, unsigned format,
+                                           int breite, int hoehe, int groesse,
+                                           const void *daten);
+
+static image_t *R_visionOS_AstcLaden( const char *name, qboolean mipmap,
+                                      qboolean allowPicmip, qboolean allowTC,
+                                      int glWrapClampMode )
+{
+	// Eine etwaige Bildendung abschneiden.
+	//
+	// Der Renderer ruft beides auf: "gfx/effects/bryar_blob" ohne Endung (dann
+	// probiert R_LoadImage die Formate durch) und "textures/foo.tga" mit, weil
+	// ein Shader sie ausdruecklich nennt. Gebacken wird ohne, also muss hier
+	// beides auf denselben Namen fuehren.
+	char stamm[MAX_QPATH];
+	Q_strncpyz( stamm, name, sizeof(stamm) );
+	{
+		char *punkt = strrchr( stamm, '.' );
+		if ( punkt && !strchr( punkt, '/' ) ) {
+			if ( !Q_stricmp( punkt, ".jpg" ) || !Q_stricmp( punkt, ".jpeg" ) ||
+			     !Q_stricmp( punkt, ".tga" ) || !Q_stricmp( punkt, ".png" ) ) {
+				*punkt = 0;
+			}
+		}
+	}
+
+	char pfad[MAX_QPATH];
+	Com_sprintf( pfad, sizeof(pfad), "%s.astc", stamm );
+
+	// MESSPUNKT: einmal melden, wonach ueberhaupt gesucht wird. Ohne das laesst
+	// sich "nicht aufgerufen" nicht von "nichts gefunden" unterscheiden.
+	static qboolean gemeldetPfad = qfalse;
+	if ( !gemeldetPfad ) {
+		gemeldetPfad = qtrue;
+		ri.Printf( PRINT_ALL, "[ASTC] erste Suche: \"%s\"\n", pfad );
+	}
+
+	byte *roh = NULL;
+	const int laenge = ri.FS_ReadFile( pfad, (void **)&roh );
+	if ( laenge <= 16 || !roh ) {
+		if ( roh ) ri.FS_FreeFile( roh );
+		return NULL;
+	}
+
+	// Kopf: "JKAT", Fassung, Blockmasse, Bildmasse, Stufen, Merkmale.
+	if ( roh[0] != 'J' || roh[1] != 'K' || roh[2] != 'A' || roh[3] != 'T' ) {
+		ri.FS_FreeFile( roh );
+		return NULL;
+	}
+	const unsigned short fassung = *(const unsigned short *)(roh + 4);
+	const byte bw = roh[6], bh = roh[7];
+	const unsigned short breite = *(const unsigned short *)(roh + 8);
+	const unsigned short hoehe  = *(const unsigned short *)(roh + 10);
+	const unsigned short stufen = *(const unsigned short *)(roh + 12);
+	if ( fassung != 1 || stufen == 0 || breite == 0 || hoehe == 0 ) {
+		ri.Printf( PRINT_WARNING, "%s: unbekannte Fassung %d\n", pfad, fassung );
+		ri.FS_FreeFile( roh );
+		return NULL;
+	}
+
+	unsigned format = 0;
+	if ( bw == 6 && bh == 6 )      format = 0x93B4;	// GL_COMPRESSED_RGBA_ASTC_6x6_KHR
+	else if ( bw == 4 && bh == 4 ) format = 0x93B0;	// ..._4x4_KHR
+	if ( !format ) {
+		ri.Printf( PRINT_WARNING, "%s: Blockmass %dx%d nicht unterstuetzt\n", pfad, bw, bh );
+		ri.FS_FreeFile( roh );
+		return NULL;
+	}
+
+	// r_picmip faellt hier umsonst ab: eine Stufe zu ueberspringen heisst, bei
+	// Mip 1 statt 0 zu beginnen. Kein zweites Backen noetig.
+	int ueberspringen = 0;
+	if ( allowPicmip && r_picmip->integer > 0 ) {
+		ueberspringen = r_picmip->integer;
+		if ( ueberspringen > stufen - 1 ) ueberspringen = stufen - 1;
+	}
+
+	// Ein weisser Bildpunkt durch die gewoehnliche Erzeugung.
+	//
+	// Das erledigt ZWEI Dinge auf einmal, die sonst nachgebaut werden muessten:
+	// die ganze Buchhaltung von R_CreateImage (Registrierung, Kennung,
+	// Level-Vermerk, Wrap-Modus) UND das Anlegen der echten Textur -- gl4es
+	// arbeitet verzoegert und legt sie erst an, wenn Daten hindurchfliessen.
+	static byte einPunkt[4] = { 255, 255, 255, 255 };
+	image_t *image = R_CreateImage( (char *)name, einPunkt, 1, 1, GL_RGBA,
+	                                mipmap, allowPicmip, allowTC, glWrapClampMode );
+	if ( !image ) {
+		ri.FS_FreeFile( roh );
+		return NULL;
+	}
+
+	const int echt = TBXR_visionOS_EchteTextur();
+	if ( echt <= 0 ) {
+		ri.Printf( PRINT_WARNING, "%s: keine echte Texturkennung\n", pfad );
+		ri.FS_FreeFile( roh );
+		return image;	// das weisse Bild ist besser als gar keines
+	}
+
+	const byte *p = roh + 16;
+	const byte *ende = roh + laenge;
+	int hochgeladen = 0;
+	for ( int i = 0; i < stufen; ++i ) {
+		if ( p + 4 > ende ) break;
+		const unsigned int groesse = *(const unsigned int *)p;
+		p += 4;
+		if ( p + groesse > ende ) break;
+
+		const int b = breite  >> i ? breite  >> i : 1;
+		const int h = hoehe   >> i ? hoehe   >> i : 1;
+		if ( i >= ueberspringen ) {
+			const int fehler = TBXR_visionOS_LadeAstcStufe(
+				(unsigned)echt, i - ueberspringen, format, b, h, (int)groesse, p );
+			if ( fehler ) {
+				ri.Printf( PRINT_WARNING, "%s: Stufe %d -> GL 0x%04x\n", pfad, i, fehler );
+				break;
+			}
+			++hochgeladen;
+		}
+		p += groesse;
+	}
+
+	ri.FS_FreeFile( roh );
+
+	if ( hochgeladen == 0 ) {
+		return image;
+	}
+
+	image->width  = breite >> ueberspringen ? breite >> ueberspringen : 1;
+	image->height = hoehe  >> ueberspringen ? hoehe  >> ueberspringen : 1;
+
+	// Filter ueber gl4es setzen, nicht direkt: sonst laufen dessen Zustand und
+	// der echte auseinander. Der Bind stellt ausserdem wieder her, was der
+	// direkte Upload umgebogen hat.
+	qglBindTexture( GL_TEXTURE_2D, image->texnum );
+	qglTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+	                  hochgeladen > 1 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR );
+	qglTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+
+	// Zaehlen statt je Textur melden: bei tausenden Texturen waere jede Zeile
+	// im Protokoll selbst eine Last.
+	static int gezaehlt = 0;
+	static int gemeldet = -1;   // damit der ERSTE Treffer sofort spricht
+	++gezaehlt;
+	if ( gezaehlt == 1 || gezaehlt >= gemeldet + 25 ) {
+		gemeldet = gezaehlt;
+		ri.Printf( PRINT_ALL, "[ASTC] %d Texturen vorgebacken geladen\n", gezaehlt );
+	}
+
+	return image;
+}
+#endif
+
+
 /*
 ===============
 R_FindImageFile
@@ -1361,6 +1537,17 @@ image_t	*R_FindImageFile( const char *name, qboolean mipmap, qboolean allowPicmi
 	//
 	// load the pic from disk
 	//
+#if defined(JKXR_VISIONOS)
+	// Vorgebacken? Dann gar nicht erst auspacken.
+	{
+		image_t *fertig = R_visionOS_AstcLaden( name, mipmap, allowPicmip,
+		                                        allowTC, glWrapClampMode );
+		if ( fertig ) {
+			return fertig;
+		}
+	}
+#endif
+
 	R_LoadImage( name, &pic, &width, &height );
 	if ( pic == NULL ) {                                    // if we dont get a successful load
 		return NULL;                                        // bail

@@ -110,11 +110,21 @@ def backe_eine(auftrag) -> tuple[str, bytes] | None:
     stufen = mipkette(bild)
     bloecke = [kodiere(s, block, astcenc) for s in stufen]
 
+    # OHNE die Bildendung ablegen.
+    #
+    # Die Engine fragt nach "gfx/effects/bryar_blob" und probiert .jpg und .tga
+    # selbst durch (R_LoadImage). Ein "bryar_blob.tga.astc" fände sie nie --
+    # gemessen: null Treffer beim ersten Versuch.
     kopf = MAGIE + struct.pack("<HBBHHHH", FASSUNG, bw, bh,
                                bild.width, bild.height, len(stufen),
                                1 if hat_alpha else 0)
     koerper = b"".join(struct.pack("<I", len(b)) + b for b in bloecke)
-    return name + ".astc", kopf + koerper
+    stamm = name
+    for e in ENDUNGEN:
+        if stamm.lower().endswith(e):
+            stamm = stamm[:-len(e)]
+            break
+    return stamm + ".astc", kopf + koerper
 
 
 def main() -> int:
@@ -126,6 +136,8 @@ def main() -> int:
     p.add_argument("--jobs", type=int, default=8)
     p.add_argument("--astcenc", default="astcenc-neon",
                    help="Pfad zum Kodierer (aus ARM-software/astc-encoder gebaut)")
+    p.add_argument("--filter", default="",
+                   help="nur Pfade, die diesen Text enthalten")
     p.add_argument("--limit", type=int, default=0,
                    help="nur die ersten N Texturen — zum Ausprobieren")
     args = p.parse_args()
@@ -137,6 +149,8 @@ def main() -> int:
 
     quelle = zipfile.ZipFile(args.quelle)
     namen = [n for n in quelle.namelist() if n.lower().endswith(ENDUNGEN)]
+    if args.filter:
+        namen = [n for n in namen if args.filter in n]
     if args.limit:
         namen = namen[:args.limit]
     print(f"{len(namen)} Texturen, Block {args.block}")
