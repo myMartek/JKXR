@@ -111,27 +111,6 @@ void multi_trigger_run( gentity_t *ent )
 
 void multi_trigger( gentity_t *ent, gentity_t *activator ) 
 {
-	// MESSSTELLE: welcher der Riegel haelt den Schalter auf?
-	//
-	// nextthink ist eine Sperre IN DIE ZUKUNFT: beim Ausloesen wird
-	// level.time + wait gesetzt. Beim Laden eines Spielstands springt
-	// level.time aber ZURUECK (gemessen: 102800 -> 100500). Ueberlebt die
-	// Sperre das Laden, liegt sie ploetzlich weit voraus und blockiert.
-	//
-	// Alles davor ist gemessen und ausgeschieden: der Trigger wird beruehrt
-	// und BUTTON_USE steht im usercmd, vor wie nach dem Tod identisch.
-	if ( getenv( "JKXR_EINGABE_ZEIGE" ) )
-	{
-		gi.Printf( "[Trigger] t=%d Ent %d %s: nextthink %d (%s), wait %.1f, "
-		           "delay %d, INACTIVE %d, Denkfunktion %d\n",
-		           level.time, ent->s.number, ent->classname ? ent->classname : "-",
-		           ent->nextthink,
-		           ( ent->nextthink > level.time ) ? "SPERRT" : "frei",
-		           ent->wait, ent->delay,
-		           ( ent->svFlags & SVF_INACTIVE ) ? 1 : 0,
-		           (int)ent->e_ThinkFunc );
-	}
-
 	if ( ent->e_ThinkFunc == thinkF_multi_trigger_run )
 	{//already triggered, just waiting to run
 		return;
@@ -188,13 +167,11 @@ void Touch_Multi( gentity_t *self, gentity_t *other, trace_t *trace )
 {
 	if( !other->client ) 
 	{
-		if ( getenv( "JKXR_EINGABE_ZEIGE" ) && other->s.number == 0 ) gi.Printf( "[Ausstieg] t=%d Ent %d (%s) Nr.1\n", level.time, self->s.number, self->classname ? self->classname : "-" );
 		return;
 	}
 
 	if ( self->svFlags & SVF_INACTIVE )
 	{//set by target_deactivate
-		if ( getenv( "JKXR_EINGABE_ZEIGE" ) && other->s.number == 0 ) gi.Printf( "[Ausstieg] t=%d Ent %d (%s) Nr.2\n", level.time, self->s.number, self->classname ? self->classname : "-" );
 		return;
 	}
 
@@ -202,7 +179,6 @@ void Touch_Multi( gentity_t *self, gentity_t *other, trace_t *trace )
 	{
 		if ( other->client->playerTeam != self->noDamageTeam )
 		{
-			if ( getenv( "JKXR_EINGABE_ZEIGE" ) && other->s.number == 0 ) gi.Printf( "[Ausstieg] t=%d Ent %d (%s) Nr.3\n", level.time, self->s.number, self->classname ? self->classname : "-" );
 			return;
 		}
 	}
@@ -219,7 +195,6 @@ void Touch_Multi( gentity_t *self, gentity_t *other, trace_t *trace )
 	{
 		if ( other->s.number != 0 )
 		{
-			if ( getenv( "JKXR_EINGABE_ZEIGE" ) && other->s.number == 0 ) gi.Printf( "[Ausstieg] t=%d Ent %d (%s) Nr.4\n", level.time, self->s.number, self->classname ? self->classname : "-" );
 			return;
 		}
 	}
@@ -229,7 +204,6 @@ void Touch_Multi( gentity_t *self, gentity_t *other, trace_t *trace )
 		{//NPCONLY
 			if ( other->NPC == NULL )
 			{
-				if ( getenv( "JKXR_EINGABE_ZEIGE" ) && other->s.number == 0 ) gi.Printf( "[Ausstieg] t=%d Ent %d (%s) Nr.5\n", level.time, self->s.number, self->classname ? self->classname : "-" );
 				return;
 			}
 		}
@@ -240,13 +214,11 @@ void Touch_Multi( gentity_t *self, gentity_t *other, trace_t *trace )
 			{
 				if ( Q_stricmp( self->NPC_targetname, other->script_targetname ) != 0 )
 				{//not the right guy to fire me off
-					if ( getenv( "JKXR_EINGABE_ZEIGE" ) && other->s.number == 0 ) gi.Printf( "[Ausstieg] t=%d Ent %d (%s) Nr.6\n", level.time, self->s.number, self->classname ? self->classname : "-" );
 					return;
 				}
 			}
 			else
 			{
-				if ( getenv( "JKXR_EINGABE_ZEIGE" ) && other->s.number == 0 ) gi.Printf( "[Ausstieg] t=%d Ent %d (%s) Nr.7\n", level.time, self->s.number, self->classname ? self->classname : "-" );
 				return;
 			}
 		}
@@ -286,30 +258,8 @@ void Touch_Multi( gentity_t *self, gentity_t *other, trace_t *trace )
 				AngleVectors(other->currentAngles, forward, NULL, NULL);
 			}
 
-			// MESSSTELLE: hier entscheidet sich der Schalter.
-			//
-			// Ein trigger_multiple mit FACING und USE_BUTTON prueft die
-			// Blickrichtung ueber die VR-HAND, nicht ueber den Kopf. Stimmen
-			// deren Winkel nicht, faellt das Skalarprodukt unter 0.5 und der
-			// Schalter feuert nie -- ohne jede Rueckmeldung.
-			//
-			// Genau dieses Bild wurde gemeldet: Aufzug reagiert vor dem Tod auf
-			// Benutzen, danach nicht mehr, waehrend automatische Tueren (ohne
-			// Richtungspruefung) weiterlaufen und ein Spielstand aus dem
-			// Pausenmenue unauffaellig ist.
-			const float ausrichtung = DotProduct(self->movedir, forward);
-			if ( getenv( "JKXR_EINGABE_ZEIGE" ) )
-			{
-				gi.Printf( "[Schalter] t=%d %s: Ausrichtung %.2f (noetig 0.50) "
-				           "Richtung %.2f %.2f %.2f, Soll %.2f %.2f %.2f, Geste %d\n",
-				           level.time, self->classname ? self->classname : "-",
-				           ausrichtung, forward[0], forward[1], forward[2],
-				           self->movedir[0], self->movedir[1], self->movedir[2],
-				           (int)useGestureAllowed );
-			}
-			if (ausrichtung < 0.5)
+			if (DotProduct(self->movedir, forward) < 0.5)
 			{//Not Within 45 degrees
-				if ( getenv( "JKXR_EINGABE_ZEIGE" ) && other->s.number == 0 ) gi.Printf( "[Ausstieg] t=%d Ent %d (%s) Nr.8\n", level.time, self->s.number, self->classname ? self->classname : "-" );
 				return;
 			}
 		}
@@ -319,31 +269,11 @@ void Touch_Multi( gentity_t *self, gentity_t *other, trace_t *trace )
 	{//USE_BUTTON
 		if ( !other->client )
 		{
-			if ( getenv( "JKXR_EINGABE_ZEIGE" ) && other->s.number == 0 ) gi.Printf( "[Ausstieg] t=%d Ent %d (%s) Nr.9\n", level.time, self->s.number, self->classname ? self->classname : "-" );
 			return;
-		}
-
-		// MESSSTELLE: hier entscheidet sich ein Schalter mit USE_BUTTON.
-		//
-		// Er verlangt nur zweierlei: im Triggervolumen stehen und BUTTON_USE
-		// im usercmd haben. Erreicht diese Zeile den Spieler ueberhaupt, wird
-		// der Trigger beruehrt; steht die Taste drin, muss er feuern.
-		//
-		// Damit trennt eine einzige Zeile die zwei verbliebenen Moeglichkeiten:
-		// Beruehrung faellt nach dem Tod aus, oder die Taste kommt nicht im
-		// usercmd an. Die Wege davor -- TryUse, Richtungspruefung, dritte
-		// Person -- sind allesamt gemessen und ausgeschieden.
-		if ( getenv( "JKXR_EINGABE_ZEIGE" ) && other->s.number == 0 )
-		{
-			gi.Printf( "[UseTrigger] t=%d Ent %d beruehrt, Tasten 0x%x, use %d, altuse %d\n",
-			           level.time, self->s.number, other->client->usercmd.buttons,
-			           ( other->client->usercmd.buttons & BUTTON_USE ) ? 1 : 0,
-			           ( other->client->usercmd.buttons & BUTTON_ALT_USE ) ? 1 : 0 );
 		}
 
 		if( !( other->client->usercmd.buttons & ( BUTTON_USE | BUTTON_ALT_USE ) ) )
 		{//not pressing use button
-			if ( getenv( "JKXR_EINGABE_ZEIGE" ) && other->s.number == 0 ) gi.Printf( "[Ausstieg] t=%d Ent %d (%s) Nr.10\n", level.time, self->s.number, self->classname ? self->classname : "-" );
 			return;
 		}
 	}
@@ -352,14 +282,12 @@ void Touch_Multi( gentity_t *self, gentity_t *other, trace_t *trace )
 	{//FIRE_BUTTON
 		if ( !other->client )
 		{
-			if ( getenv( "JKXR_EINGABE_ZEIGE" ) && other->s.number == 0 ) gi.Printf( "[Ausstieg] t=%d Ent %d (%s) Nr.11\n", level.time, self->s.number, self->classname ? self->classname : "-" );
 			return;
 		}
 
 		if( !( other->client->ps.eFlags & EF_FIRING /*usercmd.buttons & BUTTON_ATTACK*/ ) &&
 			!( other->client->ps.eFlags & EF_ALT_FIRING/*usercmd.buttons & BUTTON_ALT_ATTACK*/ ) )
 		{//not pressing fire button or altfire button
-			if ( getenv( "JKXR_EINGABE_ZEIGE" ) && other->s.number == 0 ) gi.Printf( "[Ausstieg] t=%d Ent %d (%s) Nr.12\n", level.time, self->s.number, self->classname ? self->classname : "-" );
 			return;
 		}
 
@@ -367,7 +295,6 @@ void Touch_Multi( gentity_t *self, gentity_t *other, trace_t *trace )
 
 		if( other->s.number == 0 && ( other->client->ps.weapon > MAX_PLAYER_WEAPONS || other->client->ps.weapon <= WP_NONE ) )
 		{//don't care about non-player weapons if this is the player
-			if ( getenv( "JKXR_EINGABE_ZEIGE" ) && other->s.number == 0 ) gi.Printf( "[Ausstieg] t=%d Ent %d (%s) Nr.13\n", level.time, self->s.number, self->classname ? self->classname : "-" );
 			return;
 		}
 	}
@@ -423,27 +350,7 @@ void Touch_Multi( gentity_t *self, gentity_t *other, trace_t *trace )
 	
 	if ( self->e_ThinkFunc == thinkF_trigger_cleared_fire )
 	{//We're waiting to fire our target2 first
-		// MESSSTELLE: DER Riegel.
-		//
-		// Ein Schalter mit target2 wartet nach dem Ausloesen darauf, dass man
-		// den Trigger wieder VERLAESST -- erst dann feuert sein zweites Ziel
-		// und der Wartezustand loest sich. Solange man drinsteht, schiebt jede
-		// Beruehrung nextthink weiter nach vorn.
-		//
-		// In VR steht man aber staendig "drin" UND haelt die Taste: die
-		// Nebenhand-Geste haelt +altuse dauerhaft, sobald die Hand weit genug
-		// vom Koerper weg ist (gemessen: Tasten 0x200, altuse 1, in jedem Bild).
-		// Damit wird der Zeitpunkt endlos vor sich hergeschoben und
-		// multi_trigger nie wieder erreicht.
-		if ( getenv( "JKXR_EINGABE_ZEIGE" ) )
-		{
-			gi.Printf( "[Riegel] t=%d %s wartet auf target2, nextthink %d -> %d, "
-			           "speed %.0f\n",
-			           level.time, self->classname ? self->classname : "-",
-			           self->nextthink, (int)(level.time + self->speed), self->speed );
-		}
 		self->nextthink = level.time + self->speed;
-		if ( getenv( "JKXR_EINGABE_ZEIGE" ) && other->s.number == 0 ) gi.Printf( "[Ausstieg] t=%d Ent %d (%s) Nr.14\n", level.time, self->s.number, self->classname ? self->classname : "-" );
 		return;
 	}
 

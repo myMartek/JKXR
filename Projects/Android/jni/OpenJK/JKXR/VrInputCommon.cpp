@@ -82,12 +82,7 @@ void handleTrackedControllerButton(ovrInputStateTrackedRemote * trackedRemoteSta
 {
     if ((trackedRemoteState->Buttons & button) != (prevTrackedRemoteState->Buttons & button))
     {
-        const bool unten = (trackedRemoteState->Buttons & button) != 0;
-        if (getenv("JKXR_EINGABE_ZEIGE"))
-        {
-            Com_Printf("[Eingabe] Taste %d %s\n", key, unten ? "runter" : "hoch");
-        }
-        Sys_QueEvent( 0, SE_KEY, key, unten, 0, NULL );
+        Sys_QueEvent( 0, SE_KEY, key, (trackedRemoteState->Buttons & button) != 0, 0, NULL );
     }
 }
 
@@ -145,15 +140,6 @@ void sendButtonAction(const char* action, long buttonDown)
     if (!buttonDown)
     {
         command[0] = '-';
-    }
-    // MESSSTELLE: jedes Druecken und Loslassen mitschreiben.
-    //
-    // Haengende Tasten erkennt man nur am FEHLENDEN Gegenstueck -- ein
-    // "+attack" ohne "-attack" steht dann allein im Protokoll. Zu raten,
-    // welcher Zweig es war, hat hier schon zweimal danebengelegen.
-    if (getenv("JKXR_EINGABE_ZEIGE"))
-    {
-        Com_Printf("[Eingabe] %s%s\n", buttonDown ? "+" : "-", action + 1);
     }
     Cbuf_AddText( command );
 }

@@ -426,13 +426,6 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
             // sich weiter fuer gedrueckt und schickte deshalb kein neues +use,
             // bis man die Hand einmal senkt und wieder hebt.
             vr.useGestureState = 0;
-            if (getenv("JKXR_EINGABE_ZEIGE"))
-            {
-                Com_Printf("[Eingabe] Modus verlassen: Bildschirm %d->%d, Kino %d->%d "
-                           "-- alles losgelassen\n",
-                           (int)bildschirmAlt, (int)bildschirmNeu,
-                           (int)kinoAlt, (int)kinoNeu);
-            }
         }
         bildschirmAlt = bildschirmNeu;
         kinoAlt = kinoNeu;
@@ -1418,27 +1411,6 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
             }
             // Weapon-hand gesture
             distanceToBody = sqrt(vr.weaponoffset[0]*vr.weaponoffset[0] + vr.weaponoffset[2]*vr.weaponoffset[2]);
-            // MESSSTELLE: haelt die Geste +use dauerhaft?
-            //
-            // Die Geste drueckt Benutzen, solange die Hand weiter als
-            // vr_use_gesture_boundary vom Koerper weg ist. Liegt der gemessene
-            // Abstand staendig darueber, wird alle USE_DELAY neu benutzt -- und
-            // ein Aufzug, der das abbekommt, faehrt nicht. Ob das so ist, soll
-            // die Zahl sagen und nicht ich.
-            if (getenv("JKXR_EINGABE_ZEIGE"))
-            {
-                static int letzte = 0;
-                if (Sys_Milliseconds() - letzte > 1000)
-                {
-                    letzte = Sys_Milliseconds();
-                    const float offhand = sqrt(vr.offhandoffset[0]*vr.offhandoffset[0]
-                                             + vr.offhandoffset[2]*vr.offhandoffset[2]);
-                    Com_Printf("[Geste] Waffenhand %.2f, Nebenhand %.2f, Schwelle %.2f, "
-                               "erlaubt %d, Zustand %d\n",
-                               distanceToBody, offhand, vr_use_gesture_boundary->value,
-                               (int)gestureUseAllowed, vr.useGestureState);
-                }
-            }
             if (gestureUseAllowed && (distanceToBody > vr_use_gesture_boundary->value)) {
                 if (!(vr.useGestureState & USE_GESTURE_WEAPON_HAND)) {
                     sendButtonAction("+use", true);

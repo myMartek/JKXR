@@ -627,6 +627,33 @@ void InitGame(  const char *mapname, const char *spawntarget, int checkSum, cons
 	g_eSavedGameJustLoaded = eSavedGameJustLoaded;
 	g_qbLoadTransition = qbLoadTransition;
 
+	// ICARUS WIEDER FREIGEBEN.
+	//
+	// stop_icarus haelt saemtliche Skripte an. Gesetzt wird es beim Tod des
+	// Spielers -- an zwei Stellen, beide ausdruecklich so gemeint ("stop all
+	// scripts", "we also stop ICARUS altogether"): solange man tot ist, soll
+	// nichts weiterlaufen.
+	//
+	// ZURUECKGESETZT wurde es nie. Im Original war das Spielmodul eine DLL,
+	// die beim Kartenwechsel neu geladen wurde; dabei bekam die globale
+	// Variable wieder ihren Anfangswert. Hier ist alles fest gebunden und wird
+	// nie neu geladen, also blieb sie fuer immer stehen.
+	//
+	// Folge auf dem Geraet, gemeldet und Schritt fuer Schritt nachgemessen:
+	// nach dem ersten Tod reagieren geskriptete Dinge nicht mehr -- Aufzuege
+	// blieben stehen, waehrend automatische Tueren weiterliefen, weil die
+	// keine Skripte brauchen. Das ueberlebte jedes Laden und sogar den
+	// Rueckweg ins Hauptmenue, denn eine globale Variable steht in keinem
+	// Spielstand. Nur ein Neustart der App half.
+	//
+	// Die Messung, die es festnagelte: der Aufzugschalter feuerte auch nach
+	// dem Tod, sein target_scriptrunner wurde angesteuert, ICARUS nahm das
+	// Skript an -- und in CTaskManager::Go kam von diesem Besitzer keine
+	// einzige Aufgabe mehr an, waehrend vor dem Tod dieselbe Kette bis zur
+	// Bewegung des Aufzugs durchlief.
+	stop_icarus = qfalse;
+
+
 	gi.Printf ("------- Game Initialization -------\n");
 	gi.Printf ("gamename: %s\n", GAMEVERSION);
 	gi.Printf ("gamedate: %s\n", SOURCE_DATE);

@@ -565,25 +565,6 @@ void G_UseTargets2 (gentity_t *ent, gentity_t *activator, const char *string)
 			{
 //				gi.Printf ("WARNING: Entity used itself.\n");
 			}
-			// MESSSTELLE: WEN steuert der Schalter an, und in welchem Zustand?
-			//
-			// Gemessen ist inzwischen, dass die ganze Eingabekette stimmt --
-			// Taste, Beruehrung, Trigger, Ausloesung. Der Schalter feuert auch
-			// nach dem Laden. Der Aufzug bewegt sich trotzdem nicht, also
-			// liegt es an dem, was hier angesteuert wird.
-			//
-			// moverState und nextthink sind die beiden Zustaende, mit denen ein
-			// Mover sich selbst blockieren kann: mitten in der Fahrt oder mit
-			// einer Sperre in der Zukunft.
-			if ( getenv( "JKXR_EINGABE_ZEIGE" ) )
-			{
-				gi.Printf( "[Ziel] t=%d Ent %d (%s) targetname \"%s\": UseFunc %d, "
-				           "moverState %d, nextthink %d, INACTIVE %d\n",
-				           level.time, t->s.number, t->classname ? t->classname : "-",
-				           t->targetname ? t->targetname : "-",
-				           (int)t->e_UseFunc, (int)t->moverState, t->nextthink,
-				           ( t->svFlags & SVF_INACTIVE ) ? 1 : 0 );
-			}
 			if (t->e_UseFunc != useF_NULL)	// check can be omitted
 			{
 				GEntity_UseFunc(t, ent, activator);
@@ -1577,42 +1558,6 @@ void TryUse_Internal( bool offHand, gentity_t *ent, vec3_t src, vec3_t vf ) {
 	//Trace ahead to find a valid target
 	gi.trace( &trace, src, vec3_origin, vec3_origin, dest, ent->s.number, MASK_OPAQUE|CONTENTS_SOLID|CONTENTS_BODY|CONTENTS_ITEM|CONTENTS_CORPSE, G2_NOCOLLIDE, 0 );
 
-	// MESSSTELLE: trifft der Benutzen-Strahl ueberhaupt etwas?
-	//
-	// TryUse traced von der VR-HAND aus, nicht vom Auge. Stimmt deren
-	// Position oder Richtung nicht, geht der Strahl ins Leere und nichts
-	// laesst sich mehr benutzen -- unabhaengig davon, ob die Taste ankommt.
-	// Genau das ist die Frage: Aufzuege gehen vor dem Tod, danach nicht mehr,
-	// und die Taste wird nachweislich weiter gesendet.
-	if ( getenv( "JKXR_EINGABE_ZEIGE" ) )
-	{
-		gentity_t *getroffen = ( trace.entityNum >= 0 && trace.entityNum < ENTITYNUM_NONE )
-		                     ? &g_entities[trace.entityNum] : NULL;
-		// Die SPIELZEIT mit ausgeben. Sie springt beim Laden zurueck und trennt
-		// die Durchlaeufe damit eindeutig -- "Modus verlassen" taugt dafuer
-		// nicht, das feuert auch beim Datapad, und genau daran ist meine
-		// Zuordnung vorhin gescheitert.
-		gi.Printf( "[Benutzen] t=%d %s Anteil %.2f, Ziel %d (%s), gueltig %d, "
-		           "Spieler %.0f %.0f %.0f\n",
-		           level.time,
-		           offHand ? "Nebenhand" : "Waffenhand",
-		           trace.fraction, trace.entityNum,
-		           ( getroffen && getroffen->classname ) ? getroffen->classname : "-",
-		           ( getroffen && ValidUseTarget( getroffen ) ) ? 1 : 0,
-		           ent->currentOrigin[0], ent->currentOrigin[1], ent->currentOrigin[2] );
-		// WELCHE der vier Bedingungen lehnt ab? Ohne das bleibt nur Raten,
-		// und Raten hat hier heute schon dreimal danebengelegen.
-		if ( getroffen && !ValidUseTarget( getroffen ) )
-		{
-			gi.Printf( "[Benutzen]   abgelehnt: UseFunc %d, INACTIVE %d, "
-			           "PLAYER_USABLE %d, Name \"%s\"\n",
-			           (int)getroffen->e_UseFunc,
-			           ( getroffen->svFlags & SVF_INACTIVE ) ? 1 : 0,
-			           ( getroffen->svFlags & SVF_PLAYER_USABLE ) ? 1 : 0,
-			           getroffen->classname ? getroffen->classname : "-" );
-		}
-	}
-
 	if ( trace.fraction == 1.0f || trace.entityNum < 1 )
 	{
 		//TODO: Play a failure sound
@@ -1682,20 +1627,6 @@ void TryUse( gentity_t *ent ) {
 
 	bool thirdPersonActive = gi.cvar("cg_thirdPerson", "0", CVAR_TEMP)->integer;
 	vec3_t src, angles, vf;
-	// MESSSTELLE: WELCHEN Zweig nimmt TryUse?
-	//
-	// In der dritten Person traced es vom KOERPER und dessen Blickrichtung
-	// statt von der VR-Hand. Beim Sterben schaltet das Spiel auf die dritte
-	// Person um; bleibt das danach stehen, zeigt der Strahl dorthin, wo der
-	// Rumpf steht, und trifft die Wand. Gemessen wurde genau das -- und der
-	// Aufzug geht wieder, wenn man einen Spielstand laedt OHNE zu sterben.
-	if ( getenv( "JKXR_EINGABE_ZEIGE" ) )
-	{
-		gi.Printf( "[TryUse] t=%d dritte Person %d, Droide %d, Leben %d\n",
-		           level.time, (int)thirdPersonActive,
-		           ( vr && vr->remote_droid ) ? 1 : 0,
-		           ent->client->ps.stats[STAT_HEALTH] );
-	}
 	if (ent->client->ps.clientNum == 0 && !(vr && vr->remote_droid)) {
 		if (thirdPersonActive) {
 			VectorCopy(ent->currentOrigin, src);
