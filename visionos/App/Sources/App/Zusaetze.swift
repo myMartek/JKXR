@@ -139,6 +139,39 @@ enum Zusatzkatalog {
     }
 }
 
+/// SHA-256 einer Datei, ohne sie in den Speicher zu holen.
+///
+/// Zwei Dinge, die beide nötig sind und deren Fehlen die App abgeschossen hat
+/// (JetsamEvent, gemessen am 20.08.2026 beim Prüfen eines 5-GB-Pakets):
+///
+/// 1. AUTORELEASEPOOL um jeden Block. `read(upToCount:)` liefert ein
+///    autoreleastes Objekt; ohne eigenen Pool wird davon nichts freigegeben,
+///    bis die Schleife fertig ist. Bei 5 GB in 8-MB-Blöcken sammeln sich so
+///    5 GB an -- die Blockgröße hilft dagegen überhaupt nicht, sie bestimmt
+///    nur, in wie vielen Stücken der Speicher vollläuft.
+///
+/// 2. F_NOCACHE. Sonst wandert die ganze Datei zusätzlich durch den
+///    Seitencache, und das zählt auf diesem System gegen uns.
+///
+/// Gibt nil zurück, wenn die Datei nicht lesbar ist.
+func pruefsummeVonDatei(_ pfad: URL, blockgroesse: Int = 4 * 1024 * 1024) -> String? {
+    guard let hand = try? FileHandle(forReadingFrom: pfad) else { return nil }
+    defer { try? hand.close() }
+    fcntl(hand.fileDescriptor, F_NOCACHE, 1)
+
+    var hasher = SHA256()
+    while true {
+        let weiter: Bool = autoreleasepool {
+            guard let block = try? hand.read(upToCount: blockgroesse),
+                  !block.isEmpty else { return false }
+            hasher.update(data: block)
+            return true
+        }
+        if !weiter { break }
+    }
+    return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+}
+
 // MARK: - Laden
 
 /// Lädt eine Datei mit Fortschritt und legt sie in den base-Ordner.
@@ -229,17 +262,9 @@ final class ZusatzLader: NSObject, URLSessionDownloadDelegate, @unchecked Sendab
 
         do {
             if let erwartet = erwarteterHash {
-                // Blockweise gelesen, nicht am Stück: eine Datei dieser Größe
-                // vollständig in den Speicher zu holen beendet die App.
-                guard let hand = try? FileHandle(forReadingFrom: location) else {
+                guard let ist = pruefsummeVonDatei(location) else {
                     throw Fehler.keinZiel
                 }
-                defer { try? hand.close() }
-                var hasher = SHA256()
-                while let block = try hand.read(upToCount: 4 * 1024 * 1024), !block.isEmpty {
-                    hasher.update(data: block)
-                }
-                let ist = hasher.finalize().map { String(format: "%02x", $0) }.joined()
                 if ist.caseInsensitiveCompare(erwartet) != .orderedSame {
                     throw Fehler.hashPasstNicht
                 }

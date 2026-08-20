@@ -355,20 +355,37 @@ struct ContentView: View {
 
                 if let angebot = Zusatzkatalog.fuer(spiel, stufe) {
                     let da = AssetStore.paketVorhanden(angebot)
+                    // Drei Zustaende, nicht zwei: bekannt-und-aktuell,
+                    // bekannt-und-aelter, und UNBEKANNT.
+                    //
+                    // Unbekannt ist der Normalfall fuer alles, was nicht ueber
+                    // den Lader kam -- ueber die Dateien-App eingespielt oder
+                    // von aussen in den Container geschoben. Frueher wurde
+                    // dafuer beim Fensteraufbau ungefragt nachgerechnet. Das
+                    // hat die App abgeschossen (JetsamEvent): eine Datei von
+                    // fuenf Gigabyte zu lesen ist keine Nebensache, und beim
+                    // Academy-4x-Paket waeren es zwoelf.
+                    //
+                    // Also fragt es jetzt. Wer die Fassung wissen will, drueckt
+                    // darauf; wer nur spielen will, wartet auf nichts.
+                    let bekannt = AssetStore.pruefsummeBekannt(angebot)
                     let aktuell = AssetStore.paketAktuell(angebot)
+                    let laeuft = pruefen.contains(angebot.id)
                     HStack(spacing: 12) {
-                        let wirdGeprueft = pruefen.contains(angebot.id)
                         Text(!da ? angebot.ungefaehr
-                                 : wirdGeprueft ? Sprache.t("Checking…", "wird geprüft…")
+                                 : laeuft ? Sprache.t("Checking…", "wird geprüft…")
+                                 : !bekannt ? Sprache.t("Version unknown", "Fassung unbekannt")
                                  : aktuell ? Sprache.t("Package present", "Paket vorhanden")
                                            : Sprache.t("Older version present",
                                                        "Ältere Fassung vorhanden"))
                             .font(.caption)
-                            .foregroundStyle(!da || wirdGeprueft || aktuell
-                                             ? Color.secondary : Color.orange)
+                            .foregroundStyle(da && bekannt && !aktuell && !laeuft
+                                             ? Color.orange : Color.secondary)
                         Spacer()
                         if laedt == angebot.id {
                             Text(ladeText).font(.caption).foregroundStyle(.secondary)
+                            ProgressView()
+                        } else if laeuft {
                             ProgressView()
                         } else {
                             if da {
@@ -377,7 +394,13 @@ struct ContentView: View {
                                     zusaetze = AssetStore.zusatzDateien(spiel)
                                 }
                             }
-                            if !aktuell && !pruefen.contains(angebot.id) {
+                            if da && !bekannt {
+                                Button(Sprache.t("Verify", "Prüfen")) {
+                                    Task { await pruefe(angebot) }
+                                }
+                                .disabled(laedt != nil)
+                            }
+                            if !da || (bekannt && !aktuell) {
                                 // Bei vorhandener älterer Fassung heisst der Knopf
                                 // "Erneuern": der Lader legt die Datei ohnehin neu an.
                                 Button(da ? Sprache.t("Update", "Erneuern")
@@ -389,15 +412,6 @@ struct ContentView: View {
                         }
                     }
                     .frame(maxWidth: 460)
-                    // Nur das ANGEZEIGTE Angebot nachrechnen, und erneut, sobald
-                    // ein anderes angezeigt wird.
-                    //
-                    // Vorher lief die Pruefung beim Start ueber den ganzen Katalog.
-                    // Mit Academy dazu waeren das bis zu 22 GB Lesen gewesen --
-                    // ausgerechnet waehrend die Engine startet, also genau dort,
-                    // wo Ruckeln am ehesten auffaellt und am schwersten zu
-                    // erklaeren ist.
-                    .task(id: angebot.id) { await pruefeFallsNoetig(angebot) }
                 }
 
                 // Die Reihenfolge ist keine Kleinigkeit, sondern der haeufigste
@@ -636,17 +650,14 @@ struct ContentView: View {
     /// Der Fortschritt steht in der Zeile des Angebots, nicht in der allgemeinen
     /// Meldung: bei einem Paket dieser Groesse laeuft das minutenlang, und man
     /// soll sehen, WORAN es laeuft.
-    /// Die Pruefsumme eines vorhandenen Pakets nachrechnen, falls kein
-    /// gueltiger Vermerk dazu vorliegt.
+    /// Die Pruefsumme eines vorhandenen Pakets nachrechnen -- auf Wunsch.
     ///
-    /// Noetig fuer Dateien, die nicht ueber den Lader kamen -- vor dieser
-    /// Fassung geladene, ueber die Dateien-App eingespielte oder von aussen
-    /// getauschte. Der Vermerk haengt an Aenderungszeit und Groesse, ein Tausch
-    /// wird also bemerkt.
-    private func pruefeFallsNoetig(_ angebot: Zusatzangebot) async {
-        guard AssetStore.paketVorhanden(angebot),
-              !AssetStore.pruefsummeBekannt(angebot),
-              !pruefen.contains(angebot.id) else { return }
+    /// Bewusst NICHT automatisch: das Lesen einer mehrere Gigabyte grossen
+    /// Datei ist teuer genug, dass es eine Entscheidung sein sollte. Der
+    /// Vermerk haengt danach an Aenderungszeit und Groesse, ein spaeterer
+    /// Tausch von aussen wird also bemerkt und faellt wieder auf "unbekannt".
+    private func pruefe(_ angebot: Zusatzangebot) async {
+        guard AssetStore.paketVorhanden(angebot), !pruefen.contains(angebot.id) else { return }
         pruefen.insert(angebot.id)
         await Task.detached(priority: .utility) {
             AssetStore.rechnePruefsummeNach(angebot)
@@ -978,13 +989,7 @@ enum AssetStore {
     static func rechnePruefsummeNach(_ angebot: Zusatzangebot) {
         guard let pfad = paketPfad(angebot),
               let vorher = merkmale(pfad),
-              let hand = try? FileHandle(forReadingFrom: pfad) else { return }
-        defer { try? hand.close() }
-        var hasher = SHA256()
-        while let block = try? hand.read(upToCount: 8 * 1024 * 1024), !block.isEmpty {
-            hasher.update(data: block)
-        }
-        let ist = hasher.finalize().map { String(format: "%02x", $0) }.joined()
+              let ist = pruefsummeVonDatei(pfad) else { return }
         UserDefaults.standard.set(ist + "|" + vorher, forKey: pruefschluessel(angebot))
     }
 
