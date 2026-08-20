@@ -919,7 +919,25 @@ qboolean G_ActivateBehavior (gentity_t *self, int bset )
 		{
 			Q3_DebugPrint( WL_VERBOSE, "%s attempting to run bSet %s (%s)\n", self->targetname, GetStringForID( BSETTable, bset ), bs_name );
 		}
-		ICARUS_RunScript( self, va( "%s/%s", Q3_SCRIPT_DIR, bs_name ) );
+		// MESSSTELLE: die letzte Station vor ICARUS.
+		//
+		// Vermessen ist inzwischen die ganze Kette davor: Taste, Beruehrung,
+		// Trigger, Schalter, Scriptrunner -- alles laeuft auch nach dem Laden.
+		// Das Skript wird gestartet, der Aufzug faehrt trotzdem nicht. Bleibt
+		// die Frage, ob ICARUS es annimmt: ohne sequencer und taskManager kann
+		// ein Objekt kein Skript ausfuehren, und gemeldet wird das nirgends.
+		const int genommen = ICARUS_RunScript( self, va( "%s/%s", Q3_SCRIPT_DIR, bs_name ) );
+		if ( getenv( "JKXR_EINGABE_ZEIGE" ) )
+		{
+			gi.Printf( "[ICARUS] t=%d Ent %d \"%s\": Skript \"%s\" -> %s, "
+			           "sequencer %s, taskManager %s, script_targetname \"%s\"\n",
+			           level.time, self->s.number,
+			           self->targetname ? self->targetname : "-", bs_name,
+			           genommen ? "angenommen" : "ABGELEHNT",
+			           self->sequencer ? "da" : "FEHLT",
+			           self->taskManager ? "da" : "FEHLT",
+			           self->script_targetname ? self->script_targetname : "-" );
+		}
 	}
 	return qtrue;
 }

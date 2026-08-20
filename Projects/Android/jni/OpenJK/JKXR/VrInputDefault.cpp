@@ -385,37 +385,57 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
 	}
 
     static float menuYaw = 0;
-    // TASTEN DES 2D-BILDSCHIRMS LOSLASSEN, wenn er verschwindet.
+    // BEIM VERLASSEN EINES MODUS ALLES LOSLASSEN.
     //
-    // Der Zweig darunter schickt A_MOUSE1 ueber Sys_QueEvent -- aber nur,
-    // solange der Bildschirm da ist. Wer im Todesbildschirm den Trigger
-    // drueckt, um neu zu laden, erzeugt damit ein "runter"; das zugehoerige
-    // "hoch" faellt in den Ladevorgang, und danach wird diese Zeile nie wieder
-    // erreicht. Die Taste bleibt fuer die Engine unten.
+    // Mehrere Zweige senden Tastendruecke, laufen aber nur, solange ihr Modus
+    // gilt: der 2D-Bildschirm schickt A_MOUSE1, der Kinozweig schickt +use.
+    // Faellt der Modus zwischen "gedrueckt" und "losgelassen" weg -- und genau
+    // das tut er beim Laden aus dem Todesbildschirm --, wird das Loslassen nie
+    // gesendet. Fuer die Engine bleibt die Taste unten.
     //
-    // Auf dem Geraet gemeldet, und alle drei Beobachtungen folgen daraus:
-    //   - A_MOUSE1 liegt auf +attack, also DAUERFEUER nach dem Laden
-    //   - beim naechsten Sterben kommt keine neue Flanke mehr, das Laden
-    //     ueber den Trigger tut nichts, und es hilft nur noch Beenden
-    //   - der Rest der Steuerung wirkt zaeh, weil dauernd geschossen wird
+    // Auf dem Geraet gemeldet, mit Sense-Controllern wie mit Gamepad:
+    //   - A_MOUSE1 liegt auf +attack  ->  DAUERFEUER nach dem Laden
+    //   - eine Taste, die schon unten ist, erzeugt keine neue Flanke  ->  der
+    //     Trigger tut beim naechsten Sterben nichts, es hilft nur Beenden
+    //   - +use bleibt aktiv, und PM_Use ist NICHT flankengetriggert: es loest
+    //     alle USE_DELAY erneut aus. Ein Aufzug, der staendig neu ausgeloest
+    //     wird, faehrt nicht -- deshalb waren Aufzuege auch dann hin, wenn
+    //     nicht geschossen wurde.
     //
-    // Ein "hoch" fuer eine Taste, die gar nicht unten ist, schadet nicht: die
-    // Engine raeumt dann nur einen Zustand auf, den es nicht gibt. Deshalb
-    // wird hier nicht Buch gefuehrt, welche Taste wir wirklich gedrueckt
-    // haben -- Buchfuehrung waere genau die Stelle, an der derselbe Fehler
-    // wieder entstehen koennte.
-    //
-    // Gilt fuer Gamepad UND raeumliche Controller: beide Wege senden A_MOUSE1
-    // aus demselben Zweig.
+    // Losgelassen wird PAUSCHAL, ohne Buch darueber zu fuehren, was wir
+    // wirklich gedrueckt hatten. Ein Loslassen ohne Druck raeumt in der Engine
+    // nur einen Zustand auf, den es nicht gibt (IN_KeyUp ohne Tastennummer
+    // loescht ohnehin alles), und Buchfuehrung waere genau die Stelle, an der
+    // derselbe Fehler zum dritten Mal entstehen koennte.
     {
-        static bool bildschirmAlt = false;
+        static bool bildschirmAlt = false, kinoAlt = false;
         const bool bildschirmNeu = VR_UseScreenLayer() && !vr.misc_camera;
-        if (bildschirmAlt && !bildschirmNeu)
+        const bool kinoNeu = vr.cin_camera != 0;
+        const bool verlassen = (bildschirmAlt && !bildschirmNeu)
+                            || (kinoAlt && !kinoNeu);
+        if (verlassen)
         {
             Sys_QueEvent(0, SE_KEY, A_MOUSE1, qfalse, 0, NULL);
             Sys_QueEvent(0, SE_KEY, A_ESCAPE, qfalse, 0, NULL);
+            sendButtonAction("+attack", false);
+            sendButtonAction("+altattack", false);
+            sendButtonAction("+use", false);
+            sendButtonAction("+altuse", false);
+            // Den GESTENZUSTAND mit zuruecksetzen, sonst laufen die beiden
+            // auseinander: die Engine haette +use losgelassen, die Geste hielte
+            // sich weiter fuer gedrueckt und schickte deshalb kein neues +use,
+            // bis man die Hand einmal senkt und wieder hebt.
+            vr.useGestureState = 0;
+            if (getenv("JKXR_EINGABE_ZEIGE"))
+            {
+                Com_Printf("[Eingabe] Modus verlassen: Bildschirm %d->%d, Kino %d->%d "
+                           "-- alles losgelassen\n",
+                           (int)bildschirmAlt, (int)bildschirmNeu,
+                           (int)kinoAlt, (int)kinoNeu);
+            }
         }
         bildschirmAlt = bildschirmNeu;
+        kinoAlt = kinoNeu;
     }
 
 
@@ -1398,6 +1418,27 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
             }
             // Weapon-hand gesture
             distanceToBody = sqrt(vr.weaponoffset[0]*vr.weaponoffset[0] + vr.weaponoffset[2]*vr.weaponoffset[2]);
+            // MESSSTELLE: haelt die Geste +use dauerhaft?
+            //
+            // Die Geste drueckt Benutzen, solange die Hand weiter als
+            // vr_use_gesture_boundary vom Koerper weg ist. Liegt der gemessene
+            // Abstand staendig darueber, wird alle USE_DELAY neu benutzt -- und
+            // ein Aufzug, der das abbekommt, faehrt nicht. Ob das so ist, soll
+            // die Zahl sagen und nicht ich.
+            if (getenv("JKXR_EINGABE_ZEIGE"))
+            {
+                static int letzte = 0;
+                if (Sys_Milliseconds() - letzte > 1000)
+                {
+                    letzte = Sys_Milliseconds();
+                    const float offhand = sqrt(vr.offhandoffset[0]*vr.offhandoffset[0]
+                                             + vr.offhandoffset[2]*vr.offhandoffset[2]);
+                    Com_Printf("[Geste] Waffenhand %.2f, Nebenhand %.2f, Schwelle %.2f, "
+                               "erlaubt %d, Zustand %d\n",
+                               distanceToBody, offhand, vr_use_gesture_boundary->value,
+                               (int)gestureUseAllowed, vr.useGestureState);
+                }
+            }
             if (gestureUseAllowed && (distanceToBody > vr_use_gesture_boundary->value)) {
                 if (!(vr.useGestureState & USE_GESTURE_WEAPON_HAND)) {
                     sendButtonAction("+use", true);

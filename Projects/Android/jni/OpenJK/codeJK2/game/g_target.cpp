@@ -734,6 +734,24 @@ void scriptrunner_run (gentity_t *self)
 	}
 	*/
 
+	// MESSSTELLE: die beiden stillen Riegel des Scriptrunners.
+	//
+	// count leer  -> der Runner schaltet sich DAUERHAFT ab
+	// behaviorSet -> ohne Skriptnamen passiert nichts, ohne jede Meldung
+	//
+	// Gemessen ist inzwischen: die ganze Eingabekette stimmt, der Schalter
+	// feuert auch nach dem Laden und steuert diesen Runner an. Der Aufzug
+	// faehrt trotzdem nicht -- also endet es hier oder gleich dahinter.
+	if ( getenv( "JKXR_EINGABE_ZEIGE" ) )
+	{
+		gi.Printf( "[Skript] t=%d Ent %d \"%s\": count %d, Skript \"%s\", "
+		           "spawnflags %d\n",
+		           level.time, self->s.number,
+		           self->targetname ? self->targetname : "-",
+		           self->count,
+		           self->behaviorSet[BSET_USE] ? self->behaviorSet[BSET_USE] : "(LEER)",
+		           self->spawnflags );
+	}
 	if ( self->count != -1 )
 	{
 		if ( self->count <= 0 )
