@@ -288,12 +288,21 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
 		// keinen. Die klassischen Befehle des Spiels gibt es aber weiterhin,
 		// sie werden hier nur nicht mehr ausgeloest -- also von Hand:
 		// R2 schlaegt, Viereck wirft.
-		if (cl.frame.ps.weapon == WP_SABER)
+		// Der Merker liegt AUSSERHALB der Waffenbedingung, und das ist keine
+		// Formsache.
+		//
+		// Stand er innerhalb, ging beim Waffenwechsel mit gedrueckter Taste
+		// das Loslassen verloren: der Block wurde uebersprungen, der Merker
+		// blieb auf "gedrueckt", +attack blieb aktiv -- und beim naechsten
+		// Druck gab es keine Flanke mehr, die Taste war also tot. Derselbe
+		// Fehler wie beim 2D-Bildschirm weiter oben, nur mit der Waffe als
+		// Ausloeser statt dem Laden.
 		{
 			static bool schlagAlt = false, wurfAlt = false;
-			const bool schlagNeu =
+			const bool schwert = (cl.frame.ps.weapon == WP_SABER);
+			const bool schlagNeu = schwert &&
 				(rightTrackedRemoteState_new.Buttons & xrButton_Trigger) != 0;
-			const bool wurfNeu = TBXR_visionOS_GamepadButton("Button X");
+			const bool wurfNeu = schwert && TBXR_visionOS_GamepadButton("Button X");
 
 			if (schlagNeu != schlagAlt) {
 				sendButtonAction("+attack", schlagNeu);
@@ -376,6 +385,40 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
 	}
 
     static float menuYaw = 0;
+    // TASTEN DES 2D-BILDSCHIRMS LOSLASSEN, wenn er verschwindet.
+    //
+    // Der Zweig darunter schickt A_MOUSE1 ueber Sys_QueEvent -- aber nur,
+    // solange der Bildschirm da ist. Wer im Todesbildschirm den Trigger
+    // drueckt, um neu zu laden, erzeugt damit ein "runter"; das zugehoerige
+    // "hoch" faellt in den Ladevorgang, und danach wird diese Zeile nie wieder
+    // erreicht. Die Taste bleibt fuer die Engine unten.
+    //
+    // Auf dem Geraet gemeldet, und alle drei Beobachtungen folgen daraus:
+    //   - A_MOUSE1 liegt auf +attack, also DAUERFEUER nach dem Laden
+    //   - beim naechsten Sterben kommt keine neue Flanke mehr, das Laden
+    //     ueber den Trigger tut nichts, und es hilft nur noch Beenden
+    //   - der Rest der Steuerung wirkt zaeh, weil dauernd geschossen wird
+    //
+    // Ein "hoch" fuer eine Taste, die gar nicht unten ist, schadet nicht: die
+    // Engine raeumt dann nur einen Zustand auf, den es nicht gibt. Deshalb
+    // wird hier nicht Buch gefuehrt, welche Taste wir wirklich gedrueckt
+    // haben -- Buchfuehrung waere genau die Stelle, an der derselbe Fehler
+    // wieder entstehen koennte.
+    //
+    // Gilt fuer Gamepad UND raeumliche Controller: beide Wege senden A_MOUSE1
+    // aus demselben Zweig.
+    {
+        static bool bildschirmAlt = false;
+        const bool bildschirmNeu = VR_UseScreenLayer() && !vr.misc_camera;
+        if (bildschirmAlt && !bildschirmNeu)
+        {
+            Sys_QueEvent(0, SE_KEY, A_MOUSE1, qfalse, 0, NULL);
+            Sys_QueEvent(0, SE_KEY, A_ESCAPE, qfalse, 0, NULL);
+        }
+        bildschirmAlt = bildschirmNeu;
+    }
+
+
     if (VR_UseScreenLayer() && !vr.misc_camera)
     {
         if (vr.cin_camera && cinCameraTimestamp + 1000 < Sys_Milliseconds())
