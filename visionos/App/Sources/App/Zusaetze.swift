@@ -125,7 +125,13 @@ enum Zusatzkatalog {
             dateiname: "assets9_astc.pk3",
             url: URL(string: "https://www.martek.de/downloads/academy/assets9_astc.pk3")!,
             ungefaehr: "11,5 GB",
-            sha256: "45bacc2245042b1e55307509d4082594a0024aac6c01c0ca3ad698e417a48a79"),
+            // Neu gebacken am 21.08.2026 mit ACADEMYS eigenen Farbtabellen.
+            // Die erste Fassung hatte Outcasts -- beide Spiele teilen sich zwar
+            // den Renderer, aber R_SetColorMappings rechnet aus r_gamma und
+            // r_intensity, und die stehen je Spiel in einer eigenen
+            // Konfiguration. Gemessen: 128 -> 67 in Academy gegen 76 in
+            // Outcast, das Paket war dort also systematisch zu hell.
+            sha256: "97748ce70ce0804a3395b40cb872f216d9c2b28d5f0370075e0e65bb581f6cba"),
     ]
 
     static func fuer(_ spiel: Spiel, _ stufe: Texturstufe) -> Zusatzangebot? {

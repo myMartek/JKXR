@@ -1,4 +1,15 @@
-# Farbtabellen der Engine, ausgegeben von R_visionOS_TabellenAusgeben.
+# Farbtabellen der Engine für JEDI OUTCAST, ausgegeben von
+# R_visionOS_TabellenAusgeben.
+#
+# DAS SPIEL GEHOERT IN DEN NAMEN, und das ist keine Formsache: beide Spiele
+# teilen sich zwar den Renderer (code/rd-gles), aber R_SetColorMappings rechnet
+# die Tabellen aus r_gamma und r_intensity -- und die stehen in der
+# Konfiguration des jeweiligen Spiels, jk2config.cfg gegen jaconfig.cfg.
+#
+# Gemessen, Academy gegen Outcast:  64 -> 17/21, 128 -> 67/76, 192 -> 159/166.
+# Academy dunkelt staerker ab. Mit dieser Datei gebackene Texturen sind dort
+# systematisch zu hell -- so gemeldet und nachgemessen. Fuer Academy gilt
+# farbtabellen-academy.txt.
 #
 # Upload32 legt sie auf JEDE Textur, bevor sie hochgeladen wird:
 #     p[i] = gamma[ intens[i] ]   (Textur mit Mip-Kette)

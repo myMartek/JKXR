@@ -1,0 +1,23 @@
+# Farbtabellen der Engine für JEDI ACADEMY, ausgegeben von R_visionOS_TabellenAusgeben.
+#
+# Warum eine EIGENE Datei, obwohl sich beide Spiele einen Renderer teilen:
+# R_SetColorMappings rechnet die Tabellen aus r_gamma und r_intensity, und die
+# stehen in der Konfiguration des jeweiligen Spiels -- jaconfig.cfg und
+# jk2config.cfg sind zwei getrennte Dateien. Gemeinsamer Renderer heisst also
+# nicht gemeinsame Werte.
+#
+# Auf dem Geraet gemessen, Academy gegen Outcast:
+#
+#     Eingang    Academy    Outcast
+#        64        17         21
+#       128        67         76
+#       192       159        166
+#
+# Academy dunkelt staerker ab. Ein mit Outcasts Tabellen gebackenes Paket ist
+# dort systematisch zu hell -- genau so gemeldet, im Vergleich zum 2x-Paket,
+# das durch Upload32 laeuft und Academys eigene Abbildung bekommt.
+#
+# Strukturell sind beide gleich: deviceSupportsGamma=0 overbrightBits=0
+# identityLight=1.0
+gamma 0000000000000101010101010101010102020202020202030303030303040404040405050505060606060707080808080909090a0a0a0b0b0c0c0c0d0d0d0e0e0f0f10101111111212131314141516161717181819191a1b1b1c1d1d1e1e1f20202122232324252526272829292a2b2c2d2d2e2f30313233333435363738393a3b3c3d3e3f404142434445464748494a4c4d4e4f5051525455555657585a5b5c5d5f60616364656768696b6c6d6f707273747677797a7c7d7f808283858686888a8b8d8e9092939597989a9c9d9fa1a3a4a6a8aaabadafb1b3b5b7b7b8babcbec0c2c4c6c8caccced0d2d4d6d8dadcdee0e2e5e7e7e9ebedeff2f4f6f8fafdff
+intens 000102030405060708090a0b0c0d0e101112131415161718191a1b1c1d1f202122232425262728292a2b2c2e2f303132333435363738393a3b3c3e3f404142434445464748494a4b4d4e4f505152535455565758595a5c5d5e5f606162636465666768696b6c6d6e6f707172737475767778797b7c7d7e7f8081828384858687888a8b8c8d8e8f9091929394959697999a9b9c9d9e9fa0a1a2a3a4a5a6a7a9aaabacadaeafb0b1b2b3b4b5b6b8b9babbbcbdbebfc0c1c2c3c4c5c7c8c9cacbcccdcecfd0d1d2d3d4d6d7d8d9dadbdcdddedfe0e1e2e3e4e6e7e8e9eaebecedeeeff0f1f2f3f5f6f7f8f9fafbfcfdfeffffffffffffffffffffffffffffffffff

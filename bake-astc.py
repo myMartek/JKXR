@@ -201,7 +201,10 @@ def main() -> int:
     p.add_argument("--astcenc", default="astcenc-neon",
                    help="Pfad zum Kodierer (aus ARM-software/astc-encoder gebaut)")
     p.add_argument("--tabellen", default="visionos/farbtabellen.txt",
-                   help="Farbabbildung der Engine (siehe R_visionOS_TabellenAusgeben)")
+                   help="Farbabbildung der Engine -- JE SPIEL EINE. Die Vorgabe "
+                        "gilt fuer Outcast; fuer Academy visionos/"
+                        "farbtabellen-academy.txt angeben, sonst wird das "
+                        "Paket dort zu hell (gemessen: 128 -> 76 statt 67).")
     p.add_argument("--filter", default="",
                    help="nur Pfade, die diesen Text enthalten")
     p.add_argument("--limit", type=int, default=0,
