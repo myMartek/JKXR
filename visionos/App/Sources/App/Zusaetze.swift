@@ -101,6 +101,31 @@ enum Zusatzkatalog {
             // ändert, muss auch das Paket auf dem Server tauschen -- sonst
             // verwirft die App die Datei, die sie gerade geladen hat.
             sha256: "68fa3d2efcc78af95a9fabf6ac2d406c7cae6175502ac6894a46b1ce8a374e9b"),
+
+        // Academy kam als ELF Dateien (z_JAx4_gfx, models_1..4, textures_1..6).
+        // Zu einer zusammengefasst, weil ein Angebot genau eine Datei lädt --
+        // mit erhaltener DEFLATE-Packung, sonst wären aus 5 GB rund 16 geworden.
+        Zusatzangebot(
+            id: "ja-upscale-2x",
+            spiel: .academy,
+            stufe: .zweifach,
+            dateiname: "assets8_4x_upscale.pk3",
+            url: URL(string: "https://www.martek.de/downloads/academy/assets8_4x_upscale.pk3")!,
+            ungefaehr: "4,8 GB",
+            sha256: "dcf4171db14303dc7919e75c1e34c348259808aa836c42963f208af9384c1604"),
+
+        // 11,8 GB, zweieinhalbmal Outcast: Academy bringt 4500 Texturen mit
+        // 20,9 Mrd. Bildpunkten mit, und ASTC hat eine feste Rate je Bildpunkt.
+        // Block 6x6 wie bei Outcast -- 8x8 wäre halb so groß, aber auch halbe
+        // Bitrate und damit ein sichtbarer Rückschritt.
+        Zusatzangebot(
+            id: "ja-upscale-4x",
+            spiel: .academy,
+            stufe: .vierfach,
+            dateiname: "assets9_astc.pk3",
+            url: URL(string: "https://www.martek.de/downloads/academy/assets9_astc.pk3")!,
+            ungefaehr: "11,5 GB",
+            sha256: "45bacc2245042b1e55307509d4082594a0024aac6c01c0ca3ad698e417a48a79"),
     ]
 
     static func fuer(_ spiel: Spiel, _ stufe: Texturstufe) -> Zusatzangebot? {

@@ -840,31 +840,62 @@ enum AssetStore {
         "jkxr.paket." + angebot.id
     }
 
-    /// Ist das vorhandene Paket die Fassung, die der Katalog erwartet?
+    /// Die Datei eines Angebots -- eingeschaltet oder mit ".aus" daneben.
+    static func paketPfad(_ angebot: Zusatzangebot) -> URL? {
+        let base = baseDirectory(angebot.spiel)
+        let fm = FileManager.default
+        for name in [angebot.dateiname, angebot.dateiname + ausEndung] {
+            let p = base.appendingPathComponent(name)
+            if fm.fileExists(atPath: p.path) { return p }
+        }
+        return nil
+    }
+
+    /// Der Fingerabdruck der DATEI, nicht ihres Inhalts: Änderungszeit und Größe.
     ///
-    /// Nicht durch Nachrechnen: die Prüfsumme über fünf Gigabyte zu bilden
-    /// dauert bei jedem Start zu lange. Stattdessen wird beim Laden vermerkt,
-    /// WELCHE Prüfsumme bestätigt wurde -- die Prüfung selbst hat der Lader
-    /// ohnehin schon gemacht.
-    ///
-    /// Über die Dateigröße ginge es nicht: ASTC hat eine feste Rate, altes und
-    /// neues Paket sind auf das Byte gleich groß.
-    ///
-    /// Ein Paket ohne Vermerk gilt als veraltet. Das trifft alles, was vor
-    /// dieser Prüfung geladen wurde -- gewollt, denn genau darunter liegt die
-    /// Fassung mit den ausgelöschten Mip-Farben.
-    static func paketAktuell(_ angebot: Zusatzangebot) -> Bool {
-        guard paketVorhanden(angebot) else { return false }
-        guard let erwartet = angebot.sha256 else { return true }
-        let gemerkt = UserDefaults.standard.string(forKey: pruefschluessel(angebot))
-        return gemerkt?.caseInsensitiveCompare(erwartet) == .orderedSame
+    /// Er entscheidet, ob ein Vermerk noch zur Datei gehört. Ohne ihn bliebe
+    /// ein Paket, das von außen getauscht wurde -- über die Dateien-App oder
+    /// per devicectl -- für immer als "ältere Fassung" stehen, obwohl längst
+    /// die neue dort liegt.
+    private static func merkmale(_ pfad: URL) -> String? {
+        guard let a = try? FileManager.default.attributesOfItem(atPath: pfad.path),
+              let d = a[.modificationDate] as? Date,
+              let g = a[.size] as? Int else { return nil }
+        return "\(Int(d.timeIntervalSince1970)):\(g)"
+    }
+
+    /// Der gespeicherte Vermerk, aber nur wenn er noch zu der Datei passt,
+    /// die gerade dort liegt. Sonst nil -- dann muss nachgerechnet werden.
+    private static func vermerk(_ angebot: Zusatzangebot) -> String? {
+        guard let pfad = paketPfad(angebot),
+              let jetzt = merkmale(pfad),
+              let roh = UserDefaults.standard.string(forKey: pruefschluessel(angebot))
+        else { return nil }
+        let teile = roh.split(separator: "|", maxSplits: 1)
+        guard teile.count == 2, String(teile[1]) == jetzt else { return nil }
+        return String(teile[0])
     }
 
     static func pruefsummeBekannt(_ angebot: Zusatzangebot) -> Bool {
-        UserDefaults.standard.string(forKey: pruefschluessel(angebot)) != nil
+        vermerk(angebot) != nil
     }
 
-    /// Die Prüfsumme einer vorhandenen Datei einmalig nachrechnen und vermerken.
+    /// Ist das vorhandene Paket die Fassung, die der Katalog erwartet?
+    ///
+    /// Nicht bei jedem Start nachgerechnet: die Prüfsumme über fünf Gigabyte
+    /// zu bilden dauert zu lange. Stattdessen wird vermerkt, WELCHE Prüfsumme
+    /// zu welcher Datei gehört; gerechnet wird nur, wenn der Vermerk fehlt
+    /// oder die Datei sich seither geändert hat.
+    ///
+    /// Über die Größe allein ginge es nicht: ASTC hat eine feste Rate, altes
+    /// und neues 4×-Paket sind auf das Byte gleich groß.
+    static func paketAktuell(_ angebot: Zusatzangebot) -> Bool {
+        guard paketVorhanden(angebot) else { return false }
+        guard let erwartet = angebot.sha256 else { return true }
+        return vermerk(angebot)?.caseInsensitiveCompare(erwartet) == .orderedSame
+    }
+
+    /// Die Prüfsumme einer vorhandenen Datei nachrechnen und vermerken.
     ///
     /// Blockweise, nicht am Stück: eine Datei dieser Größe vollständig in den
     /// Speicher zu holen beendet die App -- derselbe Grund wie im Lader.
@@ -872,25 +903,30 @@ enum AssetStore {
     /// Vermerkt wird das GERECHNETE Ergebnis, nicht das erwartete. Sonst würde
     /// die Prüfung sich selbst bestätigen, wie es eine frühere Probe in diesem
     /// Projekt schon getan hat.
+    ///
+    /// Die Merkmale werden VOR dem Lesen genommen: ändert sich die Datei
+    /// währenddessen, passt der Vermerk hinterher nicht mehr und es wird beim
+    /// nächsten Mal erneut gerechnet. Andersherum würde ein halb geschriebener
+    /// Stand als geprüft gelten.
     static func rechnePruefsummeNach(_ angebot: Zusatzangebot) {
-        let datei = baseDirectory(angebot.spiel).appendingPathComponent(angebot.dateiname)
-        let aus = baseDirectory(angebot.spiel)
-            .appendingPathComponent(angebot.dateiname + ausEndung)
-        let fm = FileManager.default
-        let pfad = fm.fileExists(atPath: datei.path) ? datei : aus
-        guard let hand = try? FileHandle(forReadingFrom: pfad) else { return }
+        guard let pfad = paketPfad(angebot),
+              let vorher = merkmale(pfad),
+              let hand = try? FileHandle(forReadingFrom: pfad) else { return }
         defer { try? hand.close() }
         var hasher = SHA256()
         while let block = try? hand.read(upToCount: 8 * 1024 * 1024), !block.isEmpty {
             hasher.update(data: block)
         }
         let ist = hasher.finalize().map { String(format: "%02x", $0) }.joined()
-        UserDefaults.standard.set(ist, forKey: pruefschluessel(angebot))
+        UserDefaults.standard.set(ist + "|" + vorher, forKey: pruefschluessel(angebot))
     }
 
+    /// Nach dem Laden: der Lader hat die Prüfsumme bereits geprüft, hier wird
+    /// sie nur der frisch abgelegten Datei zugeordnet.
     static func merkePruefsumme(_ angebot: Zusatzangebot) {
-        guard let s = angebot.sha256 else { return }
-        UserDefaults.standard.set(s, forKey: pruefschluessel(angebot))
+        guard let s = angebot.sha256, let pfad = paketPfad(angebot),
+              let m = merkmale(pfad) else { return }
+        UserDefaults.standard.set(s + "|" + m, forKey: pruefschluessel(angebot))
     }
 
     /// Einen Zusatz vollstaendig entfernen -- beide Formen.
