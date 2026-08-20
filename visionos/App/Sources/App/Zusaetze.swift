@@ -38,18 +38,13 @@ enum Texturstufe: Int, CaseIterable, Identifiable {
                              "Hochgerechnetes Paket, beim Laden halbiert — ein Viertel "
                                 + "des Texturspeichers, immer noch schärfer als das Original.")
         case .vierfach:
-            // Der Fehler ist BENANNT, nicht beschönigt -- und richtig benannt:
-            // es rauscht nichts, sondern eine bestimmte animierte Textur landet
-            // an der falschen Stelle und viel zu groß. Eine falsche Beschreibung
-            // schickt den nächsten Sucher in die falsche Richtung, wie sie es
-            // hier schon getan hat.
-            return Sprache.t("Full resolution, pre-baked as compressed GPU textures. "
-                                + "Known issue: one animated texture appears in the "
-                                + "wrong place and far too large.",
+            // Der frühere Hinweis auf die falsch platzierte Textur ist raus:
+            // die Ursache lag in der Mip-Erzeugung des Backwerkzeugs und ist
+            // behoben, das Paket neu gebacken. "Experimentell" bleibt es
+            // trotzdem -- es ist der jüngste der drei Wege.
+            return Sprache.t("Full resolution, pre-baked as compressed GPU textures.",
                              "Volle Auflösung, vorgebacken als komprimierte "
-                                + "GPU-Texturen. Bekannter Fehler: eine animierte "
-                                + "Textur liegt an der falschen Stelle und ist viel "
-                                + "zu groß.")
+                                + "GPU-Texturen.")
         }
     }
 
@@ -100,11 +95,12 @@ enum Zusatzkatalog {
             dateiname: "assets9_astc.pk3",
             url: URL(string: "https://www.martek.de/downloads/outcast/assets9_astc.pk3")!,
             ungefaehr: "4,7 GB",
-            // Gilt für das Paket, das derzeit auf dem Server liegt. Wird neu
-            // gebacken, sobald der Platzierungsfehler behoben ist -- dann
-            // gehört auch dieser Wert erneuert, sonst verwirft die App die
-            // Datei, die sie gerade geladen hat.
-            sha256: "9a4863001669d874f68b9496132eff77aa60afdfb6d2196f36c1bd6a1bc503ad"),
+            // Neu gebacken am 20.08.2026, nachdem die Mip-Erzeugung im
+            // Backwerkzeug die Farbe aller Texturen mit Alphakanal ausgelöscht
+            // hatte (siehe verkleinere() in bake-astc.py). Wer hier einen Wert
+            // ändert, muss auch das Paket auf dem Server tauschen -- sonst
+            // verwirft die App die Datei, die sie gerade geladen hat.
+            sha256: "68fa3d2efcc78af95a9fabf6ac2d406c7cae6175502ac6894a46b1ce8a374e9b"),
     ]
 
     static func fuer(_ spiel: Spiel, _ stufe: Texturstufe) -> Zusatzangebot? {

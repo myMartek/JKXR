@@ -94,8 +94,36 @@ def mipkette(bild: Image.Image) -> list[Image.Image]:
     while b > 1 or h > 1:
         b = max(1, b // 2)
         h = max(1, h // 2)
-        stufen.append(stufen[-1].resize((b, h), Image.LANCZOS))
+        stufen.append(verkleinere(stufen[-1], b, h))
     return stufen
+
+
+def verkleinere(bild: Image.Image, b: int, h: int) -> Image.Image:
+    """Kanalweise, NICHT als RGBA am Stück.
+
+    PIL multipliziert beim Verkleinern eines RGBA-Bildes die Farbe mit dem
+    Alpha und macht es hinterher nicht rückgängig. Nachgestellt mit einem
+    2×2-Bild (200,200,200,0):
+
+        am Stück          -> (0, 0, 0, 0)
+        Kanäle getrennt   -> (200, 200, 200, 0)
+
+    Für Texturen mit Alphakanal heißt das: ab Stufe 1 ist die Farbe überall
+    dort ausgelöscht, wo die Textur durchsichtig ist. Auf dem Gerät gemessen
+    fiel der RGB-Mittelwert von textures/impdetention/deathcon1 zwischen
+    Stufe 0 und Stufe 1 von (39, 13, 19) auf (0, 1, 8).
+
+    Sichtbar wurde es an genau einer Wand, weil deren Shader mit
+    SRCBLEND_ONE | DSTBLEND_SRC_ALPHA mischt: dort trägt das Alpha das Tor
+    und RGB den Inhalt. Mit ausgelöschtem RGB blieb die Wand schwarz --
+    und zwar nur in der Entfernung, in der die höheren Stufen gezogen werden,
+    was als kopfabhängiger Ausschnitt mit dunkler werdenden Stufen erschien.
+
+    Die Engine hat dieses Problem nicht: ihre Mip-Erzeugung läuft im Treiber
+    und rührt das Alpha nicht an.
+    """
+    return Image.merge("RGBA", [k.resize((b, h), Image.LANCZOS)
+                                for k in bild.split()])
 
 
 def kodiere(bild: Image.Image, block: str, astcenc: str) -> bytes:

@@ -1,3 +1,4 @@
+import CryptoKit
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
@@ -165,6 +166,8 @@ struct ContentView: View {
     @State private var lader = ZusatzLader()
     /// Welcher Zusatz gerade zum Löschen angefragt ist.
     @State private var loeschKandidat: ZusatzDatei?
+    /// Pakete, deren Prüfsumme gerade im Hintergrund nachgerechnet wird.
+    @State private var pruefen: Set<String> = []
 
     /// Wirkt über die Befehlszeile der Engine (EngineHost) und damit erst beim
     /// nächsten Start des Immersive Space -- r_picmip ist gelatcht. Gesetzt
@@ -298,25 +301,37 @@ struct ContentView: View {
 
                 if let angebot = Zusatzkatalog.fuer(spiel, stufe) {
                     let da = AssetStore.paketVorhanden(angebot)
+                    let aktuell = AssetStore.paketAktuell(angebot)
                     HStack(spacing: 12) {
-                        Text(da ? Sprache.t("Package present", "Paket vorhanden")
-                                : angebot.ungefaehr)
+                        let wirdGeprueft = pruefen.contains(angebot.id)
+                        Text(!da ? angebot.ungefaehr
+                                 : wirdGeprueft ? Sprache.t("Checking…", "wird geprüft…")
+                                 : aktuell ? Sprache.t("Package present", "Paket vorhanden")
+                                           : Sprache.t("Older version present",
+                                                       "Ältere Fassung vorhanden"))
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(!da || wirdGeprueft || aktuell
+                                             ? Color.secondary : Color.orange)
                         Spacer()
                         if laedt == angebot.id {
                             Text(ladeText).font(.caption).foregroundStyle(.secondary)
                             ProgressView()
-                        } else if da {
-                            Button(Sprache.t("Delete", "Löschen"), role: .destructive) {
-                                AssetStore.loeschePaket(angebot)
-                                zusaetze = AssetStore.zusatzDateien(spiel)
-                            }
                         } else {
-                            Button(Sprache.t("Download", "Laden")) {
-                                Task { await hole(angebot) }
+                            if da {
+                                Button(Sprache.t("Delete", "Löschen"), role: .destructive) {
+                                    AssetStore.loeschePaket(angebot)
+                                    zusaetze = AssetStore.zusatzDateien(spiel)
+                                }
                             }
-                            .disabled(laedt != nil)
+                            if !aktuell && !pruefen.contains(angebot.id) {
+                                // Bei vorhandener älterer Fassung heisst der Knopf
+                                // "Erneuern": der Lader legt die Datei ohnehin neu an.
+                                Button(da ? Sprache.t("Update", "Erneuern")
+                                          : Sprache.t("Download", "Laden")) {
+                                    Task { await hole(angebot) }
+                                }
+                                .disabled(laedt != nil)
+                            }
                         }
                     }
                     .frame(maxWidth: 460)
@@ -404,6 +419,23 @@ struct ContentView: View {
             // Info.plist steht. Erst wenn etwas darin liegt, wird der Ordner
             // sichtbar und man kann hineinkopieren.
             AssetStore.prepare()
+
+            // Pakete ohne Vermerk einmalig nachrechnen.
+            //
+            // Der Vermerk kam erst mit der Fassung vom 20.08.2026; alles,
+            // was davor geladen wurde, hat keinen. Statt es pauschal für
+            // veraltet zu erklären -- das hätte 1,7 GB 2×-Paket unnötig neu
+            // geladen -- wird einmal wirklich gerechnet. Über die Größe ginge
+            // es nicht: ASTC hat eine feste Rate, altes und neues 4×-Paket
+            // sind auf das Byte gleich groß.
+            for angebot in Zusatzkatalog.alle where AssetStore.paketVorhanden(angebot)
+                && !AssetStore.pruefsummeBekannt(angebot) {
+                pruefen.insert(angebot.id)
+                Task.detached(priority: .utility) {
+                    AssetStore.rechnePruefsummeNach(angebot)
+                    await MainActor.run { pruefen.remove(angebot.id) }
+                }
+            }
 
             // Zusaetze von aussen umschalten, fuer die Fehlersuche.
             //
@@ -568,6 +600,7 @@ struct ContentView: View {
                              groesse(Int(geladen)), groesse(Int(gesamt)))
                     : groesse(Int(geladen))
             }
+            AssetStore.merkePruefsumme(angebot)
             progress = nil
         } catch {
             progress = Sprache.t("Download failed: \(error.localizedDescription)",
@@ -800,6 +833,64 @@ enum AssetStore {
         for name in [angebot.dateiname, angebot.dateiname + ausEndung] {
             try? FileManager.default.removeItem(at: base.appendingPathComponent(name))
         }
+        UserDefaults.standard.removeObject(forKey: pruefschluessel(angebot))
+    }
+
+    static func pruefschluessel(_ angebot: Zusatzangebot) -> String {
+        "jkxr.paket." + angebot.id
+    }
+
+    /// Ist das vorhandene Paket die Fassung, die der Katalog erwartet?
+    ///
+    /// Nicht durch Nachrechnen: die Prüfsumme über fünf Gigabyte zu bilden
+    /// dauert bei jedem Start zu lange. Stattdessen wird beim Laden vermerkt,
+    /// WELCHE Prüfsumme bestätigt wurde -- die Prüfung selbst hat der Lader
+    /// ohnehin schon gemacht.
+    ///
+    /// Über die Dateigröße ginge es nicht: ASTC hat eine feste Rate, altes und
+    /// neues Paket sind auf das Byte gleich groß.
+    ///
+    /// Ein Paket ohne Vermerk gilt als veraltet. Das trifft alles, was vor
+    /// dieser Prüfung geladen wurde -- gewollt, denn genau darunter liegt die
+    /// Fassung mit den ausgelöschten Mip-Farben.
+    static func paketAktuell(_ angebot: Zusatzangebot) -> Bool {
+        guard paketVorhanden(angebot) else { return false }
+        guard let erwartet = angebot.sha256 else { return true }
+        let gemerkt = UserDefaults.standard.string(forKey: pruefschluessel(angebot))
+        return gemerkt?.caseInsensitiveCompare(erwartet) == .orderedSame
+    }
+
+    static func pruefsummeBekannt(_ angebot: Zusatzangebot) -> Bool {
+        UserDefaults.standard.string(forKey: pruefschluessel(angebot)) != nil
+    }
+
+    /// Die Prüfsumme einer vorhandenen Datei einmalig nachrechnen und vermerken.
+    ///
+    /// Blockweise, nicht am Stück: eine Datei dieser Größe vollständig in den
+    /// Speicher zu holen beendet die App -- derselbe Grund wie im Lader.
+    ///
+    /// Vermerkt wird das GERECHNETE Ergebnis, nicht das erwartete. Sonst würde
+    /// die Prüfung sich selbst bestätigen, wie es eine frühere Probe in diesem
+    /// Projekt schon getan hat.
+    static func rechnePruefsummeNach(_ angebot: Zusatzangebot) {
+        let datei = baseDirectory(angebot.spiel).appendingPathComponent(angebot.dateiname)
+        let aus = baseDirectory(angebot.spiel)
+            .appendingPathComponent(angebot.dateiname + ausEndung)
+        let fm = FileManager.default
+        let pfad = fm.fileExists(atPath: datei.path) ? datei : aus
+        guard let hand = try? FileHandle(forReadingFrom: pfad) else { return }
+        defer { try? hand.close() }
+        var hasher = SHA256()
+        while let block = try? hand.read(upToCount: 8 * 1024 * 1024), !block.isEmpty {
+            hasher.update(data: block)
+        }
+        let ist = hasher.finalize().map { String(format: "%02x", $0) }.joined()
+        UserDefaults.standard.set(ist, forKey: pruefschluessel(angebot))
+    }
+
+    static func merkePruefsumme(_ angebot: Zusatzangebot) {
+        guard let s = angebot.sha256 else { return }
+        UserDefaults.standard.set(s, forKey: pruefschluessel(angebot))
     }
 
     /// Einen Zusatz vollstaendig entfernen -- beide Formen.

@@ -3256,6 +3256,46 @@ static jk_shader_t *FinishShader( void ) {
 	//
 	shader.numUnfoggedPasses = stage;
 
+	// MESSPUNKT: Shader ausgeben, die eine gesuchte Textur benutzen.
+	//
+	// Nachdem Daten, Masse und Alpha der Textur alle als unschuldig gemessen
+	// sind, bleibt die Frage, WIE sie gezeichnet wird -- und das steht hier,
+	// nicht im Ladepfad.
+	//
+	// NUR Bündel 0 und nur aktive Stufen. Der erste Versuch lief über alle
+	// Bündel und alle Bildplätze und endete mit SIGSEGV: was hier noch nicht
+	// belegt ist, muss auch keine gültige Zeichenkette enthalten. Der Name wird
+	// deshalb zusätzlich begrenzt kopiert, bevor darin gesucht wird.
+	if ( const char *gesucht = getenv( "JKXR_SHADER_ZEIGE" ) ) {
+		qboolean trifft = qfalse;
+		for ( int st = 0; st < stage && st < MAX_SHADER_STAGES; ++st ) {
+			if ( !stages[st].active ) continue;
+			char name[MAX_QPATH];
+			Q_strncpyz( name, stages[st].bundle[0].image[0].imgName, sizeof(name) );
+			if ( name[0] && strstr( name, gesucht ) ) { trifft = qtrue; break; }
+		}
+		if ( trifft ) {
+			ri.Printf( PRINT_ALL, "[Shader] \"%s\" sort %.1f, %d Stufen, lightmap %d\n",
+			           shader.name, shader.sort, stage, shader.lightmapIndex );
+			for ( int st = 0; st < stage && st < MAX_SHADER_STAGES; ++st ) {
+				if ( !stages[st].active ) continue;
+				const textureBundle_t *bu = &stages[st].bundle[0];
+				char name[MAX_QPATH];
+				Q_strncpyz( name, bu->image[0].imgName, sizeof(name) );
+				ri.Printf( PRINT_ALL, "[Shader]   Stufe %d: %s%s  Bilder %d  "
+				           "tcGen %d  tcMods %d  stateBits 0x%08x\n",
+				           st, name[0] ? name : "(keins)",
+				           bu->isLightmap ? " [LIGHTMAP]" : "",
+				           bu->numImageAnimations, (int)bu->tcGen,
+				           bu->numTexMods, (unsigned)stages[st].stateBits );
+				for ( int m = 0; m < bu->numTexMods && m < TR_MAX_TEXMODS; ++m ) {
+					ri.Printf( PRINT_ALL, "[Shader]     tcMod %d: Typ %d\n",
+					           m, (int)bu->texMods[m].type );
+				}
+			}
+		}
+	}
+
 	// fogonly shaders don't have any normal passes
 	if ( stage == 0 ) {
 		shader.sort = SS_FOG;

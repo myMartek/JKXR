@@ -1356,7 +1356,7 @@ extern "C" int TBXR_visionOS_LadeAstcStufe(unsigned tex, int stufe, unsigned for
                                            const void *daten);
 extern "C" void TBXR_visionOS_SetzeMipGrenze(unsigned tex, int hoechste);
 extern "C" void TBXR_visionOS_LiesTexturpunkt(unsigned tex, unsigned char aus[4]);
-extern "C" void TBXR_visionOS_LiesTexturgitter(unsigned tex, int n, unsigned char *aus);
+extern "C" void TBXR_visionOS_LiesTexturgitter(unsigned tex, int n, int stufe, unsigned char *aus);
 
 static image_t *R_visionOS_AstcLaden( const char *name, qboolean mipmap,
                                       qboolean allowPicmip, qboolean allowTC,
@@ -1466,6 +1466,12 @@ static image_t *R_visionOS_AstcLaden( const char *name, qboolean mipmap,
 	// falsch. Bleibt es, liegt es an Stufe 0 selbst oder am Zustand ringsum
 	// (Bindung, Texturheit) -- und die Mip-Kette waere unschuldig.
 	const qboolean nurNull = (qboolean)(getenv("JKXR_ASTC_NUR0") != NULL);
+	// JKXR_ASTC_DIREKT=1 laedt wieder an gl4es vorbei, wie bis heute.
+	// Nur zum Vergleichen: der Weg durch gl4es ist der richtige, aber er
+	// setzt dort Merker (compressed, alpha, internalformat), die den
+	// Zeichenpfad beeinflussen koennen. Mit dem Schalter laesst sich das
+	// auf dem Geraet trennen, ohne neu zu bauen.
+	const qboolean direkt = (qboolean)(getenv("JKXR_ASTC_DIREKT") != NULL);
 
 	int ueberspringen = 0;
 	if ( allowPicmip && r_picmip->integer > 0 ) {
@@ -1479,7 +1485,20 @@ static image_t *R_visionOS_AstcLaden( const char *name, qboolean mipmap,
 	// die ganze Buchhaltung von R_CreateImage (Registrierung, Kennung,
 	// Level-Vermerk, Wrap-Modus) UND das Anlegen der echten Textur -- gl4es
 	// arbeitet verzoegert und legt sie erst an, wenn Daten hindurchfliessen.
-	static byte einPunkt[4] = { 255, 255, 255, 255 };
+	// DURCHSICHTIG SCHWARZ, nicht weiss undurchsichtig.
+	//
+	// Der Punkt ist nur Beiwerk fuer die Buchhaltung -- aber gl4es merkt sich
+	// dabei "1x1" und legt diesen Zustand beim Zeichnen unter Umstaenden wieder
+	// an. Mit weiss/undurchsichtig hiess das bei einem Shader mit
+	// DSTBLEND_SRC_ALPHA: Tor ganz offen, die animierte Lage darunter schien
+	// ueber die ganze Wand durch.
+	//
+	// Ein Versuch, gl4es stattdessen die echten Masse mitzuteilen (ein
+	// qglTexImage2D ohne Daten vor den Bloecken), behob die Platzierung -- und
+	// brachte einen schlimmeren Fehler: die Wand wurde nur noch in einem festen
+	// Ausschnitt des Augenpuffers gezeichnet, aussen schwarz. Also der kleinere
+	// Eingriff.
+	static byte einPunkt[4] = { 0, 0, 0, 0 };
 	image_t *image = R_CreateImage( (char *)name, einPunkt, 1, 1, GL_RGBA,
 	                                mipmap, allowPicmip, allowTC, glWrapClampMode );
 	if ( !image ) {
@@ -1525,11 +1544,31 @@ static image_t *R_visionOS_AstcLaden( const char *name, qboolean mipmap,
 		const int h = hoehe   >> i ? hoehe   >> i : 1;
 		if ( nurNull && i > ueberspringen ) { p += groesse; continue; }
 		if ( i >= ueberspringen ) {
-			const int fehler = TBXR_visionOS_LadeAstcStufe(
-				(unsigned)echt, i - ueberspringen, format, b, h, (int)groesse, p );
-			if ( fehler ) {
-				ri.Printf( PRINT_WARNING, "%s: Stufe %d -> GL 0x%04x\n", pfad, i, fehler );
-				break;
+			// DURCH gl4es, nicht daran vorbei.
+			//
+			// Die urspruengliche Annahme war, gl4es wuerde komprimierte Texturen
+			// auspacken und damit den ganzen Gewinn zunichtemachen. Das stimmt --
+			// aber NUR fuer DXT. Unbekannte Formate reicht es unveraendert an den
+			// Treiber durch (texture.c, der else-Zweig von
+			// gl4es_glCompressedTexImage2D), und ASTC ist ein solches.
+			//
+			// Der Umweg daran vorbei war deshalb nicht nur unnoetig, er war die
+			// Ursache: gl4es erfuhr nie von den echten Massen und Stufen, hielt
+			// die Textur fuer den 1x1-Punkt aus R_CreateImage und fiel darauf
+			// zurueck, sobald die Entfernung eine hoehere Stufe verlangte. Auf
+			// dem Geraet sichtbar als kopfabhaengiger Ausschnitt: nah richtig,
+			// weiter weg der Attrappenpunkt -- erst weiss (die animierte Lage
+			// darunter schien durch), nach dem Wechsel auf durchsichtig schwarz.
+			if ( direkt ) {
+				const int fehler = TBXR_visionOS_LadeAstcStufe(
+					(unsigned)echt, i - ueberspringen, format, b, h, (int)groesse, p );
+				if ( fehler ) {
+					ri.Printf( PRINT_WARNING, "%s: Stufe %d -> GL 0x%04x\n", pfad, i, fehler );
+					break;
+				}
+			} else {
+				qglCompressedTexImage2D( GL_TEXTURE_2D, i - ueberspringen, format,
+				                         b, h, 0, (GLsizei)groesse, p );
 			}
 			++hochgeladen;
 		}
@@ -1591,21 +1630,29 @@ static image_t *R_visionOS_AstcLaden( const char *name, qboolean mipmap,
 	{
 		const char *gesucht = getenv( "JKXR_ASTC_LIES" );
 		if ( gesucht && strstr( stamm, gesucht ) ) {
-			// 16x16 statt eines Punktes: erst im Muster zeigt sich, ob die
-			// Textur verschoben, gestaucht oder schlicht eine andere ist.
+			// JE STUFE messen, nicht nur Stufe 0.
+			//
+			// Der Fehler zeigt sich als Folge von Stufen, an denen die Wand
+			// dunkler wird, und verschwindet, sobald nur Stufe 0 hochgeladen
+			// wird. Beides zeigt auf die hoeheren Stufen -- also muss die
+			// Messung dorthin, statt die eine Stufe zu pruefen, die ohnehin
+			// stimmt.
 			static const int N = 16;
 			static unsigned char gitter[N * N * 4];
-			TBXR_visionOS_LiesTexturgitter( (unsigned)echt, N, gitter );
-			ri.Printf( PRINT_ALL, "[Gitter] %s %dx%d\n", stamm, (int)breite, (int)hoehe );
-			for ( int y = 0; y < N; ++y ) {
-				char zeile[N * 6 + 32];
-				int k = Com_sprintf( zeile, sizeof(zeile), "[Gitter] " );
-				for ( int x = 0; x < N; ++x ) {
-					const unsigned char *q = gitter + ( y * N + x ) * 4;
-					k += Com_sprintf( zeile + k, sizeof(zeile) - k, "%02x%02x%02x",
-					                  q[0], q[1], q[2] );
+			ri.Printf( PRINT_ALL, "[Stufen] %s %dx%d, %d hochgeladen\n",
+			           stamm, (int)breite, (int)hoehe, hochgeladen );
+			for ( int s = 0; s < hochgeladen; ++s ) {
+				TBXR_visionOS_LiesTexturgitter( (unsigned)echt, N, s, gitter );
+				long rot = 0, gruen = 0, blau = 0, alpha = 0;
+				for ( int k = 0; k < N * N; ++k ) {
+					rot += gitter[k*4]; gruen += gitter[k*4+1];
+					blau += gitter[k*4+2]; alpha += gitter[k*4+3];
 				}
-				ri.Printf( PRINT_ALL, "%s\n", zeile );
+				const int m = N * N;
+				ri.Printf( PRINT_ALL, "[Stufen] %2d  %4dx%-4d  RGB %3d %3d %3d  A %3d\n",
+				           s, (int)(breite >> s ? breite >> s : 1),
+				           (int)(hoehe >> s ? hoehe >> s : 1),
+				           (int)(rot/m), (int)(gruen/m), (int)(blau/m), (int)(alpha/m) );
 			}
 		}
 	}

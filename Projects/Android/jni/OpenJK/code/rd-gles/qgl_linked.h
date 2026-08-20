@@ -425,6 +425,7 @@ void JKXR_visionOS_PolygonOffset(GLfloat factor, GLfloat units);
 #define qglTexGeniv glTexGeniv
 #define qglTexImage1D glTexImage1D
 #define qglTexImage2D glTexImage2D
+#define qglCompressedTexImage2D glCompressedTexImage2D
 #define qglTexParameterf glTexParameterf
 #define qglTexParameterfv glTexParameterfv
 #define qglTexParameteri glTexParameteri

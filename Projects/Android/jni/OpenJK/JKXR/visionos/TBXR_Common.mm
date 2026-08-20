@@ -124,6 +124,7 @@ GLint (*GetUniformLocation)(GLuint, const GLchar *) = nullptr;
 void (*UniformMatrix4fv)(GLint, GLsizei, GLboolean, const GLfloat *) = nullptr;
 void (*Uniform2f)(GLint, GLfloat, GLfloat) = nullptr;
 void (*Uniform1i)(GLint, GLint) = nullptr;
+void (*Uniform1f)(GLint, GLfloat) = nullptr;
 
 bool resolve()
 {
@@ -197,6 +198,7 @@ bool resolve()
     RESOLVE(UniformMatrix4fv)
     RESOLVE(Uniform2f)
     RESOLVE(Uniform1i)
+    RESOLVE(Uniform1f)
     RESOLVE(GetString)
     RESOLVE(CompressedTexImage2D)
     #undef RESOLVE
@@ -1714,6 +1716,24 @@ extern "C" int TBXR_visionOS_LadeAstcStufe(unsigned tex, int stufe, unsigned for
                                            int breite, int hoehe, int groesse,
                                            const void *daten)
 {
+    // MESSPUNKT: laeuft gerade ein Bild?
+    //
+    // Ein Upload mitten im Bild zwingt ANGLE, seinen Metal-Renderpass zu
+    // unterbrechen. Beim Neustart ist die Rate-Map weg -- sie setzt kein
+    // Dirty-Bit (siehe die Notizen in JKXRApp.swift) --, und der Rest des
+    // Bildes landet im falschen Teil der Textur. Das saehe aus wie ein fester
+    // Ausschnitt mit Schwarz ringsum, und genau das ist zu sehen.
+    {
+        static int imBild = 0, ausserhalb = 0;
+        if (gDrawable) ++imBild; else ++ausserhalb;
+        static int gemeldet = 0;
+        if (imBild + ausserhalb >= gemeldet + 200) {
+            gemeldet = imBild + ausserhalb;
+            ALOGV("[ASTCzeit] Uploads: %d waehrend eines Bildes, %d ausserhalb",
+                  imBild, ausserhalb);
+        }
+    }
+
     angle::BindTexture(GL_TEXTURE_2D, tex);
     while (angle::GetError() != GL_NO_ERROR) { }
     angle::CompressedTexImage2D(GL_TEXTURE_2D, stufe, format,
@@ -1731,10 +1751,14 @@ extern "C" int TBXR_visionOS_LadeAstcStufe(unsigned tex, int stufe, unsigned for
 ///
 /// Abgetastet wird ausdruecklich Stufe 0 und mit NEAREST, damit weder die
 /// Mip-Kette noch die Interpolation das Ergebnis faerben.
-extern "C" void TBXR_visionOS_LiesTexturgitter(unsigned tex, int n, unsigned char *aus)
+extern "C" void TBXR_visionOS_LiesTexturgitter(unsigned tex, int n, int stufe, unsigned char *aus)
 {
     angle::BindTexture(GL_TEXTURE_2D, tex);
-    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    // NEAREST_MIPMAP_NEAREST, nicht NEAREST: mit einem Min-Filter ohne Mip
+    // liefert textureLod IMMER Stufe 0, egal was man als LOD angibt. Die
+    // Probe haette dann jede Stufe als Stufe 0 gemeldet -- ein Messgeraet,
+    // das nur bestaetigt, was man ohnehin glaubt.
+    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
     angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     GLuint ziel = 0, fbo = 0;
@@ -1761,7 +1785,8 @@ extern "C" void TBXR_visionOS_LiesTexturgitter(unsigned tex, int n, unsigned cha
         "uniform sampler2D bild;\n"
         "in vec2 uv;\n"
         "out vec4 farbe;\n"
-        "void main() { farbe = textureLod(bild, uv, 0.0); }\n";
+        "uniform float stufe;\n"
+        "void main() { farbe = textureLod(bild, uv, stufe); }\n";
     GLuint v = angle::CreateShader(GL_VERTEX_SHADER);
     angle::ShaderSource(v, 1, &vs, nullptr); angle::CompileShader(v);
     GLuint f = angle::CreateShader(GL_FRAGMENT_SHADER);
@@ -1773,6 +1798,7 @@ extern "C" void TBXR_visionOS_LiesTexturgitter(unsigned tex, int n, unsigned cha
     angle::ActiveTexture(GL_TEXTURE0);
     angle::BindTexture(GL_TEXTURE_2D, tex);
     angle::Uniform1i(angle::GetUniformLocation(prog, "bild"), 0);
+    angle::Uniform1f(angle::GetUniformLocation(prog, "stufe"), (float)stufe);
     angle::Viewport(0, 0, n, n);
     angle::DrawArrays(GL_TRIANGLES, 0, 3);
     angle::ReadPixels(0, 0, n, n, GL_RGBA, GL_UNSIGNED_BYTE, aus);
