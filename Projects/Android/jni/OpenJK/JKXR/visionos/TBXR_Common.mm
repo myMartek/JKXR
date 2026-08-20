@@ -124,7 +124,6 @@ GLint (*GetUniformLocation)(GLuint, const GLchar *) = nullptr;
 void (*UniformMatrix4fv)(GLint, GLsizei, GLboolean, const GLfloat *) = nullptr;
 void (*Uniform2f)(GLint, GLfloat, GLfloat) = nullptr;
 void (*Uniform1i)(GLint, GLint) = nullptr;
-void (*Uniform1f)(GLint, GLfloat) = nullptr;
 
 bool resolve()
 {
@@ -198,7 +197,6 @@ bool resolve()
     RESOLVE(UniformMatrix4fv)
     RESOLVE(Uniform2f)
     RESOLVE(Uniform1i)
-    RESOLVE(Uniform1f)
     RESOLVE(GetString)
     RESOLVE(CompressedTexImage2D)
     #undef RESOLVE
@@ -1704,161 +1702,6 @@ extern "C" int TBXR_visionOS_EchteTextur(void)
     GLint t = -1;
     angle::GetIntegerv(GL_TEXTURE_BINDING_2D, &t);
     return (int)t;
-}
-
-/// Eine Mip-Stufe als ASTC-Bloecke hochladen, an gl4es vorbei.
-///
-/// gl4es packt komprimierte Texturen aus (uncompressDXTc in texture.c) und
-/// kennt ASTC ohnehin nicht -- der uebliche Weg wuerde den ganzen Gewinn
-/// zunichtemachen. Gemessen auf dem Geraet: der direkte Upload ueberlebt einen
-/// spaeteren Bind durch gl4es unveraendert.
-extern "C" int TBXR_visionOS_LadeAstcStufe(unsigned tex, int stufe, unsigned format,
-                                           int breite, int hoehe, int groesse,
-                                           const void *daten)
-{
-    // MESSPUNKT: laeuft gerade ein Bild?
-    //
-    // Ein Upload mitten im Bild zwingt ANGLE, seinen Metal-Renderpass zu
-    // unterbrechen. Beim Neustart ist die Rate-Map weg -- sie setzt kein
-    // Dirty-Bit (siehe die Notizen in JKXRApp.swift) --, und der Rest des
-    // Bildes landet im falschen Teil der Textur. Das saehe aus wie ein fester
-    // Ausschnitt mit Schwarz ringsum, und genau das ist zu sehen.
-    {
-        static int imBild = 0, ausserhalb = 0;
-        if (gDrawable) ++imBild; else ++ausserhalb;
-        static int gemeldet = 0;
-        if (imBild + ausserhalb >= gemeldet + 200) {
-            gemeldet = imBild + ausserhalb;
-            ALOGV("[ASTCzeit] Uploads: %d waehrend eines Bildes, %d ausserhalb",
-                  imBild, ausserhalb);
-        }
-    }
-
-    angle::BindTexture(GL_TEXTURE_2D, tex);
-    while (angle::GetError() != GL_NO_ERROR) { }
-    angle::CompressedTexImage2D(GL_TEXTURE_2D, stufe, format,
-                                breite, hoehe, 0, groesse, daten);
-    return (int)angle::GetError();
-}
-
-/// Ein GITTER aus einer hochgeladenen Textur zurueckholen.
-///
-/// Ein einzelner Punkt beweist nur, dass an einer Stelle das Richtige steht.
-/// Liegt die Textur verschoben, verzerrt oder in falscher Groesse, faellt das
-/// erst im Muster auf: das Gitter wird dann eine verschobene oder gestauchte
-/// Fassung des erwarteten -- und genau das laesst sich auf dem Mac gegen die
-/// Quelle rechnen.
-///
-/// Abgetastet wird ausdruecklich Stufe 0 und mit NEAREST, damit weder die
-/// Mip-Kette noch die Interpolation das Ergebnis faerben.
-extern "C" void TBXR_visionOS_LiesTexturgitter(unsigned tex, int n, int stufe, unsigned char *aus)
-{
-    angle::BindTexture(GL_TEXTURE_2D, tex);
-    // NEAREST_MIPMAP_NEAREST, nicht NEAREST: mit einem Min-Filter ohne Mip
-    // liefert textureLod IMMER Stufe 0, egal was man als LOD angibt. Die
-    // Probe haette dann jede Stufe als Stufe 0 gemeldet -- ein Messgeraet,
-    // das nur bestaetigt, was man ohnehin glaubt.
-    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
-    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    GLuint ziel = 0, fbo = 0;
-    angle::GenTextures(1, &ziel);
-    angle::BindTexture(GL_TEXTURE_2D, ziel);
-    angle::TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, n, n, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    angle::GenFramebuffers(1, &fbo);
-    angle::BindFramebuffer(GL_FRAMEBUFFER, fbo);
-    angle::FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ziel, 0);
-
-    static const char *vs =
-        "#version 300 es\n"
-        "out vec2 uv;\n"
-        "void main() {\n"
-        "  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
-        "  uv = p;\n"
-        "  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
-        "}\n";
-    static const char *fs =
-        "#version 300 es\n"
-        "precision highp float;\n"
-        "uniform sampler2D bild;\n"
-        "in vec2 uv;\n"
-        "out vec4 farbe;\n"
-        "uniform float stufe;\n"
-        "void main() { farbe = textureLod(bild, uv, stufe); }\n";
-    GLuint v = angle::CreateShader(GL_VERTEX_SHADER);
-    angle::ShaderSource(v, 1, &vs, nullptr); angle::CompileShader(v);
-    GLuint f = angle::CreateShader(GL_FRAGMENT_SHADER);
-    angle::ShaderSource(f, 1, &fs, nullptr); angle::CompileShader(f);
-    GLuint prog = angle::CreateProgram();
-    angle::AttachShader(prog, v); angle::AttachShader(prog, f);
-    angle::LinkProgram(prog);
-    angle::UseProgram(prog);
-    angle::ActiveTexture(GL_TEXTURE0);
-    angle::BindTexture(GL_TEXTURE_2D, tex);
-    angle::Uniform1i(angle::GetUniformLocation(prog, "bild"), 0);
-    angle::Uniform1f(angle::GetUniformLocation(prog, "stufe"), (float)stufe);
-    angle::Viewport(0, 0, n, n);
-    angle::DrawArrays(GL_TRIANGLES, 0, 3);
-    angle::ReadPixels(0, 0, n, n, GL_RGBA, GL_UNSIGNED_BYTE, aus);
-
-    angle::BindFramebuffer(GL_FRAMEBUFFER, 0);
-    angle::DeleteTextures(1, &ziel);
-}
-
-/// Einen Punkt aus einer bereits hochgeladenen Textur zurueckholen.
-///
-/// Damit laesst sich beantworten, was auf der GPU ANKOMMT -- unabhaengig davon,
-/// was der Renderer spaeter damit anstellt. Abgetastet wird ausdruecklich
-/// Stufe 0 (textureLod), damit die Mip-Kette das Ergebnis nicht faerbt.
-extern "C" void TBXR_visionOS_LiesTexturpunkt(unsigned tex, unsigned char aus[4])
-{
-    GLint pbo = -1;
-    angle::GetIntegerv(0x88EF /* PIXEL_UNPACK_BUFFER_BINDING */, &pbo);
-
-    GLuint ziel = 0, fbo = 0;
-    angle::GenTextures(1, &ziel);
-    angle::BindTexture(GL_TEXTURE_2D, ziel);
-    angle::TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    angle::GenFramebuffers(1, &fbo);
-    angle::BindFramebuffer(GL_FRAMEBUFFER, fbo);
-    angle::FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ziel, 0);
-
-    static const char *vs =
-        "#version 300 es\n"
-        "void main() {\n"
-        "  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
-        "  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
-        "}\n";
-    static const char *fs =
-        "#version 300 es\n"
-        "precision highp float;\n"
-        "uniform sampler2D bild;\n"
-        "out vec4 farbe;\n"
-        "void main() { farbe = textureLod(bild, vec2(0.5), 0.0); }\n";
-    GLuint v = angle::CreateShader(GL_VERTEX_SHADER);
-    angle::ShaderSource(v, 1, &vs, nullptr); angle::CompileShader(v);
-    GLuint f = angle::CreateShader(GL_FRAGMENT_SHADER);
-    angle::ShaderSource(f, 1, &fs, nullptr); angle::CompileShader(f);
-    GLuint prog = angle::CreateProgram();
-    angle::AttachShader(prog, v); angle::AttachShader(prog, f);
-    angle::LinkProgram(prog);
-    angle::UseProgram(prog);
-    angle::ActiveTexture(GL_TEXTURE0);
-    angle::BindTexture(GL_TEXTURE_2D, tex);
-    angle::Uniform1i(angle::GetUniformLocation(prog, "bild"), 0);
-    angle::Viewport(0, 0, 1, 1);
-    angle::DrawArrays(GL_TRIANGLES, 0, 3);
-    angle::ReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, aus);
-
-    ALOGV("[ASTClies] Textur %u -> %u/%u/%u/%u · Unpack-Puffer %d · GL 0x%04x",
-          tex, aus[0], aus[1], aus[2], aus[3], pbo, angle::GetError());
-
-    angle::BindFramebuffer(GL_FRAMEBUFFER, 0);
-    angle::DeleteTextures(1, &ziel);
 }
 
 /// Die hoechste belegte Mip-Stufe festlegen.

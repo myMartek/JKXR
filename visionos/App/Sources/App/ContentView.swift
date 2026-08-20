@@ -1,4 +1,5 @@
 import CryptoKit
+import GameController
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
@@ -118,6 +119,59 @@ enum Spiel: Int32, CaseIterable, Identifiable {
         case .academy: return ["assets0.pk3", "assets1.pk3", "assets2.pk3", "assets3.pk3"]
         case .outcast: return ["assets0.pk3", "assets1.pk3", "assets2.pk3", "assets5.pk3"]
         }
+    }
+}
+
+/// Was das System an Controllern meldet.
+///
+/// Steht sichtbar im Fenster, weil zwei Tester unabhängig voneinander gemeldet
+/// haben, ihre PSVR2-Sense-Controller reagierten nicht -- Tasten ja, Verfolgung
+/// nein. Auf keinem unserer Geräte liess sich das nachstellen: die Melder sind
+/// auf visionOS 26, das Entwicklungsgerät auf 27.
+///
+/// Statt weiter zu raten, zeigt das Fenster jetzt, was ihr System ueberhaupt
+/// sieht. Ein Bildschirmfoto beantwortet dann drei Fragen auf einmal: kommen
+/// die Controller an, gelten sie als räumlich, und gibt es GCSpatialAccessory
+/// dort. Genau an dieser Unterscheidung hing der Fehler in der Gerätesuche.
+private struct ControllerStand: View {
+    @State private var text = ""
+
+    var body: some View {
+        Text(text)
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 460)
+            .onAppear(perform: lies)
+            .onReceive(NotificationCenter.default.publisher(for: .GCControllerDidConnect)) { _ in lies() }
+            .onReceive(NotificationCenter.default.publisher(for: .GCControllerDidDisconnect)) { _ in lies() }
+    }
+
+    private func lies() {
+        let alle = GCController.controllers()
+        guard !alle.isEmpty else {
+            text = Sprache.t("No controllers detected.", "Keine Controller erkannt.")
+            return
+        }
+        let raeumlich = alle.filter { $0.productCategory == GCProductCategorySpatialController }
+        let klasse = NSClassFromString("GCSpatialAccessory") != nil
+        let namen = alle.map { "\($0.vendorName ?? "?") · \($0.productCategory)" }
+                        .joined(separator: ", ")
+        // Die Freigabe stammt vom LETZTEN Lauf im Immersive Space -- vorher gibt
+        // es sie nicht. Steht sie auf verweigert, kommen Tasten weiter an, aber
+        // keine Pose, und zurücknehmen lässt sich das nur in den
+        // Systemeinstellungen.
+        let vd = UserDefaults.standard
+        let freigabe = vd.object(forKey: "jkxr.zubehoerfreigabe") as? Bool
+        let frei = freigabe == false
+            ? Sprache.t(" — accessory tracking DENIED, allow it in Settings",
+                        " — Zubehörverfolgung VERWEIGERT, in den Einstellungen erlauben")
+            : ""
+        text = Sprache.t(
+            "Controllers: \(namen) — \(raeumlich.count) spatial, "
+                + "GCSpatialAccessory \(klasse ? "present" : "missing")\(frei)",
+            "Controller: \(namen) — \(raeumlich.count) räumlich, "
+                + "GCSpatialAccessory \(klasse ? "vorhanden" : "fehlt")\(frei)")
     }
 }
 
@@ -335,6 +389,15 @@ struct ContentView: View {
                         }
                     }
                     .frame(maxWidth: 460)
+                    // Nur das ANGEZEIGTE Angebot nachrechnen, und erneut, sobald
+                    // ein anderes angezeigt wird.
+                    //
+                    // Vorher lief die Pruefung beim Start ueber den ganzen Katalog.
+                    // Mit Academy dazu waeren das bis zu 22 GB Lesen gewesen --
+                    // ausgerechnet waehrend die Engine startet, also genau dort,
+                    // wo Ruckeln am ehesten auffaellt und am schwersten zu
+                    // erklaeren ist.
+                    .task(id: angebot.id) { await pruefeFallsNoetig(angebot) }
                 }
 
                 // Die Reihenfolge ist keine Kleinigkeit, sondern der haeufigste
@@ -351,6 +414,8 @@ struct ContentView: View {
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 460)
+
+                ControllerStand()
             }
 
             Divider().frame(maxWidth: 460)
@@ -420,22 +485,6 @@ struct ContentView: View {
             // sichtbar und man kann hineinkopieren.
             AssetStore.prepare()
 
-            // Pakete ohne Vermerk einmalig nachrechnen.
-            //
-            // Der Vermerk kam erst mit der Fassung vom 20.08.2026; alles,
-            // was davor geladen wurde, hat keinen. Statt es pauschal für
-            // veraltet zu erklären -- das hätte 1,7 GB 2×-Paket unnötig neu
-            // geladen -- wird einmal wirklich gerechnet. Über die Größe ginge
-            // es nicht: ASTC hat eine feste Rate, altes und neues 4×-Paket
-            // sind auf das Byte gleich groß.
-            for angebot in Zusatzkatalog.alle where AssetStore.paketVorhanden(angebot)
-                && !AssetStore.pruefsummeBekannt(angebot) {
-                pruefen.insert(angebot.id)
-                Task.detached(priority: .utility) {
-                    AssetStore.rechnePruefsummeNach(angebot)
-                    await MainActor.run { pruefen.remove(angebot.id) }
-                }
-            }
 
             // Zusaetze von aussen umschalten, fuer die Fehlersuche.
             //
@@ -587,6 +636,24 @@ struct ContentView: View {
     /// Der Fortschritt steht in der Zeile des Angebots, nicht in der allgemeinen
     /// Meldung: bei einem Paket dieser Groesse laeuft das minutenlang, und man
     /// soll sehen, WORAN es laeuft.
+    /// Die Pruefsumme eines vorhandenen Pakets nachrechnen, falls kein
+    /// gueltiger Vermerk dazu vorliegt.
+    ///
+    /// Noetig fuer Dateien, die nicht ueber den Lader kamen -- vor dieser
+    /// Fassung geladene, ueber die Dateien-App eingespielte oder von aussen
+    /// getauschte. Der Vermerk haengt an Aenderungszeit und Groesse, ein Tausch
+    /// wird also bemerkt.
+    private func pruefeFallsNoetig(_ angebot: Zusatzangebot) async {
+        guard AssetStore.paketVorhanden(angebot),
+              !AssetStore.pruefsummeBekannt(angebot),
+              !pruefen.contains(angebot.id) else { return }
+        pruefen.insert(angebot.id)
+        await Task.detached(priority: .utility) {
+            AssetStore.rechnePruefsummeNach(angebot)
+        }.value
+        pruefen.remove(angebot.id)
+    }
+
     private func hole(_ angebot: Zusatzangebot) async {
         laedt = angebot.id
         ladeText = Sprache.t("starting…", "beginnt…")

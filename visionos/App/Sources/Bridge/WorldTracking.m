@@ -108,9 +108,37 @@ void TBXR_visionOS_StartWorldTracking(void)
             }
             ar_authorization_results_enumerate_results(
                 results, ^bool(ar_authorization_result_t result) {
+                    const ar_authorization_type_t typ =
+                        ar_authorization_result_get_authorization_type(result);
+                    const ar_authorization_status_t status =
+                        ar_authorization_result_get_status(result);
                     NSLog(@"[JKXR] ARKit-Freigabe: Typ %llu, Status %d",
-                          (unsigned long long)ar_authorization_result_get_authorization_type(result),
-                          (int)ar_authorization_result_get_status(result));
+                          (unsigned long long)typ, (int)status);
+
+                    // Das Ergebnis MERKEN, nicht nur protokollieren.
+                    //
+                    // Wird die Zubehörverfolgung abgelehnt, kommen Tasten
+                    // weiterhin über das Game-Controller-Framework an, aber
+                    // keine Pose -- von aussen nicht zu unterscheiden von
+                    // kaputter Hardware oder fehlender Kopplung. Genau so
+                    // wurde es gemeldet: "man kann Start drücken, aber das
+                    // Tracking funktioniert nicht".
+                    //
+                    // Ein Ablehnen laesst sich in der App nicht zurücknehmen,
+                    // nur in den Systemeinstellungen. Umso wichtiger, dass das
+                    // Fenster es beim naechsten Start sagt, statt zu schweigen.
+                    // Als Wahrheitswert, HIER ausgewertet: die Zahlenwerte des
+                    // Aufzaehlungstyps sind nirgends zugesichert, das Symbol
+                    // dagegen schon.
+                    const BOOL erlaubt = (status == ar_authorization_status_allowed);
+                    if (typ & ar_authorization_type_accessory_tracking) {
+                        [[NSUserDefaults standardUserDefaults]
+                            setBool:erlaubt forKey:@"jkxr.zubehoerfreigabe"];
+                    }
+                    if (typ & ar_authorization_type_world_sensing) {
+                        [[NSUserDefaults standardUserDefaults]
+                            setBool:erlaubt forKey:@"jkxr.weltfreigabe"];
+                    }
                     return true;
                 });
 
@@ -154,45 +182,58 @@ void *TBXR_visionOS_GetSpatialDevice(int hand)
 
 static NSArray *spatialAccessoryDevices(void)
 {
-    // Das Klassenobjekt beantwortet seine eigene Klasseneigenschaft. perform:
-    // statt valueForKey: — Key-Value-Coding gegen eine Metaklasse ist nirgends
-    // zugesichert.
+    // ZWEI Quellen, und die zweite MUSS erreichbar bleiben.
+    //
+    // Frühere Fassung stieg aus, sobald GCSpatialAccessory fehlte oder
+    // spatialAccessories nicht kannte -- mit leerer Liste, also ohne den
+    // Rückfall über GCController auch nur zu versuchen. Auf einem System ohne
+    // diese Klasse startete die Zubehörverfolgung damit nie, während die
+    // Tasten weiter über das Game-Controller-Framework ankamen. Von außen
+    // sieht das aus wie "Controller reagieren nicht, nur Start geht" -- genau
+    // so von zwei Testern auf visionOS 26 gemeldet.
+    //
+    // Auf dem Entwicklungsgerät (visionOS 27) ist der Rückfall ohnehin der
+    // einzige Weg, der etwas findet: GCSpatialAccessory antwortet dort, meldet
+    // aber null Geräte, während [GCController controllers] beide Sense-Controller
+    // einzeln zeigt. Die Klasse zu haben heißt also nicht, über sie auch etwas
+    // zu bekommen -- der Rückfall gehört in BEIDEN Fällen ans Ende, nicht nur
+    // im Erfolgsfall der ersten Quelle.
     Class cls = NSClassFromString(@"GCSpatialAccessory");
-    if (!cls) {
-        NSLog(@"[JKXR] GCSpatialAccessory gibt es auf diesem System nicht");
-        return @[];
-    }
     SEL sel = NSSelectorFromString(@"spatialAccessories");
-    if (![cls respondsToSelector:sel]) {
-        NSLog(@"[JKXR] GCSpatialAccessory antwortet nicht auf spatialAccessories");
-        return @[];
+    if (cls && [cls respondsToSelector:sel]) {
+        // Das Klassenobjekt beantwortet seine eigene Klasseneigenschaft.
+        // perform: statt valueForKey: -- Key-Value-Coding gegen eine Metaklasse
+        // ist nirgends zugesichert.
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+        NSArray *devices = [cls performSelector:sel];
+        #pragma clang diagnostic pop
+        if (devices.count > 0) {
+            NSLog(@"[JKXR] %lu über GCSpatialAccessory gefunden",
+                  (unsigned long)devices.count);
+            return devices;
+        }
+        NSLog(@"[JKXR] GCSpatialAccessory kennt null Geräte — Rückfall über GCController");
+    } else {
+        NSLog(@"[JKXR] GCSpatialAccessory %@ — Rückfall über GCController",
+              cls ? @"kennt spatialAccessories nicht" : @"fehlt auf diesem System");
     }
-    #pragma clang diagnostic push
-    #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-    NSArray *devices = [cls performSelector:sel];
-    #pragma clang diagnostic pop
-    if (devices.count > 0) return devices;
 
     // Rückfall über die gewöhnliche Controllerliste.
-    //
-    // GEMESSEN: auf diesem System liefert GCSpatialAccessory.spatialAccessories
-    // null Geräte, während [GCController controllers] die beiden Sense-Controller
-    // einzeln zeigt — mit productCategory "Spatial Controller". Sie sind also da,
-    // nur nicht über die neue Klasse erreichbar.
     //
     // GCController erfüllt GCDevice, und genau das verlangt
     // ar_accessory_load_from_device. Der Weg ist damit derselbe, nur die Quelle
     // eine andere.
     NSMutableArray *fallback = [NSMutableArray array];
     for (GCController *c in [GCController controllers]) {
+        NSLog(@"[JKXR] Controller \"%@\", Kategorie \"%@\"",
+              c.vendorName ?: @"?", c.productCategory ?: @"?");
         if ([c.productCategory isEqualToString:GCProductCategorySpatialController]) {
             [fallback addObject:c];
         }
     }
-    if (fallback.count > 0) {
-        NSLog(@"[JKXR] %lu über GCController gefunden (Kategorie Spatial Controller)",
-              (unsigned long)fallback.count);
-    }
+    NSLog(@"[JKXR] %lu von %lu Controllern sind räumlich",
+          (unsigned long)fallback.count, (unsigned long)[GCController controllers].count);
     return fallback;
 }
 

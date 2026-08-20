@@ -1351,12 +1351,7 @@ void R_CreateAutomapImage( const char *name, const byte *pic, int width, int hei
 // echte wird trotzdem abgefragt statt angenommen.
 // ---------------------------------------------------------------------------
 extern "C" int TBXR_visionOS_EchteTextur(void);
-extern "C" int TBXR_visionOS_LadeAstcStufe(unsigned tex, int stufe, unsigned format,
-                                           int breite, int hoehe, int groesse,
-                                           const void *daten);
 extern "C" void TBXR_visionOS_SetzeMipGrenze(unsigned tex, int hoechste);
-extern "C" void TBXR_visionOS_LiesTexturpunkt(unsigned tex, unsigned char aus[4]);
-extern "C" void TBXR_visionOS_LiesTexturgitter(unsigned tex, int n, int stufe, unsigned char *aus);
 
 static image_t *R_visionOS_AstcLaden( const char *name, qboolean mipmap,
                                       qboolean allowPicmip, qboolean allowTC,
@@ -1466,12 +1461,6 @@ static image_t *R_visionOS_AstcLaden( const char *name, qboolean mipmap,
 	// falsch. Bleibt es, liegt es an Stufe 0 selbst oder am Zustand ringsum
 	// (Bindung, Texturheit) -- und die Mip-Kette waere unschuldig.
 	const qboolean nurNull = (qboolean)(getenv("JKXR_ASTC_NUR0") != NULL);
-	// JKXR_ASTC_DIREKT=1 laedt wieder an gl4es vorbei, wie bis heute.
-	// Nur zum Vergleichen: der Weg durch gl4es ist der richtige, aber er
-	// setzt dort Merker (compressed, alpha, internalformat), die den
-	// Zeichenpfad beeinflussen koennen. Mit dem Schalter laesst sich das
-	// auf dem Geraet trennen, ohne neu zu bauen.
-	const qboolean direkt = (qboolean)(getenv("JKXR_ASTC_DIREKT") != NULL);
 
 	int ueberspringen = 0;
 	if ( allowPicmip && r_picmip->integer > 0 ) {
@@ -1559,17 +1548,8 @@ static image_t *R_visionOS_AstcLaden( const char *name, qboolean mipmap,
 			// dem Geraet sichtbar als kopfabhaengiger Ausschnitt: nah richtig,
 			// weiter weg der Attrappenpunkt -- erst weiss (die animierte Lage
 			// darunter schien durch), nach dem Wechsel auf durchsichtig schwarz.
-			if ( direkt ) {
-				const int fehler = TBXR_visionOS_LadeAstcStufe(
-					(unsigned)echt, i - ueberspringen, format, b, h, (int)groesse, p );
-				if ( fehler ) {
-					ri.Printf( PRINT_WARNING, "%s: Stufe %d -> GL 0x%04x\n", pfad, i, fehler );
-					break;
-				}
-			} else {
-				qglCompressedTexImage2D( GL_TEXTURE_2D, i - ueberspringen, format,
-				                         b, h, 0, (GLsizei)groesse, p );
-			}
+			qglCompressedTexImage2D( GL_TEXTURE_2D, i - ueberspringen, format,
+			                         b, h, 0, (GLsizei)groesse, p );
 			++hochgeladen;
 		}
 		p += groesse;
@@ -1579,35 +1559,6 @@ static image_t *R_visionOS_AstcLaden( const char *name, qboolean mipmap,
 
 	if ( hochgeladen == 0 ) {
 		return image;
-	}
-
-	// MESSPUNKT: dieselbe Textur zusaetzlich auf dem gewoehnlichen Weg laden und
-	// die Masse vergleichen.
-	//
-	// Beantwortet "viel zu groß" unmittelbar: weicht ab, was mein Weg meldet,
-	// von dem was R_LoadImage gemeldet haette, ist der Fehler hier. Stimmen sie
-	// ueberein, liegt er in der Verwendung -- und die Suche geht in den
-	// Shaderpfad statt in den Ladepfad.
-	//
-	// Teuer (die Datei wird ein zweites Mal geladen und ausgepackt), deshalb nur
-	// unter JKXR_ASTC_MASSE.
-	if ( getenv( "JKXR_ASTC_MASSE" ) ) {
-		byte *vergleich = NULL;
-		int vb = 0, vh = 0;
-		R_LoadImage( name, &vergleich, &vb, &vh );
-		if ( vergleich ) {
-			if ( vb != (int)breite || vh != (int)hoehe ) {
-				ri.Printf( PRINT_ALL, "[Masse] ABWEICHUNG %s: astc %dx%d, "
-				           "gewoehnlich %dx%d\n", stamm, (int)breite, (int)hoehe, vb, vh );
-			} else {
-				ri.Printf( PRINT_ALL, "[Masse] ok %s %dx%d\n", stamm, vb, vh );
-			}
-			R_Free( vergleich );
-		} else {
-			ri.Printf( PRINT_ALL, "[Masse] %s: gewoehnlich NICHT ladbar "
-			           "(astc %dx%d) -- diese Textur gaebe es ohne das Paket gar nicht\n",
-			           stamm, (int)breite, (int)hoehe );
-		}
 	}
 
 	image->width  = breite >> ueberspringen ? breite >> ueberspringen : 1;
@@ -1624,38 +1575,6 @@ static image_t *R_visionOS_AstcLaden( const char *name, qboolean mipmap,
 	// GL_TEXTURE_MAX_LEVEL zu GLES3 gehoert und gl4es die Konstante nicht kennt.
 	TBXR_visionOS_SetzeMipGrenze( (unsigned)echt, hochgeladen - 1 );
 
-	// MESSPUNKT: eine benannte Textur nach dem Hochladen zuruecklesen. Damit
-	// laesst sich trennen, ob schon der Upload falsch ist oder erst das, was
-	// der Renderer daraus macht.
-	{
-		const char *gesucht = getenv( "JKXR_ASTC_LIES" );
-		if ( gesucht && strstr( stamm, gesucht ) ) {
-			// JE STUFE messen, nicht nur Stufe 0.
-			//
-			// Der Fehler zeigt sich als Folge von Stufen, an denen die Wand
-			// dunkler wird, und verschwindet, sobald nur Stufe 0 hochgeladen
-			// wird. Beides zeigt auf die hoeheren Stufen -- also muss die
-			// Messung dorthin, statt die eine Stufe zu pruefen, die ohnehin
-			// stimmt.
-			static const int N = 16;
-			static unsigned char gitter[N * N * 4];
-			ri.Printf( PRINT_ALL, "[Stufen] %s %dx%d, %d hochgeladen\n",
-			           stamm, (int)breite, (int)hoehe, hochgeladen );
-			for ( int s = 0; s < hochgeladen; ++s ) {
-				TBXR_visionOS_LiesTexturgitter( (unsigned)echt, N, s, gitter );
-				long rot = 0, gruen = 0, blau = 0, alpha = 0;
-				for ( int k = 0; k < N * N; ++k ) {
-					rot += gitter[k*4]; gruen += gitter[k*4+1];
-					blau += gitter[k*4+2]; alpha += gitter[k*4+3];
-				}
-				const int m = N * N;
-				ri.Printf( PRINT_ALL, "[Stufen] %2d  %4dx%-4d  RGB %3d %3d %3d  A %3d\n",
-				           s, (int)(breite >> s ? breite >> s : 1),
-				           (int)(hoehe >> s ? hoehe >> s : 1),
-				           (int)(rot/m), (int)(gruen/m), (int)(blau/m), (int)(alpha/m) );
-			}
-		}
-	}
 	qglBindTexture( GL_TEXTURE_2D, image->texnum );
 
 	// Zaehlen statt je Textur melden: bei tausenden Texturen waere jede Zeile
