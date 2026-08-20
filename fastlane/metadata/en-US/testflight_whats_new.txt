@@ -1,17 +1,25 @@
-First build for Apple Vision Pro.
+Ordinary gamepads now work, sharper textures can be downloaded, and several
+faults are fixed that only showed up after playing for a while.
 
 WHAT TO TRY
 
-• Both titles: pick one in the launcher window, then "Play". Each has its own
-  data folder, so both can be set up side by side.
-• Game files: use "Choose files…" or copy them into the folder that "Open in
-  Files" opens for you. The window names the files it is still missing.
-• Motion control: swing, block and aim with the Sense controllers. Watch whether
-  the blade sits where your hand actually is.
-• Look around: lean, duck, step. Report anything that swims, doubles or lags
-  behind your head.
-• Menus and cut-scenes should stand still in the room while you move your head.
+• Gamepad: pair a standard controller pad and play without spatial controllers.
+  Menus with the right stick, select on R2, aim by looking. Weapons cycle with
+  the d-pad while R1 is held, powers the same way with L1.
+• Spatial controllers: tracking was reworked for older system versions. If your
+  controllers used to report buttons but never moved, this is the build for
+  that. The launcher window now shows what the system reports at the bottom —
+  a screenshot of that line helps us a lot if something is missing.
+• Texture resolution: pick Default, 2x or 4x in the launcher window. The app
+  downloads the packages itself; 4x is several gigabytes and is explicitly an
+  experiment. Watch the load times, and whether the game stops on larger maps —
+  that is exactly what we want to hear about.
+• Carrying on after dying: die, reload, then use lifts and switches. That used
+  to stop working, and should hold now.
+• While you are at it: do not expect to keep firing right after a load. The
+  trigger is deliberately released once, so press it again.
 
 WHAT WE KNOW
 
-Long level loads can take a while — the window stays black meanwhile.
+Long level loads take a while — the window stays black meanwhile. With the 4x
+package they take considerably longer.

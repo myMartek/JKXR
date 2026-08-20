@@ -1,18 +1,27 @@
-Erster Build für die Apple Vision Pro.
+Steuerung mit gewöhnlichen Gamepads, feinere Texturen zum Nachladen, und
+mehrere Fehler behoben, die erst nach längerem Spielen auffielen.
 
 WAS AUSZUPROBIEREN IST
 
-• Beide Titel: im Startfenster einen wählen, dann „spielen“. Jeder hat seinen
-  eigenen Datenordner, beide lassen sich also nebeneinander einrichten.
-• Spieldateien: „Dateien auswählen…“ benutzen oder sie in den Ordner kopieren,
-  den „In Dateien öffnen“ aufmacht. Das Fenster nennt die Datei, die noch fehlt.
-• Bewegungssteuerung: mit den Sense-Controllern schwingen, abwehren, zielen.
-  Achte darauf, ob die Klinge dort sitzt, wo deine Hand wirklich ist.
-• Umsehen: lehnen, ducken, gehen. Melde alles, was schwimmt, doppelt erscheint
-  oder dem Kopf hinterherhängt.
-• Menüs und Zwischensequenzen sollen im Raum stehen bleiben, während du den
-  Kopf bewegst.
+• Gamepad: ein handelsübliches Controller-Pad koppeln und ohne räumliche
+  Controller spielen. Menüs mit dem rechten Stick, Auswahl auf R2, Zielen über
+  die Blickrichtung. Waffen wechselt man mit dem Steuerkreuz, während R1
+  gehalten wird, Kräfte ebenso mit L1.
+• Räumliche Controller: die Verfolgung wurde für ältere Systemfassungen
+  überarbeitet. Wenn deine Controller bisher nur Tasten meldeten, sich aber
+  nicht bewegten, ist das der Build dafür. Das Startfenster zeigt jetzt unten
+  an, was das System an Controllern erkennt — ein Bildschirmfoto davon hilft
+  uns sehr, falls etwas fehlt.
+• Texturauflösung: im Startfenster zwischen Standard, 2× und 4× wählen. Die
+  Pakete lädt die App selbst; 4× ist mehrere Gigabyte groß und ausdrücklich
+  ein Versuch. Achte auf Ladezeiten und darauf, ob das Spiel bei großen Karten
+  stehenbleibt — genau das wollen wir wissen.
+• Nach dem Sterben weiterspielen: sterben, neu laden, und dann Aufzüge und
+  Schalter benutzen. Das ging vorher nicht mehr und sollte jetzt sitzen.
+• Und dabei: nach dem Laden nicht sofort weiterschießen wollen. Der Auslöser
+  wird bewusst einmal losgelassen, du drückst also neu.
 
 BEKANNT
 
-Lange Ladevorgänge dauern; das Bild bleibt so lange schwarz.
+Lange Ladevorgänge dauern; das Bild bleibt so lange schwarz. Mit dem
+4×-Paket dauern sie deutlich länger.
