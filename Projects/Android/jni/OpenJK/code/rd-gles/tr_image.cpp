@@ -1391,6 +1391,41 @@ static image_t *R_visionOS_AstcLaden( const char *name, qboolean mipmap,
 		ri.Printf( PRINT_ALL, "[ASTC] erste Suche: \"%s\"\n", pfad );
 	}
 
+	// EINZELNE NAMEN VOM VORGEBACKENEN WEG AUSNEHMEN.
+	//
+	// Zum Einkreisen: JKXR_ASTC_AUS nimmt eine kommagetrennte Liste von
+	// Teilzeichenketten; wer darauf passt, geht den gewoehnlichen Weg. Damit
+	// laesst sich eine verdaechtige Textur ausschliessen, ohne ein neues Paket
+	// zu backen und 4,7 GB zu uebertragen -- ein Baulauf statt einer
+	// Viertelstunde.
+	// Umgekehrt: NUR diese Namen vorgebacken laden, alles andere gewoehnlich.
+	//
+	// Das ist das Halbierungswerkzeug. Mit JKXR_ASTC_NUR=textures/ nimmt nur ein
+	// Teil des Pakets den neuen Weg; zeigt sich der Fehler dann, steckt er in
+	// diesem Teil. Vier bis fuenf Laeufe genuegen, und keiner davon braucht ein
+	// neues Paket oder eine Uebertragung.
+	if ( const char *nur = getenv( "JKXR_ASTC_NUR" ) ) {
+		char liste[512];
+		Q_strncpyz( liste, nur, sizeof(liste) );
+		qboolean passt = qfalse;
+		for ( char *teil = strtok( liste, "," ); teil; teil = strtok( NULL, "," ) ) {
+			if ( *teil && strstr( stamm, teil ) ) { passt = qtrue; break; }
+		}
+		if ( !passt ) {
+			return NULL;	// gewoehnlich laden
+		}
+	}
+
+	if ( const char *aus = getenv( "JKXR_ASTC_AUS" ) ) {
+		char liste[512];
+		Q_strncpyz( liste, aus, sizeof(liste) );
+		for ( char *teil = strtok( liste, "," ); teil; teil = strtok( NULL, "," ) ) {
+			if ( *teil && strstr( stamm, teil ) ) {
+				return NULL;	// gewoehnlich laden
+			}
+		}
+	}
+
 	byte *roh = NULL;
 	const int laenge = ri.FS_ReadFile( pfad, (void **)&roh );
 	if ( laenge <= 16 || !roh ) {
