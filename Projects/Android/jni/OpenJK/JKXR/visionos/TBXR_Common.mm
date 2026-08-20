@@ -1721,6 +1721,66 @@ extern "C" int TBXR_visionOS_LadeAstcStufe(unsigned tex, int stufe, unsigned for
     return (int)angle::GetError();
 }
 
+/// Ein GITTER aus einer hochgeladenen Textur zurueckholen.
+///
+/// Ein einzelner Punkt beweist nur, dass an einer Stelle das Richtige steht.
+/// Liegt die Textur verschoben, verzerrt oder in falscher Groesse, faellt das
+/// erst im Muster auf: das Gitter wird dann eine verschobene oder gestauchte
+/// Fassung des erwarteten -- und genau das laesst sich auf dem Mac gegen die
+/// Quelle rechnen.
+///
+/// Abgetastet wird ausdruecklich Stufe 0 und mit NEAREST, damit weder die
+/// Mip-Kette noch die Interpolation das Ergebnis faerben.
+extern "C" void TBXR_visionOS_LiesTexturgitter(unsigned tex, int n, unsigned char *aus)
+{
+    angle::BindTexture(GL_TEXTURE_2D, tex);
+    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    GLuint ziel = 0, fbo = 0;
+    angle::GenTextures(1, &ziel);
+    angle::BindTexture(GL_TEXTURE_2D, ziel);
+    angle::TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, n, n, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    angle::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    angle::GenFramebuffers(1, &fbo);
+    angle::BindFramebuffer(GL_FRAMEBUFFER, fbo);
+    angle::FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ziel, 0);
+
+    static const char *vs =
+        "#version 300 es\n"
+        "out vec2 uv;\n"
+        "void main() {\n"
+        "  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
+        "  uv = p;\n"
+        "  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+        "}\n";
+    static const char *fs =
+        "#version 300 es\n"
+        "precision highp float;\n"
+        "uniform sampler2D bild;\n"
+        "in vec2 uv;\n"
+        "out vec4 farbe;\n"
+        "void main() { farbe = textureLod(bild, uv, 0.0); }\n";
+    GLuint v = angle::CreateShader(GL_VERTEX_SHADER);
+    angle::ShaderSource(v, 1, &vs, nullptr); angle::CompileShader(v);
+    GLuint f = angle::CreateShader(GL_FRAGMENT_SHADER);
+    angle::ShaderSource(f, 1, &fs, nullptr); angle::CompileShader(f);
+    GLuint prog = angle::CreateProgram();
+    angle::AttachShader(prog, v); angle::AttachShader(prog, f);
+    angle::LinkProgram(prog);
+    angle::UseProgram(prog);
+    angle::ActiveTexture(GL_TEXTURE0);
+    angle::BindTexture(GL_TEXTURE_2D, tex);
+    angle::Uniform1i(angle::GetUniformLocation(prog, "bild"), 0);
+    angle::Viewport(0, 0, n, n);
+    angle::DrawArrays(GL_TRIANGLES, 0, 3);
+    angle::ReadPixels(0, 0, n, n, GL_RGBA, GL_UNSIGNED_BYTE, aus);
+
+    angle::BindFramebuffer(GL_FRAMEBUFFER, 0);
+    angle::DeleteTextures(1, &ziel);
+}
+
 /// Einen Punkt aus einer bereits hochgeladenen Textur zurueckholen.
 ///
 /// Damit laesst sich beantworten, was auf der GPU ANKOMMT -- unabhaengig davon,

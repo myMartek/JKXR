@@ -252,7 +252,7 @@ struct ContentView: View {
             if !zusaetze.isEmpty || Zusatzkatalog.alle.contains(where: { $0.spiel == spiel }) {
                 Divider().frame(maxWidth: 460)
 
-                Text(Sprache.t("Add-ons", "Zusätze"))
+                Text(Sprache.t("Textures", "Texturen"))
                     .font(.headline)
 
                 ForEach(zusaetze) { z in

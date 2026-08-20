@@ -38,11 +38,18 @@ enum Texturstufe: Int, CaseIterable, Identifiable {
                              "Hochgerechnetes Paket, beim Laden halbiert — ein Viertel "
                                 + "des Texturspeichers, immer noch schärfer als das Original.")
         case .vierfach:
+            // Der Fehler ist BENANNT, nicht beschönigt -- und richtig benannt:
+            // es rauscht nichts, sondern eine bestimmte animierte Textur landet
+            // an der falschen Stelle und viel zu groß. Eine falsche Beschreibung
+            // schickt den nächsten Sucher in die falsche Richtung, wie sie es
+            // hier schon getan hat.
             return Sprache.t("Full resolution, pre-baked as compressed GPU textures. "
-                                + "Known issue: distant surfaces show noise.",
+                                + "Known issue: one animated texture appears in the "
+                                + "wrong place and far too large.",
                              "Volle Auflösung, vorgebacken als komprimierte "
-                                + "GPU-Texturen. Bekannter Fehler: entfernte Flächen "
-                                + "rauschen.")
+                                + "GPU-Texturen. Bekannter Fehler: eine animierte "
+                                + "Textur liegt an der falschen Stelle und ist viel "
+                                + "zu groß.")
         }
     }
 
@@ -93,9 +100,11 @@ enum Zusatzkatalog {
             dateiname: "assets9_astc.pk3",
             url: URL(string: "https://www.martek.de/downloads/outcast/assets9_astc.pk3")!,
             ungefaehr: "4,7 GB",
-            // Noch keiner: das Paket wird neu gebacken, sobald das Rauschen
-            // behoben ist, und der Hash änderte sich dabei.
-            sha256: nil),
+            // Gilt für das Paket, das derzeit auf dem Server liegt. Wird neu
+            // gebacken, sobald der Platzierungsfehler behoben ist -- dann
+            // gehört auch dieser Wert erneuert, sonst verwirft die App die
+            // Datei, die sie gerade geladen hat.
+            sha256: "9a4863001669d874f68b9496132eff77aa60afdfb6d2196f36c1bd6a1bc503ad"),
     ]
 
     static func fuer(_ spiel: Spiel, _ stufe: Texturstufe) -> Zusatzangebot? {

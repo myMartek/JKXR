@@ -1356,6 +1356,7 @@ extern "C" int TBXR_visionOS_LadeAstcStufe(unsigned tex, int stufe, unsigned for
                                            const void *daten);
 extern "C" void TBXR_visionOS_SetzeMipGrenze(unsigned tex, int hoechste);
 extern "C" void TBXR_visionOS_LiesTexturpunkt(unsigned tex, unsigned char aus[4]);
+extern "C" void TBXR_visionOS_LiesTexturgitter(unsigned tex, int n, unsigned char *aus);
 
 static image_t *R_visionOS_AstcLaden( const char *name, qboolean mipmap,
                                       qboolean allowPicmip, qboolean allowTC,
@@ -1506,6 +1507,35 @@ static image_t *R_visionOS_AstcLaden( const char *name, qboolean mipmap,
 		return image;
 	}
 
+	// MESSPUNKT: dieselbe Textur zusaetzlich auf dem gewoehnlichen Weg laden und
+	// die Masse vergleichen.
+	//
+	// Beantwortet "viel zu groß" unmittelbar: weicht ab, was mein Weg meldet,
+	// von dem was R_LoadImage gemeldet haette, ist der Fehler hier. Stimmen sie
+	// ueberein, liegt er in der Verwendung -- und die Suche geht in den
+	// Shaderpfad statt in den Ladepfad.
+	//
+	// Teuer (die Datei wird ein zweites Mal geladen und ausgepackt), deshalb nur
+	// unter JKXR_ASTC_MASSE.
+	if ( getenv( "JKXR_ASTC_MASSE" ) ) {
+		byte *vergleich = NULL;
+		int vb = 0, vh = 0;
+		R_LoadImage( name, &vergleich, &vb, &vh );
+		if ( vergleich ) {
+			if ( vb != (int)breite || vh != (int)hoehe ) {
+				ri.Printf( PRINT_ALL, "[Masse] ABWEICHUNG %s: astc %dx%d, "
+				           "gewoehnlich %dx%d\n", stamm, (int)breite, (int)hoehe, vb, vh );
+			} else {
+				ri.Printf( PRINT_ALL, "[Masse] ok %s %dx%d\n", stamm, vb, vh );
+			}
+			R_Free( vergleich );
+		} else {
+			ri.Printf( PRINT_ALL, "[Masse] %s: gewoehnlich NICHT ladbar "
+			           "(astc %dx%d) -- diese Textur gaebe es ohne das Paket gar nicht\n",
+			           stamm, (int)breite, (int)hoehe );
+		}
+	}
+
 	image->width  = breite >> ueberspringen ? breite >> ueberspringen : 1;
 	image->height = hoehe  >> ueberspringen ? hoehe  >> ueberspringen : 1;
 
@@ -1526,10 +1556,22 @@ static image_t *R_visionOS_AstcLaden( const char *name, qboolean mipmap,
 	{
 		const char *gesucht = getenv( "JKXR_ASTC_LIES" );
 		if ( gesucht && strstr( stamm, gesucht ) ) {
-			unsigned char punkt[4] = {0};
-			TBXR_visionOS_LiesTexturpunkt( (unsigned)echt, punkt );
-			ri.Printf( PRINT_ALL, "[ASTClies] %s -> %u/%u/%u/%u\n",
-			           stamm, punkt[0], punkt[1], punkt[2], punkt[3] );
+			// 16x16 statt eines Punktes: erst im Muster zeigt sich, ob die
+			// Textur verschoben, gestaucht oder schlicht eine andere ist.
+			static const int N = 16;
+			static unsigned char gitter[N * N * 4];
+			TBXR_visionOS_LiesTexturgitter( (unsigned)echt, N, gitter );
+			ri.Printf( PRINT_ALL, "[Gitter] %s %dx%d\n", stamm, (int)breite, (int)hoehe );
+			for ( int y = 0; y < N; ++y ) {
+				char zeile[N * 6 + 32];
+				int k = Com_sprintf( zeile, sizeof(zeile), "[Gitter] " );
+				for ( int x = 0; x < N; ++x ) {
+					const unsigned char *q = gitter + ( y * N + x ) * 4;
+					k += Com_sprintf( zeile + k, sizeof(zeile) - k, "%02x%02x%02x",
+					                  q[0], q[1], q[2] );
+				}
+				ri.Printf( PRINT_ALL, "%s\n", zeile );
+			}
 		}
 	}
 	qglBindTexture( GL_TEXTURE_2D, image->texnum );
