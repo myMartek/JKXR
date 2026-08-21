@@ -34,6 +34,13 @@ extern "C" bool TBXR_visionOS_GamepadFallback(void);
 extern "C" bool TBXR_visionOS_GamepadButton(const char *name);
 extern "C" void TBXR_visionOS_GamepadDpad(int *x, int *y);
 extern "C" void TBXR_visionOS_GamepadSwing(void);
+
+/// Laesst die 2D-Tafel beim naechsten Bild neu vor dem Spieler einrasten.
+///
+/// Definiert in visionos/TBXR_Common.mm. Die Erklaerung fehlte hier, und
+/// deshalb war die Funktion aus dem Eingabecode gar nicht erreichbar --
+/// im ganzen Baum stand jahrelang nur ihre Definition, kein Aufruf.
+extern "C" void VR_ResnapScreenWall(void);
 #endif
 
 #endif //vrcommon_h

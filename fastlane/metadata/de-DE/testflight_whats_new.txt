@@ -1,31 +1,51 @@
-Steuerung mit gewöhnlichen Gamepads, feinere Texturen zum Nachladen, und
-mehrere Fehler behoben, die erst nach längerem Spielen auffielen.
+In dieser Version kannst du mit einem gewöhnlichen Gamepad spielen, schärfere
+Texturen nachladen, und mehrere ärgerliche Fehler sind behoben.
 
-WAS AUSZUPROBIEREN IST
+NEU
 
-• Gamepad: ein handelsübliches Controller-Pad koppeln und ohne räumliche
-  Controller spielen. Menüs mit dem rechten Stick, Auswahl auf R2, Zielen über
-  die Blickrichtung. Waffen wechselt man mit dem Steuerkreuz, während R1
-  gehalten wird, Kräfte ebenso mit L1.
-• Räumliche Controller: die Verfolgung wurde für ältere Systemfassungen
-  überarbeitet. Wenn deine Controller bisher nur Tasten meldeten, sich aber
-  nicht bewegten, ist das der Build dafür. Das Startfenster zeigt jetzt unten
-  an, was das System an Controllern erkennt — ein Bildschirmfoto davon hilft
-  uns sehr, falls etwas fehlt.
-• Texturauflösung: im Startfenster zwischen Standard, 2× und 4× wählen. Die
-  Pakete lädt die App selbst; 4× ist mehrere Gigabyte groß und ausdrücklich
-  ein Versuch. Achte auf Ladezeiten und darauf, ob das Spiel bei großen Karten
-  stehenbleibt — genau das wollen wir wissen.
-• Nach dem Sterben weiterspielen: sterben, neu laden, und dann Aufzüge und
-  Schalter benutzen. Das ging vorher nicht mehr und sollte jetzt sitzen.
-• Und dabei: nach dem Laden nicht sofort weiterschießen wollen. Der Auslöser
-  wird bewusst einmal losgelassen, du drückst also neu.
-• Akademietraining: das Training abschließen und die folgende Kamerafahrt mit
-  dem Trigger überspringen. Das Erfolgs- und das Missionsauswahlmenü sollen
-  ohne schwarzen Bildschirm oder Absturz erscheinen; ihre Schaltflächen
-  lassen sich jetzt wie in den übrigen Menüs mit dem Trigger bestätigen.
+• Spielen mit Gamepad: Du brauchst keine räumlichen Controller mehr. Koppel ein
+  handelsübliches Controller-Pad, und es geht los. Gezielt wird mit dem Blick,
+  gefeuert mit R2. Waffen wechselst du mit dem Steuerkreuz, während du R1
+  gedrückt hältst — für Kräfte genauso mit L1.
+
+• Schärfere Texturen: Im Startfenster kannst du zwischen der normalen
+  Auflösung, 2× und 4× wählen. Die passenden Pakete lädt die App selbst
+  herunter. 4× ist sehr groß und noch ein Versuch — sag uns, ob dein Spiel
+  damit stabil bleibt.
+
+• Startfenster zeigt deine Controller: Unten im Fenster steht jetzt, welche
+  Controller das System erkennt. Falls deine nicht funktionieren, hilft uns ein
+  Bildschirmfoto dieser Zeile sehr weiter.
+
+BEHOBEN
+
+• Zwischensequenzen lassen sich wieder überspringen. Wer die Kamerafahrt am
+  Ende des Trainings mit dem Trigger übersprang, sah nur einen schwarzen
+  Bildschirm, und kurz darauf beendete sich das Spiel. Jetzt erscheint das
+  Abschlussmenü wie vorgesehen.
+
+• In diesem Abschlussmenü bestätigst du die Schaltflächen jetzt mit dem
+  Trigger, wie in allen anderen Menüs auch.
+
+• Das Pausenmenü erscheint jetzt immer vor dir. Vorher blieb es an der Stelle
+  stehen, an der es beim Spielstart aufgetaucht war — hattest du dich
+  umgedreht, lag es hinter dir.
+
+• Nach einem Tod reagieren Aufzüge und Schalter wieder. Bisher blieben sie
+  stehen, sobald man einmal gestorben und neu geladen hatte, und auch ein
+  Neustart des Spielstands half nicht mehr.
+
+• Nach dem Neuladen schießt die Waffe nicht mehr von allein weiter, und der
+  Auslöser bleibt bedienbar. Vorher konnte es passieren, dass man beim nächsten
+  Tod gar nicht mehr laden konnte und die App beenden musste.
+
+• Die Sense-Controller werden auf älteren Systemversionen wieder verfolgt. Sie
+  meldeten dort zwar Tastendrücke, bewegten sich im Spiel aber nicht mit.
+
+• Die App beendet sich nicht mehr unerwartet, während sie ein großes
+  Texturpaket prüft.
 
 BEKANNT
 
-Lange Ladevorgänge dauern; das Bild bleibt so lange schwarz. Mit dem
-4×-Paket dauern sie deutlich länger.
+Das Laden eines Abschnitts dauert; solange bleibt das Bild schwarz. Mit dem
+4×-Paket dauert es deutlich länger.

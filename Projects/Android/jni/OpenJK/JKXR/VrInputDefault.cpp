@@ -410,6 +410,33 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
     {
         static bool bildschirmAlt = false, kinoAlt = false;
         const bool bildschirmNeu = VR_UseScreenLayer() && !vr.misc_camera;
+
+        // BEIM BETRETEN die Tafel neu einrasten lassen.
+        //
+        // snapNativeScreenPanel() setzt sie einmal zwei Meter vor den Kopf und
+        // steigt danach bei "gPanelSnapped" wieder aus -- sie bleibt also an
+        // ihrer Weltposition stehen. Wer sich im Spiel umdreht und dann pausiert,
+        // hat das Menue hinter sich; gemeldet wurde ausserdem zweimal, dass es
+        // um rund 80 Grad verdreht und zwei bis drei Meter entfernt stand.
+        //
+        // VR_ResnapScreenWall() gibt es dafuer seit jeher, mit genau dieser
+        // Absicht im Kommentar ("etwa wenn Menue oder Video neu geoeffnet
+        // werden, damit sie wieder vor dem Spieler steht") -- aufgerufen wurde
+        // sie nur nirgends. Im ganzen Baum stand bisher einzig ihre Definition.
+        //
+        // Beim BETRETEN, nicht in jedem Bild: eine Tafel, die dem Kopf folgt,
+        // ist unbrauchbar. Sie soll einmal dorthin, wo man gerade hinsieht, und
+        // dann stehen bleiben.
+        //
+        // Das deckt auch den verdrehten Fall ab: die Tafel haengt an der
+        // Weltposition zum Zeitpunkt des Einrastens. Ist die beim allerersten
+        // Mal unguenstig -- Kopfpose noch nicht eingeschwungen, oder die
+        // Digital Crown hat den Ursprung seither verschoben --, blieb sie es
+        // fuer immer. Jetzt ist der naechste Aufruf des Menues die Korrektur.
+        if (bildschirmNeu && !bildschirmAlt)
+        {
+            VR_ResnapScreenWall();
+        }
         const bool kinoNeu = vr.cin_camera != 0;
         const bool verlassen = (bildschirmAlt && !bildschirmNeu)
                             || (kinoAlt && !kinoNeu);

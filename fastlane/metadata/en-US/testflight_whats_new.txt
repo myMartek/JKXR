@@ -1,29 +1,49 @@
-Ordinary gamepads now work, sharper textures can be downloaded, and several
-faults are fixed that only showed up after playing for a while.
+This version lets you play with an ordinary gamepad, download sharper textures,
+and fixes several annoying bugs.
 
-WHAT TO TRY
+NEW
 
-• Gamepad: pair a standard controller pad and play without spatial controllers.
-  Menus with the right stick, select on R2, aim by looking. Weapons cycle with
-  the d-pad while R1 is held, powers the same way with L1.
-• Spatial controllers: tracking was reworked for older system versions. If your
-  controllers used to report buttons but never moved, this is the build for
-  that. The launcher window now shows what the system reports at the bottom —
-  a screenshot of that line helps us a lot if something is missing.
-• Texture resolution: pick Default, 2x or 4x in the launcher window. The app
-  downloads the packages itself; 4x is several gigabytes and is explicitly an
-  experiment. Watch the load times, and whether the game stops on larger maps —
-  that is exactly what we want to hear about.
-• Carrying on after dying: die, reload, then use lifts and switches. That used
-  to stop working, and should hold now.
-• While you are at it: do not expect to keep firing right after a load. The
-  trigger is deliberately released once, so press it again.
-• Academy training: finish the training and skip the following camera sequence
-  with the trigger. The success and mission-selection menus should appear
-  without a black screen or crash; their buttons can now be confirmed with the
-  trigger, just like in the other menus.
+• Play with a gamepad: You no longer need spatial controllers. Pair a standard
+  controller pad and you are ready to go. You aim by looking and fire with R2.
+  Switch weapons with the d-pad while holding R1 — and powers the same way with
+  L1.
+
+• Sharper textures: The launcher window now lets you choose between normal
+  resolution, 2x and 4x. The app downloads the matching package for you. 4x is
+  very large and still an experiment — please tell us whether your game stays
+  stable with it.
+
+• The launcher shows your controllers: At the bottom of the window you can now
+  see which controllers the system recognises. If yours are not working, a
+  screenshot of that line helps us a great deal.
+
+FIXED
+
+• Cut-scenes can be skipped again. If you skipped the camera sequence at the
+  end of the training with the trigger, all you got was a black screen, and
+  moments later the game quit. The completion menu now appears as intended.
+
+• In that completion menu you now confirm the buttons with the trigger, just
+  like in every other menu.
+
+• The pause menu now always appears in front of you. Previously it stayed where
+  it first showed up when you started the game, so if you had turned around, it
+  was behind you.
+
+• Lifts and switches work again after you die. Until now they stopped
+  responding once you had died and reloaded, and even restarting from a save
+  did not bring them back.
+
+• After reloading, your weapon no longer keeps firing on its own, and the
+  trigger stays usable. Before, you could end up unable to reload at all the
+  next time you died, with no way out but quitting the app.
+
+• Sense controllers are tracked again on older system versions. They did report
+  button presses there, but did not move with you in the game.
+
+• The app no longer quits unexpectedly while checking a large texture package.
 
 WHAT WE KNOW
 
-Long level loads take a while — the window stays black meanwhile. With the 4x
-package they take considerably longer.
+Loading a level takes a while, and the view stays black meanwhile. With the 4x
+package it takes considerably longer.
