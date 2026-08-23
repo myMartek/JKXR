@@ -29,6 +29,10 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 
 #include "vmachine.h"
 
+#if defined(JKXR_VISIONOS)
+#include <VrCommon.h>
+#endif
+
 intptr_t CL_UISystemCalls( intptr_t *args );
 
 //prototypes
@@ -330,6 +334,15 @@ void CL_GenericMenu_f(void)
 	const char *arg = Cmd_Argv( 1 );
 
 	if (cls.uiStarted) {
+#if defined(JKXR_VISIONOS)
+		// Das Academy-Missionsmenü lädt tier1.txt samt großen PNGs synchron aus
+		// Cbuf_Execute. Com_Frame hat zu diesem Zeitpunkt bereits ein Drawable
+		// geöffnet, sodass die normale Ladepumpe gesperrt wäre und visionOS die
+		// App beim Skip wegen ausbleibender Bilder beendet.
+		if ( !Q_stricmp( arg, "ingameGotoTier" ) ) {
+			TBXR_visionOS_BeginSynchronousLoad();
+		}
+#endif
 		UI_SetActiveMenu("ingame",arg);
 	}
 }
@@ -505,4 +518,3 @@ intptr_t CL_UISystemCalls( intptr_t *args )
 
 	return 0;
 }
-

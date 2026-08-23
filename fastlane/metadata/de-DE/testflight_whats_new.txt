@@ -20,6 +20,10 @@ WAS AUSZUPROBIEREN IST
   Schalter benutzen. Das ging vorher nicht mehr und sollte jetzt sitzen.
 • Und dabei: nach dem Laden nicht sofort weiterschießen wollen. Der Auslöser
   wird bewusst einmal losgelassen, du drückst also neu.
+• Akademietraining: das Training abschließen und die folgende Kamerafahrt mit
+  dem Trigger überspringen. Das Erfolgs- und das Missionsauswahlmenü sollen
+  ohne schwarzen Bildschirm oder Absturz erscheinen; ihre Schaltflächen
+  lassen sich jetzt wie in den übrigen Menüs mit dem Trigger bestätigen.
 
 BEKANNT
 

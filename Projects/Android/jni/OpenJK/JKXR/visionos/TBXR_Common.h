@@ -386,6 +386,11 @@ void TBXR_submitFrame();
 /// keine Zeit vergangen, kehrt sie sofort zurück.
 void TBXR_visionOS_PumpLoadingFrame(void);
 
+/// Schließt das von Com_Frame bereits geöffnete, aber noch nicht gezeichnete
+/// Bild, bevor ein synchroner Ladevorgang aus Cbuf_Execute beginnt. Danach kann
+/// TBXR_visionOS_PumpLoadingFrame während des Ladens eigene Bilder abgeben.
+void TBXR_visionOS_BeginSynchronousLoad(void);
+
 #define VIVE_CONTROLLERS 10
 #define INDEX_CONTROLLERS 11
 #define PICO_CONTROLLERS 12

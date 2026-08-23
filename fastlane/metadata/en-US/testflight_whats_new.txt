@@ -18,6 +18,10 @@ WHAT TO TRY
   to stop working, and should hold now.
 • While you are at it: do not expect to keep firing right after a load. The
   trigger is deliberately released once, so press it again.
+• Academy training: finish the training and skip the following camera sequence
+  with the trigger. The success and mission-selection menus should appear
+  without a black screen or crash; their buttons can now be confirmed with the
+  trigger, just like in the other menus.
 
 WHAT WE KNOW
 

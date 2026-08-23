@@ -737,17 +737,63 @@ void G_Roff( gentity_t *ent )
 	const roff_list_t *  roff	= &roffs[ roff_id - 1 ];
 	vec3_t	org, ang;
 
+	// A cinematic skip advances level.time at 100x speed.  Scripted ROFFs are
+	// still visited one frame at a time, and a stale/corrupt frame counter must
+	// not become an unchecked index into the ROFF data.  This was observed on
+	// visionOS at the end of yavin2: the subsequent bogus note-track pointer was
+	// dereferenced in G_RoffNotetrackCallback and terminated the process before
+	// the mission-success menu could open.
+	if ( ent->roff_ctr < 0 || ent->roff_ctr >= roff->frames )
+	{
+		Com_Printf( S_COLOR_RED
+			"Invalid ROFF frame %d of %d in '%s'; stopping playback\n",
+			ent->roff_ctr, roff->frames,
+			roff->fileName ? roff->fileName : "<unnamed>" );
+		ent->next_roff_time = 0;
+		VectorClear( ent->s.pos.trDelta );
+		VectorClear( ent->s.apos.trDelta );
+		Q3_TaskIDComplete( ent, TID_MOVE_NAV );
+		return;
+	}
+
 	if ( roff->type == 2 )
 	{
 		move_rotate2_t	*data	= &((move_rotate2_t *)roff->data)[ ent->roff_ctr ];
 		VectorCopy( data->origin_delta, org );
 		VectorCopy( data->rotate_delta, ang );
 		
-		if ( data->mStartNote != -1 )
+		if ( data->mStartNote != -1 || data->mNumNotes != 0 )
 		{
-			for ( int n = 0; n < data->mNumNotes; n++ )
+			// mStartNote and mNumNotes originate in the ROFF file.  Validate the
+			// complete half-open range before indexing mNoteTrackIndexes: checking
+			// the callback argument for NULL is insufficient because an out-of-range
+			// array read commonly yields a non-NULL garbage pointer.
+			const int firstNote = data->mStartNote;
+			const int noteCount = data->mNumNotes;
+			const bool validNotes = roff->mNoteTrackIndexes
+				&& firstNote >= 0
+				&& noteCount >= 0
+				&& firstNote <= roff->mNumNoteTracks
+				&& noteCount <= roff->mNumNoteTracks - firstNote;
+
+			if ( !validNotes )
 			{
-				G_RoffNotetrackCallback(ent, roffs[roff_id - 1].mNoteTrackIndexes[data->mStartNote + n]);
+				Com_Printf( S_COLOR_RED
+					"Invalid ROFF note range %d+%d of %d in '%s' frame %d; "
+					"skipping notes\n",
+					firstNote, noteCount, roff->mNumNoteTracks,
+					roff->fileName ? roff->fileName : "<unnamed>", ent->roff_ctr );
+			}
+			else
+			{
+				for ( int n = 0; n < noteCount; n++ )
+				{
+					const char *note = roff->mNoteTrackIndexes[firstNote + n];
+					if ( note )
+					{
+						G_RoffNotetrackCallback( ent, note );
+					}
+				}
 			}
 		}
 	}

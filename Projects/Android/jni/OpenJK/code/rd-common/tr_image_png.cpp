@@ -139,7 +139,7 @@ bool IsPowerOfTwo ( int i ) { return (i & (i - 1)) == 0; }
 
 struct PNGFileReader
 {
-	PNGFileReader ( char *buf ) : buf(buf), offset(0), png_ptr(NULL), info_ptr(NULL) {}
+	PNGFileReader ( char *buf, size_t size ) : buf(buf), size(size), offset(0), png_ptr(NULL), info_ptr(NULL) {}
 	~PNGFileReader()
 	{
 		ri.FS_FreeFile (buf);
@@ -164,6 +164,11 @@ struct PNGFileReader
 
 		// Make sure we're actually reading PNG data.
 		const int SIGNATURE_LEN = 8;
+		if ( size < SIGNATURE_LEN )
+		{
+			ri.Printf (PRINT_ERROR, "PNG file is too short.\n");
+			return 0;
+		}
 
 		byte ident[SIGNATURE_LEN];
 		memcpy (ident, buf, SIGNATURE_LEN);
@@ -231,6 +236,10 @@ struct PNGFileReader
 			png_set_add_alpha (png_ptr, 0xff, PNG_FILLER_AFTER);
 		}
 
+		// Ask libpng for the number of passes before updating the row layout.
+		// png_read_image did this internally; the explicit row loop below needs
+		// the same setup in order to preserve support for interlaced PNGs.
+		const int passes = png_set_interlace_handling (png_ptr);
 		png_read_update_info (png_ptr, info_ptr);
 
 		// We always assume there are 4 channels. RGB channels are expanded to RGBA when read.
@@ -265,7 +274,22 @@ struct PNGFileReader
 			row_pointers[i] = tempData + j * width_;
 		}
 
-		png_read_image (png_ptr, row_pointers);
+		// Decode explicitly by row so visionOS can keep submitting frames while a
+		// large menu texture is being expanded.  R_CreateImage also pumps, but it
+		// is reached only after this complete decode.  On the Academy training
+		// skip, that gap is long enough for visionOS to terminate the app while
+		// UI_LoadMissionSelectMenu is loading tier1.txt.
+		for ( int pass = 0; pass < passes; pass++ )
+		{
+			for ( unsigned int i = 0; i < height_; i++ )
+			{
+				png_read_row (png_ptr, row_pointers[i], NULL);
+				if ( ri.TBXR_PumpLoadingFrame && (i & 15) == 0 )
+				{
+					ri.TBXR_PumpLoadingFrame();
+				}
+			}
+		}
 
 		// Finish reading
 		png_read_end (png_ptr, NULL);
@@ -282,12 +306,18 @@ struct PNGFileReader
 
 	void ReadBytes ( void *dest, size_t len )
 	{
+		if ( offset > size || len > size - offset )
+		{
+			png_error (png_ptr, "Unexpected end of PNG file.");
+			return;
+		}
 		memcpy (dest, buf + offset, len);
 		offset += len;
 	}
 
 private:
 	char *buf;
+	size_t size;
 	size_t offset;
 	png_structp png_ptr;
 	png_infop info_ptr;
@@ -309,6 +339,6 @@ void LoadPNG ( const char *filename, byte **data, int *width, int *height )
 		return;
 	}
 
-	PNGFileReader reader (buf);
+	PNGFileReader reader (buf, (size_t)len);
 	reader.Read (data, width, height);
 }

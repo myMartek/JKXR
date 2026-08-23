@@ -434,7 +434,12 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
 
     if (VR_UseScreenLayer() && !vr.misc_camera)
     {
-        if (vr.cin_camera && cinCameraTimestamp + 1000 < Sys_Milliseconds())
+        // Academy laesst vr.cin_camera waehrend des Missionsabschluss- und
+        // Missionsauswahlmenues noch gesetzt. Sobald die UI die Eingabe
+        // faengt, darf der Trigger deshalb nicht mehr als Kino-+use behandelt
+        // und fuer den anschliessenden A_MOUSE1-Pfad gesperrt werden.
+        if (vr.cin_camera && !(Key_GetCatcher() & KEYCATCH_UI) &&
+            cinCameraTimestamp + 1000 < Sys_Milliseconds())
         {
             // To skip cinematic use any thumb or trigger (but wait a while
             // to prevent skipping when cinematic is started during action)
@@ -670,7 +675,8 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
             }
         }
 
-        if (vr.cin_camera && cinCameraTimestamp + 1000 < Sys_Milliseconds())
+        if (vr.cin_camera && !(Key_GetCatcher() & KEYCATCH_UI) &&
+            cinCameraTimestamp + 1000 < Sys_Milliseconds())
         {
             // To skip cinematic use any thumb or trigger (but wait a while
             // to prevent skipping when cinematic is started during action)

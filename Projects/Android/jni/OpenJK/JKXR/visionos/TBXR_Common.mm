@@ -2367,9 +2367,26 @@ void TBXR_submitFrame()
 // gelöschtes Bild genügt dem Compositor vollauf — es geht nur darum, dass
 // überhaupt eines kommt.
 //
-// Aufgerufen wird sie aus R_CreateImage, also je Textur. Die Entscheidung, ob
-// tatsächlich ein Bild fällig ist, liegt bewusst HIER und nicht dort: der
-// Renderer soll nichts über Bildraten wissen müssen.
+// Aufgerufen wird sie aus R_CreateImage und während der PNG-Dekodierung. Die
+// Entscheidung, ob tatsächlich ein Bild fällig ist, liegt bewusst HIER und
+// nicht dort: der Renderer soll nichts über Bildraten wissen müssen.
+//
+// Com_Frame öffnet sein Bild allerdings schon VOR Cbuf_Execute. Beginnt dort
+// ein synchroner Ladevorgang (Academy: uimenu ingameGotoTier), würde der
+// FrameSetup-Wächter unten deshalb jeden Pumpversuch ablehnen. Der Client ruft
+// unmittelbar davor TBXR_visionOS_BeginSynchronousLoad auf und gibt dieses noch
+// leere Bild kontrolliert ab.
+void TBXR_visionOS_BeginSynchronousLoad(void)
+{
+    if (!gLayerRenderer || !gAppState.FrameSetup || !gDrawable) return;
+
+    TBXR_prepareEyeBuffer(0);
+    TBXR_finishEyeBuffer(0);
+    TBXR_prepareEyeBuffer(1);
+    TBXR_finishEyeBuffer(1);
+    TBXR_submitFrame();
+}
+
 void TBXR_visionOS_PumpLoadingFrame(void)
 {
     if (!gLayerRenderer) return;
@@ -2394,10 +2411,11 @@ void TBXR_visionOS_PumpLoadingFrame(void)
     // genügt daher, den Abstand zum zuletzt ABGEGEBENEN Bild zu messen, egal
     // von wem es kam: solange die Engine liefert, schweigt die Pumpe ganz.
     //
-    // Eine Sekunde ist reichlich Abstand zur Schwelle des Systems — beobachtet
-    // wurde die Beendigung nach rund zehn Sekunden ohne Bild.
+    // Zehn Bilder pro Sekunde genügen, um auch die engere Compositor-Schwelle
+    // beim Academy-Missionsmenü einzuhalten, ohne den Ladevorgang durch eine
+    // Pumpe mit voller Bildrate unnötig auszubremsen.
     const double now = CACurrentMediaTime();
-    if (now - gLastFrameSubmitted < 1.0) return;
+    if (now - gLastFrameSubmitted < 0.1) return;
 
     pumping = true;
     TBXR_FrameSetup();
