@@ -19,6 +19,10 @@ NEU
 
 BEHOBEN
 
+• Beim Laden des automatischen Spielstands am Anfang von Artus Detention läuft
+  die Kamerafahrt mit dem Fahrzeug nun vollständig ab. Danach lässt sich Kyle
+  wie vorgesehen bewegen.
+
 • Zwischensequenzen lassen sich wieder überspringen. Wer die Kamerafahrt am
   Ende des Trainings mit dem Trigger übersprang, sah nur einen schwarzen
   Bildschirm, und kurz darauf beendete sich das Spiel. Jetzt erscheint das

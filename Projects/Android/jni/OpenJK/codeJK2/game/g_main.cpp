@@ -39,6 +39,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "qcommon/q_version.h"
 
 extern CNavigator		navigator;
+extern qboolean			player_locked;
 
 static int				navCalcPathTime = 0;
 int		eventClearTime = 0;
@@ -652,6 +653,11 @@ void InitGame(  const char *mapname, const char *spawntarget, int checkSum, cons
 	// einzige Aufgabe mehr an, waehrend vor dem Tod dieselbe Kette bis zur
 	// Bewegung des Aufzugs durchlief.
 	stop_icarus = qfalse;
+
+	// JK2 originally reloaded the game DLL on every map change, which reset
+	// this global after transition scripts had locked the player.  JKXR links
+	// the game statically, so restore the same per-map initialization here.
+	player_locked = qfalse;
 
 
 	gi.Printf ("------- Game Initialization -------\n");
@@ -1521,8 +1527,6 @@ void G_RunFrame( int levelTime ) {
 
 
 
-extern qboolean player_locked;
-
 void G_LoadSave_WriteMiscData(void)
 {
 	ojk::SavedGameHelper saved_game(
@@ -1540,9 +1544,17 @@ void G_LoadSave_ReadMiscData(void)
 	ojk::SavedGameHelper saved_game(
 		::gi.saved_game);
 
+	int32_t saved_player_locked = qfalse;
 	saved_game.read_chunk<int32_t>(
 		INT_ID('L', 'C', 'K', 'D'),
-		::player_locked);
+		saved_player_locked);
+
+	// Autosaves contain only transition state and restart the destination
+	// map's ICARUS scripts from the beginning.  Old JKXR autosaves could carry
+	// the previous map's lock without carrying the script that releases it.
+	::player_locked = (g_eSavedGameJustLoaded == eAUTO)
+		? qfalse
+		: static_cast<qboolean>(saved_player_locked);
 }
 
 

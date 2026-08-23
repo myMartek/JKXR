@@ -19,6 +19,9 @@ NEW
 
 FIXED
 
+• Loading the autosave at the start of Artus Detention now plays the complete
+  vehicle camera sequence. Afterwards, Kyle can move as intended.
+
 • Cut-scenes can be skipped again. If you skipped the camera sequence at the
   end of the training with the trigger, all you got was a black screen, and
   moments later the game quit. The completion menu now appears as intended.
