@@ -29,6 +29,11 @@ FIXED
 • In that completion menu you now confirm the buttons with the trigger, just
   like in every other menu.
 
+• Puzzles later in the game work again. In one level a door stayed shut even
+  though the floor plates were set correctly — you could keep rearranging them
+  and nothing happened. This affected several puzzles of that kind, and it grew
+  more likely the further into the game you had come.
+
 • The pause menu now always appears in front of you. Previously it stayed where
   it first showed up when you started the game, so if you had turned around, it
   was behind you.

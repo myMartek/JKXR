@@ -600,7 +600,10 @@ public:
 	static CQuake3GameInterface *m_pInstance;
 
 	// Variable enums
-	enum { VTYPE_NONE = 0, VTYPE_FLOAT, VTYPE_STRING, VTYPE_VECTOR, MAX_VARIABLES = 32 };
+	// Siehe die ausfuehrliche Begruendung in codeJK2/game/Q3_Registers.h:
+	// 32 reichte nicht, weil ICARUS-Variablen ueber Levelgrenzen mitgenommen
+	// werden und Q3_DeclareVariable danach jede weitere still ablehnt.
+	enum { VTYPE_NONE = 0, VTYPE_FLOAT, VTYPE_STRING, VTYPE_VECTOR, MAX_VARIABLES = 256 };
 
 	// Register enums.
 	enum { SCRIPT_COULDNOTREGISTER = 0, SCRIPT_REGISTERED, SCRIPT_ALREADYREGISTERED };

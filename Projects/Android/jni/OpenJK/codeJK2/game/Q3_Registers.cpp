@@ -77,7 +77,15 @@ void Q3_DeclareVariable( int type, const char *name )
 
 	if ( numVariables > MAX_VARIABLES )
 	{
-		Q3_DebugPrint( WL_ERROR, "too many variables already declared, maximum is %d\n", MAX_VARIABLES );
+		// LAUT scheitern, nicht still.
+		//
+		// Q3_DebugPrint haengt an g_ICARUSDebug und schweigt bei dessen Vorgabe
+		// 0. Genau deshalb ist es niemandem aufgefallen: ab der Grenze wurde
+		// jede Deklaration verworfen, ohne dass irgendwo etwas stand -- und
+		// Skripte, die auf diese Variablen bauen, taten danach lautlos nichts.
+		Com_Printf( S_COLOR_RED "ICARUS: Variable \"%s\" nicht angelegt -- es "
+		            "bestehen bereits %d von hoechstens %d.\n",
+		            name ? name : "?", numVariables, MAX_VARIABLES );
 		return;
 	}
 

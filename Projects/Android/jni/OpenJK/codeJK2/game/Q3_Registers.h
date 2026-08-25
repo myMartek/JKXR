@@ -23,7 +23,26 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #ifndef __Q3_REGISTERS__
 #define __Q3_REGISTERS__
 
-#define	MAX_VARIABLES	32
+// Wieviele ICARUS-Variablen gleichzeitig bestehen duerfen.
+//
+// Stand auf 32 und war damit zu klein. Die Variablen werden ueber Levelgrenzen
+// MITGENOMMEN: beim Betreten eines Abschnitts stellt Q3_VariableLoad alles
+// wieder her, was frueher deklariert wurde. In Outcast sind das beim Erreichen
+// von yavin_trial bereits 33 Stueck -- gezaehlt auf dem Geraet --, und damit
+// lehnt Q3_DeclareVariable ab diesem Punkt JEDE weitere Deklaration ab.
+//
+// Folge, so gemeldet: das Schiebeplatten-Raetsel in yavin_trial laesst sich
+// nicht loesen. Seine achtzehn Variablen (slider1..slider8, peg1..4_pushed,
+// finaldoor, saberdoor, slidebridge, pillar_level, weight3down, weight4down)
+// entstehen nie, die Platten schreiben ins Leere, und das Pruefskript liest
+// Nichts. Startet man dieselbe Karte dagegen direkt (+map yavin_trial), sind
+// keine Variablen uebernommen, alle achtzehn kommen durch, und das Raetsel
+// funktioniert -- das war der entscheidende Vergleich.
+//
+// Die Zahl haengt an nichts: die Ablage ist eine std::map, und das
+// Speicherformat schreibt die tatsaechliche Groesse. Sie war nur eine
+// Vorsichtsgrenze, und 256 ist fuer ein Spiel dieser Laenge reichlich.
+#define	MAX_VARIABLES	256
 
 typedef std::map < std::string, std::string >		varString_m;
 typedef std::map < std::string, float >		varFloat_m;

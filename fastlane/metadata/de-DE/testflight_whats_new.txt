@@ -31,6 +31,12 @@ BEHOBEN
 • In diesem Abschlussmenü bestätigst du die Schaltflächen jetzt mit dem
   Trigger, wie in allen anderen Menüs auch.
 
+• Rätsel im späteren Spielverlauf funktionieren wieder. In einem Abschnitt
+  blieb eine Tür verschlossen, obwohl die Bodenplatten richtig eingestellt
+  waren — man konnte sie beliebig lange umlegen, es passierte nichts. Das
+  betraf mehrere Rätsel derselben Art und trat umso eher auf, je weiter man
+  im Spiel schon gekommen war.
+
 • Das Pausenmenü erscheint jetzt immer vor dir. Vorher blieb es an der Stelle
   stehen, an der es beim Spielstart aufgetaucht war — hattest du dich
   umgedreht, lag es hinter dir.
