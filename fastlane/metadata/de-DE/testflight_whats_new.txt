@@ -31,6 +31,11 @@ BEHOBEN
 • In diesem Abschlussmenü bestätigst du die Schaltflächen jetzt mit dem
   Trigger, wie in allen anderen Menüs auch.
 
+• Lichter scheinen nicht mehr durch Wände. In einem der späteren Abschnitte
+  schwebten helle Punkte vor Mauern und geschlossenen Türen, obwohl die Lampe
+  dahinter lag. Der Lichtschein erscheint jetzt nur noch dort, wo die Lampe
+  auch wirklich zu sehen ist.
+
 • Rätsel im späteren Spielverlauf funktionieren wieder. In einem Abschnitt
   blieb eine Tür verschlossen, obwohl die Bodenplatten richtig eingestellt
   waren — man konnte sie beliebig lange umlegen, es passierte nichts. Das

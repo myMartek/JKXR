@@ -2057,29 +2057,82 @@ static bool RB_TestZFlare( vec3_t point) {
 		return qfalse;	// shouldn't happen, since we check the clip[] above, except for FP rounding
 	}
 
+	if ( r_flares->integer != 1 ) {	//skipping the the z-test
+		return true;
+	}
+
+#if defined(HAVE_GLES)
+	// GLES kann den Tiefenpuffer nicht zurueckgeben: glReadPixels nimmt dort
+	// kein GL_DEPTH_COMPONENT. Das Original half sich mit depth = 0 -- "der
+	// Puffer ist leer" -- und rechnete anschliessend trotzdem weiter:
+	//
+	//     screenZ = P[14] / ( (2*depth-1) * P[11] - P[10] )
+	//
+	// Mit depth = 0 bleibt im Nenner -P[11] - P[10]. Bei der ueblichen
+	// Projektion ergibt das rund 2 und screenZ = -zNear = -4; die Bedingung
+	// unten laesst dann nur noch Flares im Umkreis von 28 Einheiten durch, sie
+	// sind also faktisch aus.
+	//
+	// Auf visionOS ist die Z-Reihe der Matrix gespiegelt (reversed-Z, siehe
+	// R_SetupProjection). Damit heben sich die beiden Summanden fast auf, der
+	// Nenner faellt auf -0.00098, und screenZ kippt von -zNear auf -zFar. Aus
+	// "fast nie sichtbar" wurde "im ganzen Umkreis von 8216 Einheiten
+	// sichtbar" -- die Koronas standen vor jeder Wand und vor geschlossenen
+	// Tueren. In yavin_temple sind das elf Stueck.
+	//
+	// Statt einen Puffer zu lesen, den es nicht gibt, fragen wir die
+	// Geometrie: ein Strahl vom Auge zur Flare. Er beantwortet genau das, wozu
+	// der Tiefenvergleich da war -- steht etwas davor? -- nur ohne Rueckweg
+	// ueber die GPU und ohne das implizite glFinish, das ein Readback bedeutet.
+	//
+	// Die 24 Einheiten Spielraum bleiben: eine Lampe sitzt buendig in ihrer
+	// Wand, der Strahl trifft also fast immer kurz vorher auf. Nur was deutlich
+	// frueher blockt, verdeckt wirklich.
+	//
+	// ri.SV_Trace und nicht CM_BoxTrace, weil Tueren Entities sind -- ein
+	// reiner Welt-Trace liefe durch sie hindurch, und gerade davor standen die
+	// Koronas.
+	if ( !tr.world ) {
+		return false;
+	}
+
+	vec3_t	world, toFlare;
+	trace_t	trace;
+
+	for ( i = 0 ; i < 3 ; i++ ) {
+		world[i] = backEnd.ori.origin[i]
+				 + point[0] * backEnd.ori.axis[0][i]
+				 + point[1] * backEnd.ori.axis[1][i]
+				 + point[2] * backEnd.ori.axis[2][i];
+	}
+
+	ri.SV_Trace( &trace, backEnd.viewParms.ori.origin, NULL, NULL, world,
+				 ENTITYNUM_NONE, CONTENTS_SOLID, G2_NOCOLLIDE, 0 );
+
+	if ( trace.fraction == 1.0f ) {
+		return true;
+	}
+
+	VectorSubtract( world, backEnd.viewParms.ori.origin, toFlare );
+	return ( VectorLength( toFlare ) * ( 1.0f - trace.fraction ) ) < 24.0f;
+#else
 //do test
 	float			depth = 0.0f;
 	bool			visible;
 	float			screenZ;
 
 	// read back the z buffer contents
-#if defined(HAVE_GLES)
-	depth = 0.0f;
-#else
-	if ( r_flares->integer !=1 ) {	//skipping the the z-test
-		return true;
-	}
 	// doing a readpixels is as good as doing a glFinish(), so
 	// don't bother with another sync
 	glState.finishCalled = qfalse;
 	qglReadPixels( backEnd.viewParms.viewportX + window[0],backEnd.viewParms.viewportY + window[1], 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &depth );
-#endif
 
 	screenZ = backEnd.viewParms.projectionMatrix[14] /
 			  ( ( 2*depth - 1 ) * backEnd.viewParms.projectionMatrix[11] - backEnd.viewParms.projectionMatrix[10] );
 
 	visible = ( -eye[2] - -screenZ ) < 24;
 	return visible;
+#endif
 }
 
 void RB_SurfaceFlare( srfFlare_t *surf ) {

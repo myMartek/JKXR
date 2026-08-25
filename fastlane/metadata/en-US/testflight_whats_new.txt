@@ -29,6 +29,10 @@ FIXED
 • In that completion menu you now confirm the buttons with the trigger, just
   like in every other menu.
 
+• Lights no longer shine through walls. In one of the later levels, bright
+  dots floated in front of walls and closed doors even though the lamp was
+  behind them. The glow now only appears where the lamp is actually in view.
+
 • Puzzles later in the game work again. In one level a door stayed shut even
   though the floor plates were set correctly — you could keep rearranging them
   and nothing happened. This affected several puzzles of that kind, and it grew
