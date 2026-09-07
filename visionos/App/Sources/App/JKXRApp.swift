@@ -147,5 +147,16 @@ struct JKXRApp: App {
         // Blick nach oben fürs Kontrollzentrum. Beides behält das System sich
         // vor, damit man aus jeder App wieder herausfindet.
         .persistentSystemOverlays(.hidden)
+
+        // Die eigenen Haende und Unterarme ausblenden.
+        //
+        // Bei .full blendet visionOS sie sonst ueber die gerenderte Welt --
+        // gedacht als Orientierungshilfe, hier aber stoerend: das Spiel zeichnet
+        // eigene Haende samt Waffe, und daneben schwebten die echten. Beim
+        // Fechten liegen beide im selben Blickfeld und decken sich nie ganz.
+        //
+        // Gilt nur fuer den Immersive Space; im Startfenster bleiben sie
+        // sichtbar, dort bedient man ja mit Blick und Fingertipp.
+        .upperLimbVisibility(.hidden)
     }
 }

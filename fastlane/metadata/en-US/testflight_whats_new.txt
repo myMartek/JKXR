@@ -19,6 +19,10 @@ NEW
 
 FIXED
 
+• In the game you now only see the character's hands. The system used to
+  show your real hands and forearms on top of them, which was confusing
+  especially in close combat.
+
 • Loading the autosave at the start of Artus Detention now plays the complete
   vehicle camera sequence. Afterwards, Kyle can move as intended.
 

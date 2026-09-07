@@ -19,6 +19,10 @@ NEU
 
 BEHOBEN
 
+• Im Spiel siehst du nur noch die Hände der Spielfigur. Vorher blendete
+  das System zusätzlich deine echten Hände und Unterarme darüber ein, was
+  besonders im Nahkampf verwirrte.
+
 • Beim Laden des automatischen Spielstands am Anfang von Artus Detention läuft
   die Kamerafahrt mit dem Fahrzeug nun vollständig ab. Danach lässt sich Kyle
   wie vorgesehen bewegen.
