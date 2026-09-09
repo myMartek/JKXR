@@ -25,6 +25,9 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 
 #include "tr_local.h"
 #include "tr_common.h"
+#include <VrClientInfo.h>
+
+extern vr_client_info_t *vr;
 
 backEndData_t	*backEndData;
 backEndState_t	backEnd;
@@ -1138,7 +1141,35 @@ void	RB_SetGL2D (void) {
 		static cvar_t *hudSize = NULL;
 		static cvar_t *hudDown = NULL;
 		if ( !hudStereo ) hudStereo = ri.Cvar_Get( "cg_hudStereo", JKXR_HUDSTEREO_DEFAULT, CVAR_ARCHIVE );
-		const float dx = ( hudStereo ? hudStereo->value : 35.0f )
+
+		// Beim Blick DURCH ein Glas gelten die drei HUD-Regler nicht.
+		//
+		// vr_hudSize, cg_hudStereo und vr_hudOffsetY machen ein HUD bequem: sie
+		// ruecken es zusammen, auf eine endliche Entfernung und etwas tiefer ins
+		// Blickfeld. Sie wirken aber auf ALLES 2D, und ein Zielfernrohr ist kein
+		// HUD, sondern das Bild, durch das man schaut. Es gehoert aufs volle
+		// Blickfeld, ins Unendliche und auf die Blickachse.
+		//
+		// Auf dem Geraet nacheinander nachgewiesen, jeder Wert einzeln umgestellt:
+		//
+		//   vr_hudSize 0.6  Die Maske belegte 60 % des Blickfelds. Der Augen-
+		//                   ausgleich aus CG_AdjustFrom640 rechnet aber damit,
+		//                   dass 640 Einheiten das GANZE Sichtfeld sind -- es kam
+		//                   also nur 60 % davon an, je Auge gegenlaeufig.
+		//   cg_hudStereo 35 Konvergenz, die das HUD auf rund 2 m rueckt. Durch ein
+		//                   Fernrohr sieht man in die Ferne; die Disparitaet liess
+		//                   die beiden Augenbilder auseinanderstehen.
+		//   vr_hudOffsetY 40 Das Fadenkreuz sass 40 Einheiten unter der Blick-
+		//                   achse. Der Schuss folgt der Achse, landete also
+		//                   darueber -- bei vollem Feld rund 8 Grad, auf zehn
+		//                   Meter anderthalb Meter zu hoch.
+		//
+		// Gilt fuer jeden Zoom-Modus: Fernglas (1), Disruptor (2), Nachtsicht (3)
+		// und Blaster (4). Alle vier zeichnet CG_DrawZoomMask als bildfuellende
+		// Optik; geprueft wurden 2 und 4.
+		const bool durchGlas = ( vr && vr->cgzoommode != 0 );
+		
+		const float dx = durchGlas ? 0.0f : ( hudStereo ? hudStereo->value : 35.0f )
 			* ( VR_GetCurrentEye() == 0 ? -1.0f : 1.0f );
 
 		// Wie viel vom Sichtfeld das HUD einnimmt.
@@ -1157,7 +1188,7 @@ void	RB_SetGL2D (void) {
 		// Nicht zu verwechseln mit cg_hudScale (Vorgabe 2.5): das skaliert die
 		// Elemente INNERHALB der 640x480, nicht die Abbildung aufs Sichtfeld.
 		if ( !hudSize ) hudSize = ri.Cvar_Get( "vr_hudSize", "0.6", CVAR_ARCHIVE );
-		float size = hudSize ? hudSize->value : 0.6f;
+		float size = durchGlas ? 1.0f : ( hudSize ? hudSize->value : 0.6f );
 		if ( size < 0.1f ) size = 0.1f;
 		if ( size > 1.0f ) size = 1.0f;
 
@@ -1194,7 +1225,7 @@ void	RB_SetGL2D (void) {
 		// Blick mittig sitzt. Im Headset schaut man eher geradeaus, und die
 		// Anzeigen liegen dann zu hoch.
 		if ( !hudDown ) hudDown = ri.Cvar_Get( "vr_hudOffsetY", "40", CVAR_ARCHIVE );
-		const float dy = hudDown ? hudDown->value : 40.0f;
+		const float dy = durchGlas ? 0.0f : ( hudDown ? hudDown->value : 40.0f );
 
 		qglMatrixMode( GL_PROJECTION );
 		qglLoadIdentity();

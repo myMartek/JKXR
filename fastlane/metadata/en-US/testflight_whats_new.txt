@@ -19,6 +19,12 @@ NEW
 
 FIXED
 
+• Weapon scopes work properly again. The scope image appeared in a different
+  place in each eye and would not merge, thin lines such as the crosshair
+  showed up doubled, and shots landed far above the target. The scope now
+  fills your whole view, sits still, and you aim with both hands, the way you
+  would shoulder a rifle.
+
 • In the game you now only see the character's hands. The system used to
   show your real hands and forearms on top of them, which was confusing
   especially in close combat.

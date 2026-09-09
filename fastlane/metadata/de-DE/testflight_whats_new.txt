@@ -19,6 +19,12 @@ NEU
 
 BEHOBEN
 
+• Zielfernrohre funktionieren wieder richtig. Ihr Bild stand in beiden Augen
+  an einer anderen Stelle und ließ sich nicht zusammensehen, feine Linien wie
+  das Fadenkreuz erschienen doppelt, und die Schüsse landeten weit über dem
+  Ziel. Jetzt füllt das Fernrohr das ganze Blickfeld, steht ruhig, und gezielt
+  wird mit beiden Händen — so, wie man ein Gewehr anlegt.
+
 • Im Spiel siehst du nur noch die Hände der Spielfigur. Vorher blendete
   das System zusätzlich deine echten Hände und Unterarme darüber ein, was
   besonders im Nahkampf verwirrte.

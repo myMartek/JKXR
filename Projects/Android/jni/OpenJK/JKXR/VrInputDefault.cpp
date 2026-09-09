@@ -980,21 +980,53 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
             if (vr.weapon_stabilised && !vr.dualsabers) {
                 if (vr.cgzoommode == 2 || vr.cgzoommode == 4)
                 {
-                    //If scope is engaged, lift muzzle slightly so that it aligns with the headset
-                    float x = offhandPositionAverage[0] - (vr.hmdposition[0]);
-                    float y = (offhandPositionAverage[1] + 0.12f) - (vr.hmdposition[1]);
-                    float z = offhandPositionAverage[2] - (vr.hmdposition[2]);
-                    float zxDist = length(x, z);
+                    // Gezielt wird mit BEIDEN Haenden -- und mit dem Kopf gar nicht.
+                    //
+                    // Die Linie geht von der Waffenhand zur Nebenhand, so wie man ein Gewehr
+                    // anlegt: hintere Hand am Griff, vordere am Lauf. Zwei Punkte, zwei
+                    // Controller, kein Kopf.
+                    //
+                    // Vorher lief sie vom AUGE zur Nebenhand, mit einer festen Anhebung um
+                    // 12 cm:
+                    //
+                    //   y = (offhand.y + 0.12) - hmd.y;   pitch = -atan(y / Abstand)
+                    //
+                    // Beides war falsch. Die 12 cm unterstellen, dass die Hand genau so weit
+                    // UNTER den Augen liegt; gemessen lag sie 5 cm darueber, was bei 38 cm
+                    // Abstand 24 Grad zu hoch ergab -- auf zehn Meter viereinhalb Meter
+                    // daneben. Und die Linie hing an der Kopf-POSITION: beim Drehen wandert
+                    // das Auge einige Zentimeter, und dieselben 38 cm machen daraus rund 8
+                    // Grad. Der Kopf zielte also mit, ohne dass es so gemeint war.
 
-                    if (zxDist != 0.0f && z != 0.0f) {
-                        VectorSet(vr.weaponangles[ANGLES_ADJUSTED], -RAD2DEG(atanf(y / zxDist)),
-                                  -RAD2DEG(atan2f(x, -z)), vr.weaponangles[ANGLES_ADJUSTED][ROLL] /
-                                                           2.0f); //Dampen roll on stabilised weapon
+                    // Welche Hand vorn liegt, wird nicht angenommen, sondern geprueft: zeigt
+                    // die Linie der Blickrichtung des Controllers entgegen, wird sie gedreht.
+                    // Damit stimmt sie auch fuer Linkshaender und fuer eine Haltung, bei der
+                    // die Nebenhand hinten am Schaft liegt.
+                    float hx = offhandPositionAverage[0] - vr.weaponposition[0];
+                    float hy = offhandPositionAverage[1] - vr.weaponposition[1];
+                    float hz = offhandPositionAverage[2] - vr.weaponposition[2];
+                    float handDist = length(hx, hz);
 
-                        // shoot from exactly where we are looking from
-                        VectorClear(vr.weaponoffset);
-                        VectorCopy(vr.hmdposition, vr.weaponposition);
+                    if (handDist > 0.001f)
+                    {
+                        float scopePitch = -RAD2DEG(atanf(hy / handDist));
+                        float scopeYaw   = -RAD2DEG(atan2f(hx, -hz));
+
+                        if (fabsf(AngleSubtract(scopeYaw, vr.weaponangles[ANGLES_ADJUSTED][YAW])) > 90.0f)
+                        {
+                            scopePitch = -scopePitch;
+                            scopeYaw = AngleNormalize180(scopeYaw + 180.0f);
+                        }
+
+                        VectorSet(vr.weaponangles[ANGLES_ADJUSTED], scopePitch, scopeYaw,
+                                  vr.weaponangles[ANGLES_ADJUSTED][ROLL] / 2.0f); //Dampen roll on stabilised weapon
                     }
+
+                    // Geschossen wird weiterhin vom Auge aus: saesse die Muendung an der Hand,
+                    // bliebe sie in Deckung an der Wand haengen.
+                    // shoot from exactly where we are looking from
+                    VectorClear(vr.weaponoffset);
+                    VectorCopy(vr.hmdposition, vr.weaponposition);
                 }
                 else if (vr_virtual_stock->integer == 1)
                 {

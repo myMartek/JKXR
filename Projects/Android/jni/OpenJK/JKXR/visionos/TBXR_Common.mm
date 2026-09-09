@@ -2115,8 +2115,25 @@ ANGLESetDrawFramebufferRateMapMTL(nullptr);
     } else {
         float tanLeft, tanRight, tanUp, tanDown;
         if (VR_GetFovTangentsForEye(eye, &tanLeft, &tanRight, &tanUp, &tanDown)) {
-            vr.off_center_fov_x = -(atanf(tanLeft) + atanf(tanRight)) / 2.0f;
-            vr.off_center_fov_y = -(atanf(tanUp) + atanf(tanDown)) / 2.0f;
+            // In TANGENTEN mitteln, nicht in Winkeln.
+            //
+            // Gesucht ist, wo im 640x480-Raster die Blickachse liegt. Dieses
+            // Raster ist linear in der Bildebene, also in Tangenten -- nicht im
+            // Winkel. Die Achse sitzt bei
+            //
+            //     x = 640 * ( -tanLeft / (tanRight - tanLeft) )
+            //
+            // und der Versatz zur Mitte ist genau der Ausdruck unten, mal 640.
+            //
+            // Vorher wurde ueber atanf in Winkeln gemittelt. Bei den etwa
+            // -60..+45 Grad dieses Geraets ergibt das 83,8 statt 85,7 Einheiten
+            // -- zwei je Auge, also knapp vier zwischen den Augen oder 0,65
+            // Grad. Auf der runden Disruptor-Maske faellt das nicht auf, am zwei
+            // Pixel schmalen Fadenkreuz des Blasters schon: der Strich zerfaellt
+            // in zwei, symmetrisch um die richtige Lage. Genau so wurde es
+            // gemeldet -- gezielt wurde mittig zwischen beiden.
+            vr.off_center_fov_x = -(tanLeft + tanRight) / (2.0f * (tanRight - tanLeft));
+            vr.off_center_fov_y = -(tanUp   + tanDown ) / (2.0f * (tanUp   - tanDown ));
         }
     }
 }

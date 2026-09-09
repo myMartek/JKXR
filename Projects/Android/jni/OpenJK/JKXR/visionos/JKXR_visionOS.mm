@@ -230,9 +230,17 @@ void VR_GetMove(float *forward, float *side, float *pos_forward, float *pos_side
 		*up = 0.0f;
 		*side = remote_movementSideways / 3.0f;
 		*pos_side = 0.0f;
-		*yaw = vr.snapTurn + vr.hmdorientation_first[YAW] +
-                             vr.weaponangles[ANGLES_ADJUSTED][YAW] - vr.weaponangles_first[ANGLES_ADJUSTED][YAW];
+		// Im Zielfernrohr zielt ALLEIN die Waffenhand -- der Kopf gar nicht.
+		//
+		// Vorher stand hier eine relative Rechnung ueber weaponangles_first, deren
+		// Bezugspunkt AUSSERHALB des Fernrohrs gesetzt wird und wegdriften konnte.
+		// Jetzt direkt die Waffenrichtung, wie sie VrInputWeaponAlign aus der Pose
+		// des fuehrenden Controllers setzt. snapTurn kommt dazu, weil
+		// weaponangles wie hmdorientation ohne die Drehung des Spielers gefuehrt
+		// wird -- derselbe Summand wie im ungezoomten Zweig weiter unten.
+		*yaw = vr.weaponangles[ANGLES_ADJUSTED][YAW] + vr.snapTurn;
 		*pitch = vr.weaponangles[ANGLES_ADJUSTED][PITCH];
+		
 		*roll = 0.0f;//vr.hmdorientation[ROLL];
 	}
 	else if (vr.remote_npc) {
