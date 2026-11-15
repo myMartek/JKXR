@@ -335,3 +335,10 @@ vendor/bundle/
 fastlane/report.xml
 fastlane/Preview.html
 fastlane/test_output/
+
+# AVP Play toolchain adapter (tools/avpplay_toolchain): written per state or per build, never committed.
+# Assets.xcassets is where AVP Play puts the icon and start picture it takes from the PLAYER'S OWN Steam
+# library – that is game art and must never end up in this repository.
+tools/avpplay_toolchain/toolchain.json
+tools/avpplay_toolchain/visionos/build/
+tools/avpplay_toolchain/visionos/Assets.xcassets/
