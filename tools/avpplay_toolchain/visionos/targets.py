@@ -2,19 +2,26 @@
 """The targets this toolchain builds, in the shape AVP Play reads (it parses TARGETS with `ast`, plain strings only,
 and calls `targets.py <target> <key>` for single values).
 
-    targets.py jkxr kind      jkxr
-    targets.py jkxr bundle    <user>.dev.klepton.target.jkxr   (AVP Play's default naming)
+    targets.py jkxr-outcast kind      jkxr
+    targets.py jkxr-outcast game      outcast
+    targets.py jkxr-outcast bundle    <user>.dev.klepton.target.jkxr-outcast   (AVP Play's default naming)
 
 `kind` "jkxr" tells AVP Play that this is not a Klepton (Android or Linux) target: JKXR is an open-source engine,
 compiled from this repository for visionOS on the player's Mac.
+
+Two targets, one per game, so that two recipes – two tiles in AVP Play – make two apps: someone who owns only one
+of the games can still install it. Both are built from the same checkout, so the engines are compiled once; `game`
+is burnt into the app (Info.plist JKXRGame), which then starts straight into that game. The TestFlight build
+leaves it empty and carries both.
 
 There is no `devicetree`: the games' data are not a tree this toolchain copies. They are the recipe's data trees,
 which AVP Play fetches from the player's own Steam purchases and copies to Documents/JediOutcast and
 Documents/JediAcademy itself (Installer.swift, stageDataTrees) – the folders the app has always read.
 
-There is no `saves` either. The games keep their saved games under Library/Application Support/OpenJO and
-.../OpenJA, two folders outside Documents, and AVP Play's backup reads one folder per game; naming one of the two
-would back up half of them and look like all.
+There is no `saves` either, because nothing would read it: AVP Play backs up saved games from one fixed place,
+Documents/android-files (Saves.swift, SaveRules.root), and the games keep theirs under Library/Application
+Support/OpenJO (Outcast) and .../OpenJA (Academy). Naming the folder here would suggest a backup that does not
+happen.
 
 Runs with the Python that comes with Xcode (3.9).
 """
@@ -23,9 +30,15 @@ import re
 import sys
 
 TARGETS = {
-    "jkxr": {
+    "jkxr-outcast": {
         "kind": "jkxr",
-        "display": "JKXR",
+        "display": "Jedi Outcast",
+        "game": "outcast",
+    },
+    "jkxr-academy": {
+        "kind": "jkxr",
+        "display": "Jedi Academy",
+        "game": "academy",
     },
 }
 

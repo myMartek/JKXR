@@ -39,6 +39,21 @@ enum Spiel: Int32, CaseIterable, Identifiable {
 
     var id: Int32 { rawValue }
 
+    /// Das Spiel, das diese App fest traegt -- oder keines.
+    ///
+    /// AVP Play baut je Spiel eine eigene App, zwei Kacheln dort, zwei Apps auf
+    /// der Brille: so kann jemand, der nur eines der beiden Spiele besitzt, es
+    /// trotzdem installieren. tools/avpplay_toolchain/visionos/run.sh setzt dafuer
+    /// JKXR_GAME, das als JKXRGame in der Info.plist landet. Ohne den Eintrag --
+    /// die TestFlight-Fassung -- traegt die App beide und laesst waehlen.
+    static let fest: Spiel? = {
+        switch Bundle.main.object(forInfoDictionaryKey: "JKXRGame") as? String {
+        case "outcast": return .outcast
+        case "academy": return .academy
+        default: return nil
+        }
+    }()
+
     var name: String {
         switch self {
         case .academy: return "Jedi Academy"
@@ -223,6 +238,13 @@ struct ContentView: View {
     /// Pakete, deren Prüfsumme gerade im Hintergrund nachgerechnet wird.
     @State private var pruefen: Set<String> = []
 
+    /// Die Einstellungen statt der Startkarte.
+    @State private var zeigeEinstellungen = false
+    /// Ob die Dateien je Spiel da sind -- fuer die Startknoepfe der Karte, die
+    /// in der TestFlight-Fassung beide Spiele zugleich anbietet. `assets` gilt
+    /// nur dem gerade gewaehlten.
+    @State private var stand: [Spiel: AssetStatus] = [:]
+
     /// Wirkt über die Befehlszeile der Engine (EngineHost) und damit erst beim
     /// nächsten Start des Immersive Space -- r_picmip ist gelatcht. Gesetzt
     /// wird es nicht mehr von Hand, sondern aus der Texturstufe.
@@ -233,230 +255,9 @@ struct ContentView: View {
     private var stufe: Texturstufe { Texturstufe(rawValue: stufeRoh) ?? .standard }
 
     var body: some View {
-        ScrollView {
-        VStack(spacing: 20) {
-            Text("JKXR")
-                .font(.largeTitle)
-
-            // Die Auswahl steht ganz oben und nicht neben dem Spielen-Knopf:
-            // sie entscheidet, worauf sich alles darunter bezieht — Dateiliste,
-            // Pfad und Anleitung.
-            Picker(Sprache.t("Game", "Spiel"), selection: $spiel) {
-                ForEach(Spiel.allCases) { s in
-                    Text(s.name).tag(s)
-                }
-            }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 460)
-
-            switch assets {
-            case .ready(let names):
-                Label(Sprache.t("\(names.count) pk3 files in \(spiel.ordner)/base/",
-                                "\(names.count) pk3-Dateien in \(spiel.ordner)/base/"),
-                      systemImage: "checkmark.circle")
-                    .foregroundStyle(.green)
-                Text(names.sorted().joined(separator: ", "))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Button(Sprache.t("Play \(spiel.name)", "\(spiel.name) spielen")) {
-                    Task { await startGame() }
-                }
-                .buttonStyle(.borderedProminent)
-
-            case .demo:
-                Label(Sprache.t("Demo file recognised — review mode",
-                                "Demo-Datei erkannt — Prüfmodus"),
-                      systemImage: "checkmark.seal")
-                    .foregroundStyle(.blue)
-                Text(Sprache.t(
-                        "\"Play\" opens the small demo world built into the app. "
-                            + "It takes precedence over any game data present — "
-                            + "delete \(DemoDatei.dateiname) from the folder below "
-                            + "to play normally again.",
-                        "„Demo-Welt starten“ öffnet die kleine Welt, die die App "
-                            + "selbst mitbringt. Sie hat Vorrang vor vorhandenen "
-                            + "Spieldateien — zum normalen Spielen \(DemoDatei.dateiname) "
-                            + "im Ordner unten löschen."))
-                    .font(.callout)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 460)
-                Button(Sprache.t("Play demo world", "Demo-Welt starten")) {
-                    Task { await startGame(demo: true) }
-                }
-                .buttonStyle(.borderedProminent)
-
-            case .missing:
-                Label(Sprache.t("Game files for \(spiel.name) are missing",
-                                "Spieldateien für \(spiel.name) fehlen"),
-                      systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
-                Text(Sprache.t("Required: \(spiel.requiredFilesEnglish)",
-                     "Benötigt werden \(spiel.erwarteteDateien)"))
-                    .font(.callout)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 460)
-            }
-
-            if let progress {
-                Label(progress, systemImage: "arrow.down.circle")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-
-            // Der Abschnitt steht immer, sobald es fuer dieses Spiel ueberhaupt
-            // ein Angebot gibt -- die Auswahl soll auffindbar sein, bevor
-            // irgendetwas geladen wurde.
-            if !zusaetze.isEmpty || Zusatzkatalog.alle.contains(where: { $0.spiel == spiel }) {
-                Divider().frame(maxWidth: 460)
-
-                Text(Sprache.t("Textures", "Texturen"))
-                    .font(.headline)
-
-                ForEach(zusaetze) { z in
-                    HStack(spacing: 12) {
-                        Toggle(isOn: Binding(
-                            get: { z.aktiv },
-                            set: { an in
-                                AssetStore.setzeAktiv(z, an)
-                                zusaetze = AssetStore.zusatzDateien(spiel)
-                            })) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(z.name)
-                                Text(groesse(z.groesse))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        Button(role: .destructive) {
-                            loeschKandidat = z
-                        } label: {
-                            Image(systemName: "trash")
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                    .frame(maxWidth: 460)
-                }
-
-                Picker(Sprache.t("Texture resolution", "Texturauflösung"),
-                       selection: Binding(get: { stufe },
-                                          set: { neu in waehleStufe(neu) })) {
-                    ForEach(Texturstufe.allCases) { s in
-                        Text(s.name).tag(s)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 460)
-
-                Text(stufe.erklaerung)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 460)
-
-                if let angebot = Zusatzkatalog.fuer(spiel, stufe) {
-                    let da = AssetStore.paketVorhanden(angebot)
-                    // Drei Zustaende, nicht zwei: bekannt-und-aktuell,
-                    // bekannt-und-aelter, und UNBEKANNT.
-                    //
-                    // Unbekannt ist der Normalfall fuer alles, was nicht ueber
-                    // den Lader kam -- ueber die Dateien-App eingespielt oder
-                    // von aussen in den Container geschoben. Frueher wurde
-                    // dafuer beim Fensteraufbau ungefragt nachgerechnet. Das
-                    // hat die App abgeschossen (JetsamEvent): eine Datei von
-                    // fuenf Gigabyte zu lesen ist keine Nebensache, und beim
-                    // Academy-4x-Paket waeren es zwoelf.
-                    //
-                    // Also fragt es jetzt. Wer die Fassung wissen will, drueckt
-                    // darauf; wer nur spielen will, wartet auf nichts.
-                    let bekannt = AssetStore.pruefsummeBekannt(angebot)
-                    let aktuell = AssetStore.paketAktuell(angebot)
-                    let laeuft = pruefen.contains(angebot.id)
-                    HStack(spacing: 12) {
-                        Text(!da ? angebot.ungefaehr
-                                 : laeuft ? Sprache.t("Checking…", "wird geprüft…")
-                                 : !bekannt ? Sprache.t("Version unknown", "Fassung unbekannt")
-                                 : aktuell ? Sprache.t("Package present", "Paket vorhanden")
-                                           : Sprache.t("Older version present",
-                                                       "Ältere Fassung vorhanden"))
-                            .font(.caption)
-                            .foregroundStyle(da && bekannt && !aktuell && !laeuft
-                                             ? Color.orange : Color.secondary)
-                        Spacer()
-                        if laedt == angebot.id {
-                            Text(ladeText).font(.caption).foregroundStyle(.secondary)
-                            ProgressView()
-                        } else if laeuft {
-                            ProgressView()
-                        } else {
-                            if da {
-                                Button(Sprache.t("Delete", "Löschen"), role: .destructive) {
-                                    AssetStore.loeschePaket(angebot)
-                                    zusaetze = AssetStore.zusatzDateien(spiel)
-                                }
-                            }
-                            if da && !bekannt {
-                                Button(Sprache.t("Verify", "Prüfen")) {
-                                    Task { await pruefe(angebot) }
-                                }
-                                .disabled(laedt != nil)
-                            }
-                            if !da || (bekannt && !aktuell) {
-                                // Bei vorhandener älterer Fassung heisst der Knopf
-                                // "Erneuern": der Lader legt die Datei ohnehin neu an.
-                                Button(da ? Sprache.t("Update", "Erneuern")
-                                          : Sprache.t("Download", "Laden")) {
-                                    Task { await hole(angebot) }
-                                }
-                                .disabled(laedt != nil)
-                            }
-                        }
-                    }
-                    .frame(maxWidth: 460)
-                }
-
-                // Die Reihenfolge ist keine Kleinigkeit, sondern der haeufigste
-                // Grund, warum eine Mod "nicht wirkt": bei Gleichstand gewinnt
-                // der alphabetisch letzte Dateiname. Deshalb heissen unsere
-                // eigenen Zusaetze z_vr_...
-                Text(Sprache.t(
-                        "On conflict the alphabetically last file wins. A name after "
-                            + "\"z_vr_…\" also overrides the VR add-ons of the port.",
-                        "Bei Gleichstand gewinnt der alphabetisch letzte Dateiname. "
-                            + "Ein Name nach „z_vr_…“ überschreibt auch die "
-                            + "VR-Zusätze des Ports."))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 460)
-
-                ControllerStand()
-            }
-
-            Divider().frame(maxWidth: 460)
-
-            HStack(spacing: 12) {
-                Button(Sprache.t("Choose files…", "Dateien auswählen…")) { importing = true }
-                Button(Sprache.t("Open in Files", "In Dateien öffnen")) { AssetStore.revealInFiles(spiel) }
-                Button(Sprache.t("Check again", "Erneut prüfen")) {
-                    assets = AssetStore.status(spiel)
-                    zusaetze = AssetStore.zusatzDateien(spiel)
-                }
-            }
-            .font(.callout)
-
-            Text(AssetStore.baseDirectory(spiel).path)
-                .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(.tertiary)
-                .textSelection(.enabled)
+        Group {
+            if zeigeEinstellungen { einstellungen } else { startkarte }
         }
-        }
-        .padding(40)
-        // Rollbar, nicht nur hoeher.
-        //
-        // Die Hoehe haengt jetzt am Inhalt: je Zusatz eine Zeile, dazu der
-        // Ladefortschritt und der Regler. Eine feste Fenstergroesse passt fuer
-        // genau einen Zustand und schneidet beim naechsten wieder ab -- so wie
-        // es die Mod-Auswahl gerade getan hat.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .confirmationDialog(
             Sprache.t("Delete \(loeschKandidat?.name ?? "")?",
@@ -489,7 +290,10 @@ struct ContentView: View {
         .task {
             // Die gemerkte Wahl VOR der Statusabfrage übernehmen, sonst zeigt
             // das Fenster einen Augenblick die Dateien des anderen Spiels.
-            if let gemerkt = Spiel(rawValue: Int32(letztesSpiel)) {
+            // Eine App, die fest ein Spiel traegt, hat keine Wahl zu merken.
+            if let fest = Spiel.fest {
+                spiel = fest
+            } else if let gemerkt = Spiel(rawValue: Int32(letztesSpiel)) {
                 spiel = gemerkt
             }
 
@@ -518,6 +322,7 @@ struct ContentView: View {
 
             assets = AssetStore.status(spiel)
             zusaetze = AssetStore.zusatzDateien(spiel)
+            aktualisiereStand()
 
             // Hardware-Diagnose ohne UI-Automation. devicectl kann die App mit
             // JKXR_AUTO_START=1 starten; im normalen App-Start ist die Variable
@@ -552,6 +357,363 @@ struct ContentView: View {
             case .failure(let error):
                 progress = Sprache.t("Selection failed: \(error.localizedDescription)",
                                      "Auswahl fehlgeschlagen: \(error.localizedDescription)")
+            }
+        }
+    }
+
+
+    // MARK: - Startkarte
+
+    /// Das Startbild, wenn AVP Play eines mitgegeben hat (project.yml, Generated/).
+    ///
+    /// Es stammt aus der Steam-Bibliothek des Spielers und liegt nie im Repo:
+    /// ohne AVP Play -- TestFlight, CI -- gibt es keines, und die Karte kommt
+    /// ohne aus. So halten es alle Spiele, die AVP Play baut ("branding is text
+    /// only: no game art is part of this project").
+    private static let startbild: UIImage? = Bundle.main.resourceURL
+        .map { $0.appendingPathComponent("Generated/StartHero.png") }
+        .flatMap { UIImage(contentsOfFile: $0.path) }
+
+    private static let versionsstempel: String? = {
+        let info = Bundle.main.infoDictionary
+        guard let kurz = info?["CFBundleShortVersionString"] as? String, !kurz.isEmpty else { return nil }
+        let bau = (info?["CFBundleVersion"] as? String) ?? ""
+        return bau.isEmpty || bau == kurz ? kurz : "\(kurz) (\(bau))"
+    }()
+
+    /// Die Startkarte, nach dem Vorbild aller Spiele, die AVP Play baut.
+    ///
+    /// Aufbau und Masse folgen Kleptons Startfenster (MIT, Max Thomas;
+    /// visionos/Sources/KleptonApp.swift, BootView.startFront), wie es auch der
+    /// Skyrim-VR-Port uebernimmt: Bild fuellend, darunter ein Verlauf nach
+    /// Schwarz, der Titel gross, eine Zeile, ein weisser Startknopf und
+    /// daneben die Einstellungen, der Versionsstempel klein in der Ecke.
+    private var startkarte: some View {
+        ZStack(alignment: .bottom) {
+            if let bild = Self.startbild {
+                Image(uiImage: bild).resizable().scaledToFill()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity).clipped()
+                    .overlay(LinearGradient(colors: [.clear, .black.opacity(0.8)],
+                                            startPoint: .center, endPoint: .bottom))
+                    .accessibilityHidden(true)
+            }
+            startinhalt
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .bottomTrailing) {
+            if let stempel = Self.versionsstempel {
+                Text(stempel).font(.caption).foregroundStyle(.secondary)
+                    .lineLimit(1).fixedSize()
+                    .padding(.trailing, 48).padding(.bottom, 20)
+            }
+        }
+    }
+
+    /// Mit Bild sitzt der Text unten, auf dem dunklen Ende des Verlaufs; ohne
+    /// Bild steht er in der Mitte.
+    private var startinhalt: some View {
+        VStack(spacing: 22) {
+            Spacer()
+            Text(Spiel.fest?.name ?? "JKXR")
+                .font(.extraLargeTitle.bold())
+                .shadow(radius: Self.startbild == nil ? 0 : 10)
+            Text(untertitel)
+                .font(.callout).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            if let hinweis = starthinweis {
+                Label(hinweis, systemImage: "exclamationmark.triangle")
+                    .font(.headline)
+                    .multilineTextAlignment(.center)
+            }
+            HStack(spacing: 18) {
+                ForEach(Spiel.fest.map { [$0] } ?? Spiel.allCases) { s in
+                    startknopf(s)
+                }
+                Button { zeigeEinstellungen = true } label: {
+                    Label(Sprache.t("Settings", "Einstellungen"), systemImage: "gearshape")
+                }
+                .controlSize(.extraLarge)
+            }
+            if Self.startbild == nil { Spacer() }
+        }
+        .padding(40)
+        .padding(.bottom, Self.startbild == nil ? 0 : 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Ein Startknopf: „Start“, wenn die App ein Spiel traegt, sonst der Name
+    /// des Spiels. Gesperrt, solange dessen Dateien fehlen -- welche, steht in
+    /// den Einstellungen. Liegt die Pruefdatei fuers App-Review da, startet er
+    /// die Demo-Welt; das ist der Weg, den ein Pruefer geht.
+    private func startknopf(_ s: Spiel) -> some View {
+        let st = stand[s] ?? .missing
+        return Button {
+            spiel = s
+            Task { await startGame(demo: st.istDemo) }
+        } label: {
+            Label(Spiel.fest != nil ? Sprache.t("Start", "Start") : s.name,
+                  systemImage: "play.fill")
+                .frame(minWidth: 180)
+        }
+        .buttonStyle(.borderedProminent).tint(.white).controlSize(.extraLarge)
+        .foregroundStyle(st.startbereit ? Color.black : Color.secondary)
+        .disabled(!st.startbereit)
+    }
+
+    private var untertitel: String {
+        if let fest = Spiel.fest {
+            return Sprache.t("\(fest.name) on Apple Vision Pro, running natively with Sense controllers or a game controller.",
+                             "\(fest.name) auf der Apple Vision Pro, nativ, mit Sense-Controllern oder Gamepad.")
+        }
+        return Sprache.t("Two first-person classics of the early 2000s on Apple Vision Pro, running natively with Sense controllers or a game controller.",
+                         "Zwei Ego-Klassiker der frühen 2000er auf der Apple Vision Pro, nativ, mit Sense-Controllern oder Gamepad.")
+    }
+
+    /// Was unter dem Titel stehen muss, damit niemand vor einem grauen Knopf
+    /// raetselt: ein gescheiterter Start, die Demo, oder dass Dateien fehlen.
+    private var starthinweis: String? {
+        if let progress { return progress }
+        let spiele = Spiel.fest.map { [$0] } ?? Spiel.allCases
+        if spiele.contains(where: { (stand[$0] ?? .missing).istDemo }) {
+            return Sprache.t("Demo file recognised: Start opens the demo world.",
+                             "Demo-Datei erkannt: Start öffnet die Demo-Welt.")
+        }
+        guard !stand.isEmpty, !spiele.contains(where: { (stand[$0] ?? .missing).startbereit }) else { return nil }
+        return Sprache.t("The game files are missing. Settings shows which ones and where they go.",
+                         "Die Spieldateien fehlen. Unter Einstellungen steht, welche und wohin.")
+    }
+
+    private func aktualisiereStand() {
+        for s in Spiel.allCases { stand[s] = AssetStore.status(s) }
+    }
+
+    // MARK: - Einstellungen
+
+    /// Die Einstellungen: alles, was das Fenster bisher war.
+    ///
+    /// Dateien, Texturen und Controller-Stand stehen hier unveraendert; nur der
+    /// Startknopf ist auf die Karte davor gewandert. Aufgebaut wie die Seite
+    /// jedes Spiels, das AVP Play baut: NavigationStack, oben rechts „Fertig“.
+    private var einstellungen: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Die Auswahl steht ganz oben: sie entscheidet, worauf sich alles
+                    // darunter bezieht -- Dateiliste, Pfad und Anleitung. Eine App, die
+                    // fest ein Spiel traegt (AVP Play), hat nichts zu waehlen.
+                    if Spiel.fest == nil {
+                        Picker(Sprache.t("Game", "Spiel"), selection: $spiel) {
+                            ForEach(Spiel.allCases) { s in
+                                Text(s.name).tag(s)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(maxWidth: 460)
+                    }
+
+                    switch assets {
+                    case .ready(let names):
+                        Label(Sprache.t("\(names.count) pk3 files in \(spiel.ordner)/base/",
+                                        "\(names.count) pk3-Dateien in \(spiel.ordner)/base/"),
+                              systemImage: "checkmark.circle")
+                            .foregroundStyle(.green)
+                        Text(names.sorted().joined(separator: ", "))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                    case .demo:
+                        Label(Sprache.t("Demo file recognised — review mode",
+                                        "Demo-Datei erkannt — Prüfmodus"),
+                              systemImage: "checkmark.seal")
+                            .foregroundStyle(.blue)
+                        Text(Sprache.t(
+                                "\"Start\" opens the small demo world built into the app. "
+                                    + "It takes precedence over any game data present — "
+                                    + "delete \(DemoDatei.dateiname) from the folder below "
+                                    + "to play normally again.",
+                                "„Start“ öffnet die kleine Welt, die die App "
+                                    + "selbst mitbringt. Sie hat Vorrang vor vorhandenen "
+                                    + "Spieldateien — zum normalen Spielen \(DemoDatei.dateiname) "
+                                    + "im Ordner unten löschen."))
+                            .font(.callout)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 460)
+
+                    case .missing:
+                        Label(Sprache.t("Game files for \(spiel.name) are missing",
+                                        "Spieldateien für \(spiel.name) fehlen"),
+                              systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.orange)
+                        Text(Sprache.t("Required: \(spiel.requiredFilesEnglish)",
+                             "Benötigt werden \(spiel.erwarteteDateien)"))
+                            .font(.callout)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 460)
+                    }
+
+                    if let progress {
+                        Label(progress, systemImage: "arrow.down.circle")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    // Der Abschnitt steht immer, sobald es fuer dieses Spiel ueberhaupt
+                    // ein Angebot gibt -- die Auswahl soll auffindbar sein, bevor
+                    // irgendetwas geladen wurde.
+                    if !zusaetze.isEmpty || Zusatzkatalog.alle.contains(where: { $0.spiel == spiel }) {
+                        Divider().frame(maxWidth: 460)
+
+                        Text(Sprache.t("Textures", "Texturen"))
+                            .font(.headline)
+
+                        ForEach(zusaetze) { z in
+                            HStack(spacing: 12) {
+                                Toggle(isOn: Binding(
+                                    get: { z.aktiv },
+                                    set: { an in
+                                        AssetStore.setzeAktiv(z, an)
+                                        zusaetze = AssetStore.zusatzDateien(spiel)
+                                    })) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(z.name)
+                                        Text(groesse(z.groesse))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Button(role: .destructive) {
+                                    loeschKandidat = z
+                                } label: {
+                                    Image(systemName: "trash")
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                            .frame(maxWidth: 460)
+                        }
+
+                        Picker(Sprache.t("Texture resolution", "Texturauflösung"),
+                               selection: Binding(get: { stufe },
+                                                  set: { neu in waehleStufe(neu) })) {
+                            ForEach(Texturstufe.allCases) { s in
+                                Text(s.name).tag(s)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(maxWidth: 460)
+
+                        Text(stufe.erklaerung)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 460)
+
+                        if let angebot = Zusatzkatalog.fuer(spiel, stufe) {
+                            let da = AssetStore.paketVorhanden(angebot)
+                            // Drei Zustaende, nicht zwei: bekannt-und-aktuell,
+                            // bekannt-und-aelter, und UNBEKANNT.
+                            //
+                            // Unbekannt ist der Normalfall fuer alles, was nicht ueber
+                            // den Lader kam -- ueber die Dateien-App eingespielt oder
+                            // von aussen in den Container geschoben. Frueher wurde
+                            // dafuer beim Fensteraufbau ungefragt nachgerechnet. Das
+                            // hat die App abgeschossen (JetsamEvent): eine Datei von
+                            // fuenf Gigabyte zu lesen ist keine Nebensache, und beim
+                            // Academy-4x-Paket waeren es zwoelf.
+                            //
+                            // Also fragt es jetzt. Wer die Fassung wissen will, drueckt
+                            // darauf; wer nur spielen will, wartet auf nichts.
+                            let bekannt = AssetStore.pruefsummeBekannt(angebot)
+                            let aktuell = AssetStore.paketAktuell(angebot)
+                            let laeuft = pruefen.contains(angebot.id)
+                            HStack(spacing: 12) {
+                                Text(!da ? angebot.ungefaehr
+                                         : laeuft ? Sprache.t("Checking…", "wird geprüft…")
+                                         : !bekannt ? Sprache.t("Version unknown", "Fassung unbekannt")
+                                         : aktuell ? Sprache.t("Package present", "Paket vorhanden")
+                                                   : Sprache.t("Older version present",
+                                                               "Ältere Fassung vorhanden"))
+                                    .font(.caption)
+                                    .foregroundStyle(da && bekannt && !aktuell && !laeuft
+                                                     ? Color.orange : Color.secondary)
+                                Spacer()
+                                if laedt == angebot.id {
+                                    Text(ladeText).font(.caption).foregroundStyle(.secondary)
+                                    ProgressView()
+                                } else if laeuft {
+                                    ProgressView()
+                                } else {
+                                    if da {
+                                        Button(Sprache.t("Delete", "Löschen"), role: .destructive) {
+                                            AssetStore.loeschePaket(angebot)
+                                            zusaetze = AssetStore.zusatzDateien(spiel)
+                                        }
+                                    }
+                                    if da && !bekannt {
+                                        Button(Sprache.t("Verify", "Prüfen")) {
+                                            Task { await pruefe(angebot) }
+                                        }
+                                        .disabled(laedt != nil)
+                                    }
+                                    if !da || (bekannt && !aktuell) {
+                                        // Bei vorhandener älterer Fassung heisst der Knopf
+                                        // "Erneuern": der Lader legt die Datei ohnehin neu an.
+                                        Button(da ? Sprache.t("Update", "Erneuern")
+                                                  : Sprache.t("Download", "Laden")) {
+                                            Task { await hole(angebot) }
+                                        }
+                                        .disabled(laedt != nil)
+                                    }
+                                }
+                            }
+                            .frame(maxWidth: 460)
+                        }
+
+                        // Die Reihenfolge ist keine Kleinigkeit, sondern der haeufigste
+                        // Grund, warum eine Mod "nicht wirkt": bei Gleichstand gewinnt
+                        // der alphabetisch letzte Dateiname. Deshalb heissen unsere
+                        // eigenen Zusaetze z_vr_...
+                        Text(Sprache.t(
+                                "On conflict the alphabetically last file wins. A name after "
+                                    + "\"z_vr_…\" also overrides the VR add-ons of the port.",
+                                "Bei Gleichstand gewinnt der alphabetisch letzte Dateiname. "
+                                    + "Ein Name nach „z_vr_…“ überschreibt auch die "
+                                    + "VR-Zusätze des Ports."))
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 460)
+
+                        ControllerStand()
+                    }
+
+                    Divider().frame(maxWidth: 460)
+
+                    HStack(spacing: 12) {
+                        Button(Sprache.t("Choose files…", "Dateien auswählen…")) { importing = true }
+                        Button(Sprache.t("Open in Files", "In Dateien öffnen")) { AssetStore.revealInFiles(spiel) }
+                        Button(Sprache.t("Check again", "Erneut prüfen")) {
+                            assets = AssetStore.status(spiel)
+                            zusaetze = AssetStore.zusatzDateien(spiel)
+                        }
+                    }
+                    .font(.callout)
+
+                    Text(AssetStore.baseDirectory(spiel).path)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .textSelection(.enabled)
+                }
+                .padding(40)
+                .frame(maxWidth: .infinity)
+            }
+            .navigationTitle(Sprache.t("Settings", "Einstellungen"))
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(Sprache.t("Done", "Fertig")) {
+                        zeigeEinstellungen = false
+                        aktualisiereStand()
+                    }
+                }
             }
         }
     }
@@ -626,6 +788,7 @@ struct ContentView: View {
         progress = nil
         assets = AssetStore.status(spiel)
         zusaetze = AssetStore.zusatzDateien(spiel)
+        aktualisiereStand()
     }
 
     /// Die Texturstufe wechseln.
@@ -715,6 +878,19 @@ enum AssetStatus {
     /// Die Pruefdatei fuers App-Review liegt da, echte Spieldateien nicht.
     case demo
     case missing
+}
+
+extension AssetStatus {
+    /// Ob „Start“ etwas zu starten hat: das Spiel oder die Demo-Welt.
+    var startbereit: Bool {
+        if case .missing = self { return false }
+        return true
+    }
+
+    var istDemo: Bool {
+        if case .demo = self { return true }
+        return false
+    }
 }
 
 enum CopyResult {

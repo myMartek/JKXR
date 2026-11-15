@@ -67,6 +67,23 @@ targets:
       # jemand die Oberflaeche zu sehen bekommt -- deutsch auf einem englischen
       # Geraet waere der erste Eindruck. Die Grundfassung in Info.plist ist
       # englisch; de.lproj gilt nur, wenn das Geraet deutsch spricht.
+      # Was ein Bau in die App legt, ohne dass es ins Repo gehoert: das
+      # Startbild, das AVP Play aus der Steam-Bibliothek des SPIELERS waehlt
+      # (tools/avpplay_toolchain/visionos/run.sh legt es als StartHero.png
+      # hierher). Spielgrafik liegt nie im Repo; nur der leere Platzhalter
+      # .gitkeep ist eingecheckt, damit es den Ordner in jedem Checkout gibt.
+      #
+      # Ein Ordner und keine einzelne Datei: TestFlight und CI bauen ohne Bild,
+      # und eine fehlende Datei in den Ressourcen bricht den Bau ab -- auch mit
+      # xcodegens optional, das nur das Erzeugen nicht stoert. Ein Ordner wird
+      # mit dem kopiert, was gerade darin liegt.
+      #
+      # Innerhalb des Projektordners und nicht unter ../../build-visionos: fuer
+      # Pfade ausserhalb baut xcodegen Gruppen aus dem NAMEN des Checkout-
+      # Ordners, und die Projektdatei saehe in jedem Checkout anders aus.
+      - path: Generated
+        type: folder
+        buildPhase: resources
       - path: en.lproj/InfoPlist.strings
         buildPhase: resources
       - path: de.lproj/InfoPlist.strings
@@ -84,6 +101,11 @@ targets:
     settings:
       base:
         PRODUCT_NAME: JKXR
+
+        # Welches Spiel die App fest traegt (Info.plist JKXRGame, Spiel.fest):
+        # leer heisst beide. AVP Play setzt "outcast" oder "academy" auf der
+        # Kommandozeile von xcodebuild; hier bleibt es leer.
+        JKXR_GAME: ""
         # Der Name unter dem Symbol. Bewusst das Kuerzel und nicht der
         # ausgeschriebene Titel: unter dem Symbol stehen ohnehin nur rund
         # zwoelf Zeichen, und derselbe Name steht im App Store.

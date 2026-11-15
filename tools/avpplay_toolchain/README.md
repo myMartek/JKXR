@@ -11,9 +11,17 @@ its own kind (`jkxr`), as described in AVP Play's `docs/recipes.md` under "A too
 | --- | --- | --- |
 | `visionos/run.sh device` | builds and installs; success is exit 0 and the line `BUILD SUCCEEDED` | `prepare-visionos.sh`, then `xcodebuild` with the player's team and bundle id, then `devicectl` |
 | `visionos/stage_sync.py` | copies a recipe's game and runtime trees | nothing: JKXR has neither (see below) |
-| `visionos/targets.py` | reads the target's row | `jkxr`, kind `jkxr` |
+| `visionos/targets.py` | reads the target's row | `jkxr-outcast` and `jkxr-academy`, kind `jkxr` |
 | `visionos/gen_xcodeproj.py` | looks for the names of the build options a toolchain supports | names only what `run.sh` honours |
 | `toolchain.json` | version, commit, ancestors, kind | written by `make_manifest.py` (git-ignored) |
+
+## Two targets, two apps
+
+One target per game, so that each game is its own tile in AVP Play and its own app on the headset: someone who
+owns only one of them installs only that one. Both are built from the same checkout. The target's `game` is
+written into the app (`Info.plist`, `JKXRGame`), which then opens on a start card for that game alone; the
+picture on that card is the one AVP Play takes from the player's own library and hands to the build. The
+TestFlight build leaves `JKXRGame` empty and carries both games, as before.
 
 ## The games' data
 
@@ -52,7 +60,7 @@ out. Its profiles run out after seven days; AVP Play signs installed games again
 ```sh
 python3 tools/avpplay_toolchain/make_manifest.py
 avpplay toolchain use jkxr --toolchain "$PWD/tools/avpplay_toolchain"
-avpplay install jkxr --team <team ID>
+avpplay install jkxr-outcast --team <team ID>
 ```
 
 The checkout's path must not contain a blank.

@@ -102,11 +102,10 @@ struct JKXRApp: App {
         WindowGroup {
             ContentView()
         }
-        // Hoeher als frueher: unter dem Dateistatus stehen jetzt die Zusaetze --
-        // je Mod eine Zeile, dazu der Schalter fuer die Texturgroesse. Mit 480
-        // schnitt das ab. Der Inhalt rollt zusaetzlich (ContentView), damit auch
-        // ein dritter Zusatz nicht wieder anstoesst.
-        .defaultSize(width: 700, height: 820)
+        // Das Mass des Startfensters aller Spiele, die AVP Play baut (Skyrim VR:
+        // VXApp.swift). Vorn steht jetzt die Startkarte, quer; Dateien,
+        // Texturen und Controller liegen hinter „Einstellungen“ und rollen dort.
+        .defaultSize(width: 900, height: 640)
 
         ImmersiveSpace(id: "game") {
             CompositorLayer(configuration: JKXRLayerConfiguration()) { layerRenderer in

@@ -342,3 +342,6 @@ fastlane/test_output/
 tools/avpplay_toolchain/toolchain.json
 tools/avpplay_toolchain/visionos/build/
 tools/avpplay_toolchain/visionos/Assets.xcassets/
+# Was ein Bau in den App-Ordner legt (das Startbild von AVP Play) -- nie einchecken.
+visionos/App/Generated/*
+!visionos/App/Generated/.gitkeep

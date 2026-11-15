@@ -12,6 +12,7 @@
 		368A53BEA92B4E1DAE469734 /* WorldTracking.m in Sources */ = {isa = PBXBuildFile; fileRef = 40E4386F40A16FF2D112B627 /* WorldTracking.m */; };
 		40BC6F5041D521B791E3FE53 /* AngleBridge.c in Sources */ = {isa = PBXBuildFile; fileRef = F7BEE25D9141AD2B40FB361E /* AngleBridge.c */; };
 		48E72E6BE2FF69EF8918EAB3 /* libGLESv2.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = FA12E523E340FEA71E6FA7C0 /* libGLESv2.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		4D4AA25A7F8D1D02D04F94EA /* Generated in Resources */ = {isa = PBXBuildFile; fileRef = 541DECF268095963E776ED68 /* Generated */; };
 		7197778DD14A550DC4626FC1 /* libEGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 63D4B8E4A26A48D82F8DCE60 /* libEGL.framework */; };
 		78CA5C5899D378FF4C88CE1D /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47635BCC2BCC1CC1C5751D4 /* ContentView.swift */; };
 		78D555D5C95FDB660899D176 /* libEGL.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 63D4B8E4A26A48D82F8DCE60 /* libEGL.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -49,6 +50,7 @@
 		33D840871EDE1EC635691BD3 /* AngleBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AngleBridge.h; sourceTree = "<group>"; };
 		40E4386F40A16FF2D112B627 /* WorldTracking.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WorldTracking.m; sourceTree = "<group>"; };
 		459383A965334C7B186876B1 /* DemoWelt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoWelt.swift; sourceTree = "<group>"; };
+		541DECF268095963E776ED68 /* Generated */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Generated; sourceTree = SOURCE_ROOT; };
 		63D4B8E4A26A48D82F8DCE60 /* libEGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = libEGL.framework; path = Frameworks/libEGL.framework; sourceTree = "<group>"; };
 		6EC6D290FF5C38BB4AE6F1E0 /* z_vr_assets_jko.pk3 */ = {isa = PBXFileReference; path = z_vr_assets_jko.pk3; sourceTree = "<group>"; };
 		6F7B01FB19B5941154702D36 /* JKXR-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "JKXR-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -153,6 +155,7 @@
 		BA6D6FC6C97557A917052369 = {
 			isa = PBXGroup;
 			children = (
+				541DECF268095963E776ED68 /* Generated */,
 				E1D8DF2B8C17014435FAB300 /* de.lproj */,
 				60717059EF5696D037F48E07 /* en.lproj */,
 				85BE31EF6CFCA6865835CE04 /* jkxr */,
@@ -280,6 +283,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AC868F8DEF90BEA3B0B633BF /* Assets.xcassets in Resources */,
+				4D4AA25A7F8D1D02D04F94EA /* Generated in Resources */,
 				84B1859DAB6D978E19FDDC56 /* InfoPlist.strings in Resources */,
 				F11369E60922F07CC12DF9DD /* InfoPlist.strings in Resources */,
 				CD6BF3229EB33199BC6E4E30 /* z_vr_assets_base.pk3 in Resources */,
@@ -323,6 +327,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = JKXR;
 				INFOPLIST_KEY_NSWorldSensingUsageDescription = "Head and controller position for playing in the immersive space.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				JKXR_GAME = "";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				OTHER_LDFLAGS = "-Wl,-force_load,$(SRCROOT)/../../build-visionos/gl4es/lib/libGL.a -Wl,-alias_list,$(SRCROOT)/../../build-visionos/gl4es-aliases.txt $(SRCROOT)/../../build-visionos/link/spiel-ja.o $(SRCROOT)/../../build-visionos/link/spiel-jo.o -lz -lc++ -framework AudioToolbox -framework AVFoundation -framework GameController";
 				PRODUCT_NAME = JKXR;
@@ -408,6 +413,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = JKXR;
 				INFOPLIST_KEY_NSWorldSensingUsageDescription = "Head and controller position for playing in the immersive space.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				JKXR_GAME = "";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				OTHER_LDFLAGS = "-Wl,-force_load,$(SRCROOT)/../../build-visionos/gl4es/lib/libGL.a -Wl,-alias_list,$(SRCROOT)/../../build-visionos/gl4es-aliases.txt $(SRCROOT)/../../build-visionos/link/spiel-ja.o $(SRCROOT)/../../build-visionos/link/spiel-jo.o -lz -lc++ -framework AudioToolbox -framework AVFoundation -framework GameController";
 				PRODUCT_NAME = JKXR;
