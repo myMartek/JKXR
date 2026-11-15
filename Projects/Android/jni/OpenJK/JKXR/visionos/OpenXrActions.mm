@@ -172,6 +172,56 @@ extern "C" void TBXR_visionOS_GamepadDpad(int *x, int *y)
     if (y) *y = (hoch && hoch.pressed) ? 1 : ((runter && runter.pressed) ? -1 : 0);
 }
 
+// ---------------------------------------------------------------------------
+// Die beiden Menuetasten und die Leistungsanzeige
+// ---------------------------------------------------------------------------
+
+// Create und Options eine Sekunde zusammen gehalten blenden die
+// Leistungsanzeige ein und aus (visionos/App/Sources/Leistung). Damit das Spiel
+// dabei nicht sein Menue oeffnet, entscheidet die App, was es von beiden Tasten
+// erfaehrt: ein Druck wird eine Viertelsekunde zurueckgehalten, bis klar ist,
+// ob die andere Taste dazukommt.
+extern "C" int JKXR_Leistung_Tasten(bool links, bool rechts, double jetzt);
+
+namespace {
+
+/// Was das Spiel in diesem Bild von den Menuetasten erfaehrt: [0] links
+/// (Create), [1] rechts (Options).
+bool gMenueDurch[2] = { false, false };
+
+/// Die rohe Taste: an den Sense-Controllern "Button Menu" der jeweiligen Hand,
+/// am Gamepad die beiden Pillen (Namen vertauscht, siehe oben).
+GCControllerButtonInput *menueTaste(int hand)
+{
+    if (gGamepadRueckfall) {
+        GCController *c = gControllers[0];
+        return c ? c.physicalInputProfile.buttons[hand == 0 ? @"Button Options" : @"Button Menu"] : nil;
+    }
+    GCController *c = (hand >= 0 && hand < 2) ? gControllers[hand] : nil;
+    return c ? c.physicalInputProfile.buttons[@"Button Menu"] : nil;
+}
+
+void menueTastenAbfragen()
+{
+    GCControllerButtonInput *l = menueTaste(0), *r = menueTaste(1);
+    const int durch = JKXR_Leistung_Tasten(l && l.pressed, r && r.pressed, CACurrentMediaTime());
+    gMenueDurch[0] = (durch & 1) != 0;
+    gMenueDurch[1] = (durch & 2) != 0;
+}
+
+/// Ob `button` eine der beiden Menuetasten ist, und wenn ja, was das Spiel
+/// davon erfaehrt.
+bool menueGefiltert(GCControllerButtonInput *button, bool *gedrueckt)
+{
+    if (!button) return false;
+    for (int hand = 0; hand < 2; ++hand) {
+        if (button == menueTaste(hand)) { *gedrueckt = gMenueDurch[hand]; return true; }
+    }
+    return false;
+}
+
+} // namespace
+
 extern "C" bool TBXR_visionOS_GamepadButton(const char *name)
 {
     if (!gGamepadRueckfall || !name) return false;
@@ -179,7 +229,9 @@ extern "C" bool TBXR_visionOS_GamepadButton(const char *name)
     if (!c) return false;
     GCControllerButtonInput *b =
         c.physicalInputProfile.buttons[[NSString stringWithUTF8String:name]];
-    return b != nil && b.pressed;
+    bool gedrueckt = b != nil && b.pressed;
+    menueGefiltert(b, &gedrueckt);
+    return gedrueckt;
 }
 
 int handIndexForPath(const std::string &path)
@@ -585,6 +637,7 @@ extern "C" XrResult xrSyncActions(XrSession, const XrActionsSyncInfo *)
     // ARKit liefern jederzeit aktuelle Werte; nur die Controllerliste muss
     // aktuell gehalten werden, falls einer dazukommt oder verschwindet.
     TBXR_visionOS_RefreshControllers();
+    menueTastenAbfragen();
     return XR_SUCCESS;
 }
 
@@ -600,7 +653,9 @@ extern "C" XrResult xrGetActionStateBoolean(XrSession, const XrActionStateGetInf
     GCControllerButtonInput *button = buttonFor(action, handForSubaction(action, info->subactionPath));
     if (!button) return XR_SUCCESS;
 
-    state->currentState = button.pressed ? XR_TRUE : XR_FALSE;
+    bool gedrueckt = button.pressed;
+    menueGefiltert(button, &gedrueckt);
+    state->currentState = gedrueckt ? XR_TRUE : XR_FALSE;
     state->isActive = XR_TRUE;
     return XR_SUCCESS;
 }

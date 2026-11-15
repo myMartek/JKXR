@@ -22,6 +22,13 @@ extern "C" void *TBXR_visionOS_GetAccessoryTracking(void) { return nullptr; }
 extern "C" void *TBXR_visionOS_GetSpatialDevice(int hand) { (void)hand; return nullptr; }
 extern "C" void TBXR_visionOS_StartWorldTracking(void) {}
 extern "C" void TBXR_visionOS_StartAccessoryTracking(void) {}
+// Die Leistungsanzeige (Sources/Leistung/Leistungsanzeige.swift): verborgen,
+// und beide Menuetasten gehen unveraendert durch.
+extern "C" bool JKXR_Leistung_Sichtbar(void) { return false; }
+extern "C" void JKXR_Leistung_Bild(void) {}
+extern "C" int JKXR_Leistung_Tasten(bool links, bool rechts, double) { return (links ? 1 : 0) | (rechts ? 2 : 0); }
+extern "C" void JKXR_Leistung_Auge(void *, void *, const float *, const float *, void *,
+                                   double, double, double, double) {}
 
 // BEIDE Tabellen anfassen, sonst prüft der Link nur einen Spielsatz. Genau das
 // soll er ja beantworten: ob Outcast und Academy zusammen ein Programm ergeben.

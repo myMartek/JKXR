@@ -222,6 +222,14 @@ cp_layer_renderer_t gLayerRenderer = nullptr;
 cp_frame_t     gFrame    = nullptr;
 cp_drawable_t  gDrawable = nullptr;
 id<MTLCommandQueue>  gQueue = nil;
+
+// Die Leistungsanzeige (visionos/App/Sources/Leistung/Leistungsanzeige.swift).
+// Definiert in der App; die beiden teil-gelinkten Saetze verweisen nur darauf.
+extern "C" bool JKXR_Leistung_Sichtbar(void);
+extern "C" void JKXR_Leistung_Bild(void);
+extern "C" void JKXR_Leistung_Auge(void *commandBuffer, void *color,
+                                   const float *view, const float *projection,
+                                   void *map, double x, double y, double w, double h);
 id<MTLCommandBuffer> gCommandBuffer = nil;
 
 /// Pro Auge die aus der Drawable importierten GL-Objekte. Sie gelten nur für
@@ -2318,6 +2326,36 @@ void TBXR_submitFrame()
             [enc endEncoding];
         }
     }
+
+    // Die Leistungsanzeige, ueber das fertige Bild beider Augen.
+    //
+    // Gezeichnet wird in der App (visionos/App/Sources/Leistung): ein Quad je
+    // Auge auf gCommandBuffer, durch die Rate-Map des Auges. ANGLE ist zu
+    // diesem Zeitpunkt fuer beide Augen fertig (angle::Finish in
+    // TBXR_finishEyeBuffer), es gibt also kein Rennen zwischen den
+    // Warteschlangen. Solange sie verborgen ist, kostet sie einen Aufruf.
+    if (JKXR_Leistung_Sichtbar()) {
+        const size_t views = cp_drawable_get_view_count(gDrawable);
+        const size_t maps = cp_drawable_get_rasterization_rate_map_count(gDrawable);
+        for (size_t v = 0; v < views; ++v) {
+            id<MTLTexture> color = cp_drawable_get_color_texture(gDrawable, v);
+            if (!color) continue;
+            cp_view_t view = cp_drawable_get_view(gDrawable, v);
+            const simd_float4x4 deviceFromView = cp_view_get_transform(view);
+            const simd_float4x4 projection = cp_drawable_compute_projection(
+                gDrawable, cp_axis_direction_convention_right_up_back, v);
+            id<MTLRasterizationRateMap> map = maps == views
+                ? cp_drawable_get_rasterization_rate_map(gDrawable, v) : nil;
+            const MTLViewport viewport = cp_view_texture_map_get_viewport(
+                cp_view_get_view_texture_map(view));
+            JKXR_Leistung_Auge((__bridge void *)gCommandBuffer, (__bridge void *)color,
+                               (const float *)&deviceFromView, (const float *)&projection,
+                               (__bridge void *)map,
+                               viewport.originX, viewport.originY,
+                               viewport.width, viewport.height);
+        }
+    }
+    JKXR_Leistung_Bild();
 
     cp_drawable_encode_present(gDrawable, gCommandBuffer);
 

@@ -252,6 +252,9 @@ struct ContentView: View {
 
     /// Die gewählte Texturauflösung.
     @AppStorage("jkxr.texturstufe") private var stufeRoh: Int = Texturstufe.standard.rawValue
+
+    /// Ob die Leistungsanzeige schon beim Start des Spiels steht (EngineHost).
+    @AppStorage(Leistungsanzeige.schluessel) private var leistungsanzeige: Bool = false
     private var stufe: Texturstufe { Texturstufe(rawValue: stufeRoh) ?? .standard }
 
     var body: some View {
@@ -685,6 +688,23 @@ struct ContentView: View {
 
                         ControllerStand()
                     }
+
+                    Divider().frame(maxWidth: 460)
+
+                    // Die Leistungsanzeige (Sources/Leistung): wie in jedem Spiel,
+                    // das AVP Play baut, auf Create + Options; hier nur, ob sie
+                    // schon beim Start steht.
+                    Toggle(isOn: $leistungsanzeige) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(Sprache.t("Performance overlay from the start",
+                                           "Leistungsanzeige schon beim Start"))
+                            Text(Sprache.t("In the game, hold Create and Options together for a second to show or hide it.",
+                                           "Im Spiel blendet sie sich ein und aus, wenn man Create und Options eine Sekunde zusammen hält."))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(maxWidth: 460)
 
                     Divider().frame(maxWidth: 460)
 

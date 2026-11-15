@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		02E42E883A6C0669DA6E87DB /* GpuLast.m in Sources */ = {isa = PBXBuildFile; fileRef = 41E83DBB87B4BDDE99F2F7CB /* GpuLast.m */; };
 		155EEDF989C5A376ADC8DBC3 /* z_vr_assets_jka.pk3 in Resources */ = {isa = PBXBuildFile; fileRef = FBBCFC8FE621D48E13EBD479 /* z_vr_assets_jka.pk3 */; };
 		18122BF354D28ADB51F94A63 /* libGLESv2.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FA12E523E340FEA71E6FA7C0 /* libGLESv2.framework */; };
 		368A53BEA92B4E1DAE469734 /* WorldTracking.m in Sources */ = {isa = PBXBuildFile; fileRef = 40E4386F40A16FF2D112B627 /* WorldTracking.m */; };
@@ -16,6 +17,7 @@
 		7197778DD14A550DC4626FC1 /* libEGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 63D4B8E4A26A48D82F8DCE60 /* libEGL.framework */; };
 		78CA5C5899D378FF4C88CE1D /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47635BCC2BCC1CC1C5751D4 /* ContentView.swift */; };
 		78D555D5C95FDB660899D176 /* libEGL.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 63D4B8E4A26A48D82F8DCE60 /* libEGL.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		83EB7E32FF1892589AC3EB05 /* KleptonMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAF566A5DAE97278B05CF7E7 /* KleptonMetrics.swift */; };
 		84B1859DAB6D978E19FDDC56 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 9A6CAA3C243A1F831B8EC237 /* InfoPlist.strings */; };
 		865C43888C7B6CA9FAE9E36A /* DemoWelt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 459383A965334C7B186876B1 /* DemoWelt.swift */; };
 		8D3854770BF2383E1D7A9D46 /* z_vr_assets_jko.pk3 in Resources */ = {isa = PBXBuildFile; fileRef = 6EC6D290FF5C38BB4AE6F1E0 /* z_vr_assets_jko.pk3 */; };
@@ -23,6 +25,7 @@
 		AC868F8DEF90BEA3B0B633BF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FED42145EED052145A239D27 /* Assets.xcassets */; };
 		BCEEB8B7CE0E2A32AC9FF1E8 /* EngineHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06BB71B3A0F665691FF899FB /* EngineHost.swift */; };
 		CD6BF3229EB33199BC6E4E30 /* z_vr_assets_base.pk3 in Resources */ = {isa = PBXBuildFile; fileRef = A80259B3E1C8BD9D6820BB98 /* z_vr_assets_base.pk3 */; };
+		CF78C3B8376911C52C6F4EC1 /* Leistungsanzeige.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2CB067F23561FFAD8291775 /* Leistungsanzeige.swift */; };
 		D7D7EF00F6C052A3F2BCC96C /* SpielWahl.c in Sources */ = {isa = PBXBuildFile; fileRef = 75DB998F042F5F877FD8C325 /* SpielWahl.c */; };
 		F11369E60922F07CC12DF9DD /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = CA42B53AFDBDBF7DC79DF2F0 /* InfoPlist.strings */; };
 		FE04998D8653339058EDA0AB /* JKXRApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12FC913F54114EA867076FDC /* JKXRApp.swift */; };
@@ -49,6 +52,7 @@
 		1EDE62CF80416222717806B1 /* Zusaetze.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Zusaetze.swift; sourceTree = "<group>"; };
 		33D840871EDE1EC635691BD3 /* AngleBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AngleBridge.h; sourceTree = "<group>"; };
 		40E4386F40A16FF2D112B627 /* WorldTracking.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WorldTracking.m; sourceTree = "<group>"; };
+		41E83DBB87B4BDDE99F2F7CB /* GpuLast.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GpuLast.m; sourceTree = "<group>"; };
 		459383A965334C7B186876B1 /* DemoWelt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoWelt.swift; sourceTree = "<group>"; };
 		541DECF268095963E776ED68 /* Generated */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Generated; sourceTree = SOURCE_ROOT; };
 		63D4B8E4A26A48D82F8DCE60 /* libEGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = libEGL.framework; path = Frameworks/libEGL.framework; sourceTree = "<group>"; };
@@ -56,11 +60,14 @@
 		6F7B01FB19B5941154702D36 /* JKXR-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "JKXR-Bridging-Header.h"; sourceTree = "<group>"; };
 		75DB998F042F5F877FD8C325 /* SpielWahl.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = SpielWahl.c; sourceTree = "<group>"; };
 		959BE1DE7DBFE94ACDC8E10F /* JKXR.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = JKXR.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		959C4DC76046819819ECC91B /* GpuLast.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GpuLast.h; sourceTree = "<group>"; };
 		9A6CAA3C243A1F831B8EC237 /* InfoPlist.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = InfoPlist.strings; sourceTree = "<group>"; };
 		A80259B3E1C8BD9D6820BB98 /* z_vr_assets_base.pk3 */ = {isa = PBXFileReference; path = z_vr_assets_base.pk3; sourceTree = "<group>"; };
+		BAF566A5DAE97278B05CF7E7 /* KleptonMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KleptonMetrics.swift; sourceTree = "<group>"; };
 		CA42B53AFDBDBF7DC79DF2F0 /* InfoPlist.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = InfoPlist.strings; sourceTree = "<group>"; };
 		E47635BCC2BCC1CC1C5751D4 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		EF7A3D96492B916A30A6FE3E /* JKXRBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = JKXRBridge.h; sourceTree = "<group>"; };
+		F2CB067F23561FFAD8291775 /* Leistungsanzeige.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Leistungsanzeige.swift; sourceTree = "<group>"; };
 		F7BEE25D9141AD2B40FB361E /* AngleBridge.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = AngleBridge.c; sourceTree = "<group>"; };
 		FA12E523E340FEA71E6FA7C0 /* libGLESv2.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = libGLESv2.framework; path = Frameworks/libGLESv2.framework; sourceTree = "<group>"; };
 		FBBCFC8FE621D48E13EBD479 /* z_vr_assets_jka.pk3 */ = {isa = PBXFileReference; path = z_vr_assets_jka.pk3; sourceTree = "<group>"; };
@@ -87,6 +94,15 @@
 				FBBCFC8FE621D48E13EBD479 /* z_vr_assets_jka.pk3 */,
 			);
 			path = base;
+			sourceTree = "<group>";
+		};
+		4A0F35D9D6888B12DBAA637E /* Leistung */ = {
+			isa = PBXGroup;
+			children = (
+				BAF566A5DAE97278B05CF7E7 /* KleptonMetrics.swift */,
+				F2CB067F23561FFAD8291775 /* Leistungsanzeige.swift */,
+			);
+			path = Leistung;
 			sourceTree = "<group>";
 		};
 		60717059EF5696D037F48E07 /* en.lproj */ = {
@@ -128,6 +144,8 @@
 			children = (
 				F7BEE25D9141AD2B40FB361E /* AngleBridge.c */,
 				33D840871EDE1EC635691BD3 /* AngleBridge.h */,
+				959C4DC76046819819ECC91B /* GpuLast.h */,
+				41E83DBB87B4BDDE99F2F7CB /* GpuLast.m */,
 				6F7B01FB19B5941154702D36 /* JKXR-Bridging-Header.h */,
 				EF7A3D96492B916A30A6FE3E /* JKXRBridge.h */,
 				75DB998F042F5F877FD8C325 /* SpielWahl.c */,
@@ -178,6 +196,7 @@
 			children = (
 				DA5C2726D5C4EC7B030C9990 /* App */,
 				8D57E08DA9B72859CF418ED7 /* Bridge */,
+				4A0F35D9D6888B12DBAA637E /* Leistung */,
 				A698F2DEE10066241CC86EBA /* Resources */,
 			);
 			path = Sources;
@@ -303,7 +322,10 @@
 				78CA5C5899D378FF4C88CE1D /* ContentView.swift in Sources */,
 				865C43888C7B6CA9FAE9E36A /* DemoWelt.swift in Sources */,
 				BCEEB8B7CE0E2A32AC9FF1E8 /* EngineHost.swift in Sources */,
+				02E42E883A6C0669DA6E87DB /* GpuLast.m in Sources */,
 				FE04998D8653339058EDA0AB /* JKXRApp.swift in Sources */,
+				83EB7E32FF1892589AC3EB05 /* KleptonMetrics.swift in Sources */,
+				CF78C3B8376911C52C6F4EC1 /* Leistungsanzeige.swift in Sources */,
 				D7D7EF00F6C052A3F2BCC96C /* SpielWahl.c in Sources */,
 				368A53BEA92B4E1DAE469734 /* WorldTracking.m in Sources */,
 				938C4E00ADF9428B38515ADD /* Zusaetze.swift in Sources */,

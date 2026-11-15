@@ -30,6 +30,10 @@ final class EngineHost {
     func start() {
         TBXR_visionOS_StartWorldTracking()
 
+        // Die Leistungsanzeige steht zu Beginn jedes Laufs so, wie es die
+        // Einstellung sagt; Create + Options schaltet sie danach um.
+        Leistungsanzeige.shared.setVisible(UserDefaults.standard.bool(forKey: Leistungsanzeige.schluessel), why: "setting")
+
         // Herzschlag auf einem eigenen Thread.
         //
         // Wird der Prozess mit SIGKILL beendet, sagt die verstrichene Zeit,
