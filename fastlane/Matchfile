@@ -1,4 +1,11 @@
-git_url(ENV.fetch("MATCH_GIT_URL", "ssh://git@git.wlotzka.org:30001/martek/fastlanematch.git"))
+# Die Adresse des Zertifikatsspeichers steht NICHT im Quelltext.
+#
+# Sie ist kein Passwort -- der Zugang haengt am SSH-Schluessel --, nennt aber
+# Host, Port und Pfad einer privaten Infrastruktur. In einem oeffentlichen Repo
+# ist das eine Einladung zum Abklopfen.
+#
+# Gesetzt in fastlane/.env.local (lokal) und als CI/CD-Variable (Runner).
+git_url(ENV.fetch("MATCH_GIT_URL"))
 
 storage_mode("git")
 
