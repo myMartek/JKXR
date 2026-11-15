@@ -1,175 +1,90 @@
-![JKXR Banner](https://github.com/DrBeef/JKXR/blob/main/assets/JKXRGithub.jpg)
-===
+# JKXR for Apple Vision Pro
 
-# JK XR
+A native visionOS port of [JKXR](https://github.com/Team-Beef-Studios/JKXR) by Team Beef – the open-source engine,
+based on [OpenJK](https://github.com/JACoders/OpenJK), that brings two first-person action classics of the early
+2000s (SW:JK) to virtual reality. This fork takes it to Apple Vision Pro as a fully immersive app: not a window you
+look at, but a world you stand in.
 
-[SideQuest Latest Version (Meta Headsets)](https://sidequestvr.com/app/15472)
+> **No game files are included.** This is an engine port. To play, you need your own copies of *Jedi Outcast*
+> and/or *Jedi Academy*, for example from Steam. The app tells you exactly which files it is missing.
 
-[SideQuest Latest Version (Pico Headsets)](https://sidequestvr.com/app/15541)
+For Meta Quest, Pico and PC VR, use [Team Beef's original](https://github.com/Team-Beef-Studios/JKXR).
 
-[PCVR Installers (found on the latest release here)](https://github.com/DrBeef/JKXR/releases)
+## What this fork adds
 
-JK XR is a VR port of the Jedi Knight games using OpenXR (the open standard for virtual and augmented reality devices) and is based on the excellent OpenJK port, originally forked from: https://github.com/JACoders/OpenJK
+- **A native visionOS app.** Rendered per eye through Compositor Services from the live head pose, foveated, at the
+  device's full resolution rather than into a downscaled buffer.
+- **Both games in one app**, chosen in the launcher window.
+- **PlayStation VR2 Sense controllers**, each tracked on its own with position, orientation and handedness. A
+  standard game controller works as well; then you aim by looking.
+- **Room-scale play.** Aim by pointing, lean around corners, duck under things that are really above you. The melee
+  weapon follows your hand one to one.
+- **Menus, briefings and cut-scenes** sit on a panel anchored in the room instead of being pinned to your face, and
+  reappear in front of you whenever you open them.
+- **Rendering on Metal.** The engine's OpenGL is translated through [gl4es](https://github.com/ptitSeb/gl4es) and
+  [ANGLE](https://chromium.googlesource.com/angle/angle).
 
+## Game files
 
-The easiest way to install this on your device is using SideQuest. Download SideQuest here:
-https://sidequestvr.com/setup-howto
+Copy the original data files from your installation into the app's folder, using the Files app on the headset:
 
+| Game | Files | Folder in the app |
+|---|---|---|
+| Jedi Outcast | `assets0.pk3`, `assets1.pk3`, `assets2.pk3`, `assets5.pk3` | `JediOutcast/base` |
+| Jedi Academy | `assets0.pk3` … `assets3.pk3` | `JediAcademy/base` |
 
+The launcher window shows for each game whether its files are complete.
 
-### Jedi Knight: Jedi Outcast / Jedi Academy
+## Building
 
-The public release of JK XR now supports the games Jedi Outcast and Jedi Academy.
+You need a Mac with Xcode and the visionOS SDK (visionOS 26.4 or later on the device), and two tools from Homebrew:
 
-## Team Beef Patreon
-[![Team Beef Patreon](https://github.com/DrBeef/JKXR/blob/main/assets/PatreonBanner.jpg)](https://www.patreon.com/teambeef)
+```sh
+brew install cmake xcodegen
+```
 
-The Team Beef Patreon where you can find all the in-development early-access builds other active Team Beef projects.
+Set your own development team in `visionos/App/project.yml` (`DEVELOPMENT_TEAM`), then:
 
+```sh
+./prepare-visionos.sh
+```
 
-## Gameplay and VR Features
+This builds gl4es, the engines for both games, the partially linked objects the app is made from, and the Xcode
+project. The first run takes about 45 minutes. Open `visionos/App/JKXR.xcodeproj` afterwards and run it on your
+Vision Pro.
 
-### VR Features
+**After changing engine code**, rebuild in this order:
 
-* New Fully Modelled VR Weapons
-* Full Motion Controlled Light Saber
-* Real Collision based Laser Deflections
-* Weapon / Force wheels 
-* Gesture Based Use / Interact
-* Gesture based Force Actions (Push, Pull and Grab)
-* Weapon Scopes
-* Gesture Based Saber Throw 
-* Companion App
+```sh
+cmake --build visionos/build
+./link-visionos.sh
+```
 
-### Gameplay Modes (accessible via Setup -> Difficulty in the Menu)
-
-**Team Beef Directors Cut (TBDC) - On (Default is On)**
-This version uses faithful enemy speeds and aggression from the original game, which are fast and challenging by modern standards. To balance this projectile speeds and gun power are raised to feel more canon to the Star Wars movies and prevent Stormtroopers and other enemies from being able to avoid gunfire by strafing. There are also exaggerated knockback effects. This mode is more arcade-y fast paced affair whilst feeling similar to the difficulty level of the twitch-based gameplay of the original game. 
-
-**Team Beef Directors Cut (TBDC) - Off**
-Projectile speeds are faithful to the original game, but enemy movement and aggression are toned back, where stormtroopers don't have an easy time to flank you. You may need to still "lead" shots slightly ahead of enemies when they are on the move. Recommended for a slower paced tactical encounter
-
-To switch between modes change the option and if already in-game, restart the level you are on.
-
-### Companion App
-
-The companion app will be installed at the same time when using the SideQuest official page. This allows you to download mods and addons and switch between launching single player missions and the main game. This also detects if you've correctly set up the main application and asset files so is a good place to look if you are having issues. 
-
-![image](https://user-images.githubusercontent.com/4569081/230429909-2df64bb6-e200-496f-ba5f-bda763539de0.png)
-
-
-## IMPORTANT NOTE
-
-*This is just an engine port*; the apk does not contain any of the of Jedi Knight game assets. If you wish to play the full game you must purchase it yourself, steam is most straightforward:  https://store.steampowered.com/app/6030/STAR_WARS_Jedi_Knight_II__Jedi_Outcast/
-
-# Installation and Setup
-
-You can find the latest version, which also includes the Companion App hosted on Sidequest. Use the links at the top of the page (separated by headset). Before installing via SideQuest you must have enabled "Developer Mode" on your headset. You can find the details on how to do that below:
-
-Pico 3/4 Instructions
----------------------
-https://trello.com/c/Idb627uv/47-pico-4-installation-instructions
-
-Meta Quest Install Instructions
--------------------------------
-https://trello.com/c/C0YTFpvX/48-quest-quest-2-installation-instructions
-
-PCVR
-----
-Download the PCVR installers from the release page and use them to install to the game location.
-
-### OpenXR runtimes information for PCVR Headsets
-
-We recommend the following combinations to get the optimal experience while playing JKXR on PCVR:
-
-**Valve Index** -> Via SteamVR (SteamVR OpenXR Runtime)
-
-**HTC Vive** -> Via SteamVR (SteamVR OpenXR Runtime)
-
-**Meta Headsets** -> Link / Airlink (Oculus OpenXR Runtime) / SteamLink / Virtual Desktop (VDXR or SteamVR)
-
-**Windows Mixed Reality (WMR) Devices** (I.e. HP G2) -> Make sure you set the SteamVR to be the default OpenXR runtime. 
-
-**Pimax** -> Currently unplayable. We have been in discussions with Pimax and there is a new PimaxPlay that fixes the issues (upside down screens). 
-When released the game must be played via unofficial PimaxXR OpenXR runtime (https://github.com/mbucchia/Pimax-OpenXR). Do not play via SteamVR OpenXR runtime
-
-**Pico** - Virtual Desktop (VDXR or SteamVR) / Streaming Assistant (Currently Untested)
-
-**LINUX SUPPORT** -> If you wish to play on Linux, then someone has created a build with Linux support:  https://github.com/Patola/JKXR
-
-
-## Copying the Full Game files to your Meta Quest / Pico
-
-Before you are able to run the full game of Jedi Knight: Jedi Outcast in VR you will need to:
-
-- Install JK XR thought SideQuest (this will also install the companion app)
-- Start JK XR for the first time, it will ask for appropriate permissions (which you must allow), create the necessary folders and then close down
-- You can now run the Companion App. This will check that it has the files for the full game. 
-- Copy only the assets files (assets0.pk3, assets1.pk3, assets2.pk3, assets5.pk3) from your PC install of JKO (Jedi Outcast\GameData\base) into the following folder on your device:
-
-\JKXR\JK2\base
-
-or 
-
-\JKXR\JK3\base
-
-
-- You must then use the Companion App to download any mods and start the game. It is possible to play the JK Demo without having copied across the full game assets. All other mods require the full game. 
-
-
-### Save Games File
-
-Save game files are stored on the internal memory of your device. This means that if you uninstall/reinstall JK XR all the saves are retained. If you change headset just make sure you copy your saves to the new device.
-Any update will not affect any of your save game files.
-
-
-## Controls and configuration
-
-### Tutorials 
-
-You can find tutorial videos on how to use the special VR features in the in-game Controls -> JKXR HELP menu. 
-
-![image](https://user-images.githubusercontent.com/4569081/230427577-59d77ff2-b960-4817-bbcd-d7722dcd1ead.png)
-
-### Control Scheme
-
-This control scheme on how to play can also be found in the Controls -> JKXR HELP in the game.
-
-![Control Scheme](https://github.com/DrBeef/JKXR/blob/main/z_vr_assets_base/gfx/menus/control_scheme.jpg)
-
-
-
-
-
-## Building from Source
-
-If you wish to build JK XR from source, then you need the following:
-
-* Android Developer Studio
-* Android SDK API level 24
-* Latest Android Native Development Kit
-* The OpenXR release archive for your headset
-
-There is no dependency on any specific headset native libraries, as this port uses OpenXR and links against the opensource Android openxr_loader.so. If you wish to build for a specific headset, then you need to place the openxr_loader.so for the headset into the following folder and rename it to:  openxr_loader_{device}.so  where {device} is either *meta* or *pico* (further device support hopefully in the future):
-
-JKXR\Projects\Android\libs\arm64-v8a
-
-
-PCVR instructions will follow in the future (when I get round to adding them), 
+and only then build the app in Xcode. The app links the objects that `link-visionos.sh` produces, not the
+libraries `cmake` builds – skip that step and Xcode still reports success, with the old engine inside.
 
 ## Credits
 
-* Team Beef are DrBeef,  Baggyg,  Bummser
-* Lead programmer: DrBeef
-* JKXR Companion App: BaggyG
-* Additional Development Contributions: MuadDib, BaggyG
-* VR Compatible Weapon Models: Vince Crusty  and  Elin
-* VR Compatible Hand Models: LennyGuy20
+This fork:
 
-With Special Thanks to: Team Beef patrons, all Team Beef discord members, 
-the OpenJK Development Team and Raven Software for
-creating and open-sourcing these wonderful games
+- visionOS port: Marcel Wlotzka
 
-## DISCLAIMER
+JKXR, from Team Beef's original:
+
+- Team Beef are DrBeef, Baggyg, Bummser
+- Lead programmer: DrBeef
+- JKXR Companion App: BaggyG
+- Additional development contributions: MuadDib, BaggyG
+- VR-compatible weapon models: Vince Crusty and Elin
+- VR-compatible hand models: LennyGuy20
+
+With special thanks to Team Beef's patrons and Discord members, the OpenJK development team, and Raven Software
+for creating these games and releasing their engine source.
+
+## Licence
+
+GPLv2, like JKXR and OpenJK – see [LICENSE.txt](LICENSE.txt).
+
+## Disclaimer
 
 THIS ENGINE PORT IS NOT MADE, DISTRIBUTED, OR SUPPORTED BY ACTIVISION PUBLISHING, INC., RAVEN SOFTWARE, OR LUCASARTS ENTERTAINMENT COMPANY, LLC. ELEMENTS™ & © LUCASFILM LTD.™ & DISNEY, INC.™ AND/OR ITS LICENSORS. STAR WARS®, JEDI®, & JEDI KNIGHT® ARE REGISTERED TRADEMARKS OF LUCASFILM LTD™ AND WALT DISNEY, INC.™ STAR WARS®, JEDI®, & JEDI KNIGHT® ARE REGISTERED TRADEMARKS OF LUCASFILM LTD™ & DISNEY, INC.™
