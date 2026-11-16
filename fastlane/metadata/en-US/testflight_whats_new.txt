@@ -3,17 +3,25 @@ and fixes several annoying bugs.
 
 NEW
 
+• New start window: up front there are now just the two games to start. Game
+  files, textures and controllers are under Settings.
+
+• Performance panel: in the game, hold Create and Options together for a
+  second to see frame rate, GPU and CPU load, memory and heat, plus a graph of
+  the last minute. The same move hides it again. In Settings you can have it
+  on from the start.
+
 • Play with a gamepad: You no longer need spatial controllers. Pair a standard
   controller pad and you are ready to go. You aim by looking and fire with R2.
   Switch weapons with the d-pad while holding R1 — and powers the same way with
   L1.
 
-• Sharper textures: The launcher window now lets you choose between normal
+• Sharper textures: Settings now let you choose between normal
   resolution, 2x and 4x. The app downloads the matching package for you. 4x is
   very large and still an experiment — please tell us whether your game stays
   stable with it.
 
-• The launcher shows your controllers: At the bottom of the window you can now
+• The app shows your controllers: In Settings you can now
   see which controllers the system recognises. If yours are not working, a
   screenshot of that line helps us a great deal.
 

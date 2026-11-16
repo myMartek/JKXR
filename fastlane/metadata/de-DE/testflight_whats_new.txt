@@ -3,17 +3,26 @@ Texturen nachladen, und mehrere ärgerliche Fehler sind behoben.
 
 NEU
 
+• Neues Startfenster: Vorn stehen jetzt nur noch die beiden Spiele zum
+  Starten. Spieldateien, Texturen und Controller findest du unter
+  „Einstellungen“.
+
+• Leistungsanzeige: Halte im Spiel Create und Options eine Sekunde zusammen
+  gedrückt. Dann siehst du Bildrate, GPU- und CPU-Last, Speicher und Wärme,
+  dazu den Verlauf der letzten Minute. Dieselbe Bewegung blendet sie wieder
+  aus. In den Einstellungen kann sie schon beim Start eingeschaltet sein.
+
 • Spielen mit Gamepad: Du brauchst keine räumlichen Controller mehr. Koppel ein
   handelsübliches Controller-Pad, und es geht los. Gezielt wird mit dem Blick,
   gefeuert mit R2. Waffen wechselst du mit dem Steuerkreuz, während du R1
   gedrückt hältst — für Kräfte genauso mit L1.
 
-• Schärfere Texturen: Im Startfenster kannst du zwischen der normalen
+• Schärfere Texturen: In den Einstellungen kannst du zwischen der normalen
   Auflösung, 2× und 4× wählen. Die passenden Pakete lädt die App selbst
   herunter. 4× ist sehr groß und noch ein Versuch — sag uns, ob dein Spiel
   damit stabil bleibt.
 
-• Startfenster zeigt deine Controller: Unten im Fenster steht jetzt, welche
+• Die App zeigt deine Controller: In den Einstellungen steht jetzt, welche
   Controller das System erkennt. Falls deine nicht funktionieren, hilft uns ein
   Bildschirmfoto dieser Zeile sehr weiter.
 
