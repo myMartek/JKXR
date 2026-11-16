@@ -23,6 +23,10 @@ written into the app (`Info.plist`, `JKXRGame`), which then opens on a start car
 picture on that card is the one AVP Play takes from the player's own library and hands to the build. The
 TestFlight build leaves `JKXRGame` empty and carries both games, as before.
 
+The app icon is AVP Play's too, where it made one (`Assets.xcassets/AppIcon-<target>.solidimagestack`): `run.sh`
+puts it into `visionos/App/Sources/Resources/Spielicon.xcassets`, which is checked in empty, and names it the app
+icon on the command line. Without one, the app keeps JKXR's icon.
+
 ## The games' data
 
 They never pass through this toolchain. In the recipe they are two trees of the role `data`, one per game, each

@@ -127,6 +127,19 @@ if [ -f "$HERO" ]; then cp "$HERO" "$GEN/StartHero.png" || die "cannot copy the 
 # Xcode copies a folder reference when the folder's own date changes, not when a file in it does.
 touch "$GEN"
 
+# The game's icon, as AVP Play made it (a custom image, the Steam library's, or the game's own icon from Steam) in
+# three layers. It goes into an asset catalog of its own that is checked in empty (Spielicon.xcassets) and is made
+# the app icon on the command line; without one the app keeps JKXR's icon. Anew each time, as the picture above.
+ICONSET="$HERE/Assets.xcassets/AppIcon-$TARGET.solidimagestack"
+ICONCAT="$REPO/visionos/App/Sources/Resources/Spielicon.xcassets"
+rm -rf "$ICONCAT/AppIconAVP.solidimagestack" || die "cannot prepare $ICONCAT"
+ICONARG=""
+if [ -d "$ICONSET" ]; then
+  cp -R "$ICONSET" "$ICONCAT/AppIconAVP.solidimagestack" || die "cannot copy the icon"
+  ICONARG="ASSETCATALOG_COMPILER_APPICON_NAME=AppIconAVP"
+  say "== $TARGET: icon from AVP Play"
+fi
+
 # Both games' engines, the partially linked objects the app is made from, and the Xcode project. prepare skips gl4es
 # when it is built, and cmake rebuilds only what changed, so the second game's build is quick.
 say "== $TARGET: building the engines of both games (the first time about 45 minutes) ..."
@@ -140,6 +153,7 @@ set -- -project "$REPO/visionos/App/JKXR.xcodeproj" -scheme JKXR -configuration 
   -destination "generic/platform=visionOS" -derivedDataPath "$DD" -allowProvisioningUpdates \
   "DEVELOPMENT_TEAM=$TEAM" "PRODUCT_BUNDLE_IDENTIFIER=$BUNDLE" CODE_SIGN_STYLE=Automatic \
   "INFOPLIST_KEY_CFBundleDisplayName=$NAME" "JKXR_GAME=$GAME"
+[ -z "$ICONARG" ] || set -- "$@" "$ICONARG"
 [ -z "${KLEPTON_APP_VERSION:-}" ] || set -- "$@" "MARKETING_VERSION=$KLEPTON_APP_VERSION"
 [ -z "${KLEPTON_APP_BUILD:-}" ] || set -- "$@" "CURRENT_PROJECT_VERSION=$KLEPTON_APP_BUILD"
 

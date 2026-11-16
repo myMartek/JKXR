@@ -21,6 +21,7 @@
 		84B1859DAB6D978E19FDDC56 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 9A6CAA3C243A1F831B8EC237 /* InfoPlist.strings */; };
 		865C43888C7B6CA9FAE9E36A /* DemoWelt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 459383A965334C7B186876B1 /* DemoWelt.swift */; };
 		8D3854770BF2383E1D7A9D46 /* z_vr_assets_jko.pk3 in Resources */ = {isa = PBXBuildFile; fileRef = 6EC6D290FF5C38BB4AE6F1E0 /* z_vr_assets_jko.pk3 */; };
+		8FBBC9FBA9DAD0793B83C8BB /* Spielicon.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2508773C156663FEA064960B /* Spielicon.xcassets */; };
 		938C4E00ADF9428B38515ADD /* Zusaetze.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EDE62CF80416222717806B1 /* Zusaetze.swift */; };
 		AC868F8DEF90BEA3B0B633BF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FED42145EED052145A239D27 /* Assets.xcassets */; };
 		BCEEB8B7CE0E2A32AC9FF1E8 /* EngineHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06BB71B3A0F665691FF899FB /* EngineHost.swift */; };
@@ -50,6 +51,7 @@
 		06BB71B3A0F665691FF899FB /* EngineHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineHost.swift; sourceTree = "<group>"; };
 		12FC913F54114EA867076FDC /* JKXRApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JKXRApp.swift; sourceTree = "<group>"; };
 		1EDE62CF80416222717806B1 /* Zusaetze.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Zusaetze.swift; sourceTree = "<group>"; };
+		2508773C156663FEA064960B /* Spielicon.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Spielicon.xcassets; sourceTree = "<group>"; };
 		33D840871EDE1EC635691BD3 /* AngleBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AngleBridge.h; sourceTree = "<group>"; };
 		40E4386F40A16FF2D112B627 /* WorldTracking.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WorldTracking.m; sourceTree = "<group>"; };
 		41E83DBB87B4BDDE99F2F7CB /* GpuLast.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GpuLast.m; sourceTree = "<group>"; };
@@ -158,6 +160,7 @@
 			isa = PBXGroup;
 			children = (
 				FED42145EED052145A239D27 /* Assets.xcassets */,
+				2508773C156663FEA064960B /* Spielicon.xcassets */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -305,6 +308,7 @@
 				4D4AA25A7F8D1D02D04F94EA /* Generated in Resources */,
 				84B1859DAB6D978E19FDDC56 /* InfoPlist.strings in Resources */,
 				F11369E60922F07CC12DF9DD /* InfoPlist.strings in Resources */,
+				8FBBC9FBA9DAD0793B83C8BB /* Spielicon.xcassets in Resources */,
 				CD6BF3229EB33199BC6E4E30 /* z_vr_assets_base.pk3 in Resources */,
 				155EEDF989C5A376ADC8DBC3 /* z_vr_assets_jka.pk3 in Resources */,
 				8D3854770BF2383E1D7A9D46 /* z_vr_assets_jko.pk3 in Resources */,

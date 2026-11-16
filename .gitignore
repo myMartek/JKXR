@@ -40,6 +40,8 @@ Projects/Android/.cxx/*
 # Und die oberste dazu: ** verlangt mindestens eine Ordnerebene, die
 # Contents.json direkt in Assets.xcassets faellt also durch die Regel darueber.
 !visionos/App/Sources/Resources/Assets.xcassets/Contents.json
+# Der Katalog fuer das Spiel-Icon aus AVP Play: leer eingecheckt (run.sh).
+!visionos/App/Sources/Resources/Spielicon.xcassets/Contents.json
 
 # Ebenso die Merkmalslisten von ANGLE.
 #
@@ -345,3 +347,6 @@ tools/avpplay_toolchain/visionos/Assets.xcassets/
 # Was ein Bau in den App-Ordner legt (das Startbild von AVP Play) -- nie einchecken.
 visionos/App/Generated/*
 !visionos/App/Generated/.gitkeep
+
+# The game's icon AVP Play hands to the build (tools/avpplay_toolchain/visionos/run.sh); the catalog itself is checked in empty.
+visionos/App/Sources/Resources/Spielicon.xcassets/AppIconAVP.solidimagestack/
