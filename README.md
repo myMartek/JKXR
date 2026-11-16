@@ -14,7 +14,10 @@ For Meta Quest, Pico and PC VR, use [Team Beef's original](https://github.com/Te
 
 - **A native visionOS app.** Rendered per eye through Compositor Services from the live head pose, foveated, at the
   device's full resolution rather than into a downscaled buffer.
-- **Both games in one app**, chosen in the launcher window.
+- **Both games**: in one app when you build it yourself, or as two apps of their own through
+  [AVP Play](https://github.com/myMartek/avp-play), which also fetches the game files from your Steam purchase.
+- **The start window and performance panel of AVP Play's games**: hold Create and Options for a second to see frame
+  rate, GPU and CPU load, memory and heat.
 - **PlayStation VR2 Sense controllers**, each tracked on its own with position, orientation and handedness. A
   standard game controller works as well; then you aim by looking.
 - **Room-scale play.** Aim by pointing, lean around corners, duck under things that are really above you. The melee
@@ -23,6 +26,11 @@ For Meta Quest, Pico and PC VR, use [Team Beef's original](https://github.com/Te
   reappear in front of you whenever you open them.
 - **Rendering on Metal.** The engine's OpenGL is translated through [gl4es](https://github.com/ptitSeb/gl4es) and
   [ANGLE](https://chromium.googlesource.com/angle/angle).
+
+## Installing
+
+[AVP-INSTALL.md](AVP-INSTALL.md) has both ways: with [AVP Play](https://github.com/myMartek/avp-play), which builds
+the app on your Mac and fetches the game files from your own Steam purchase, or by building it yourself as below.
 
 ## Game files
 
